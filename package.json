@@ -1,0 +1,11 @@
+{
+  "name": "grid-operator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Grid Operator — an energy-economics grid simulation game.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/engine.test.mjs",
+    "serve": "node --version >/dev/null && python -m http.server 8731"
+  }
+}

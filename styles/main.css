@@ -1,0 +1,105 @@
+/* Layout concept: a grid control-room HUD — dark console, amber power accent,
+   a live 24-hour dispatch chart as the centerpiece, fleet build rail on the side. */
+:root{
+  --bg:#0b0f14; --panel:#131924; --panel-2:#0f141d; --line:#222c3a;
+  --fg:#e8eef6; --muted:#8c9bb0; --faint:#5e6b7e;
+  --accent:#ffb02e;            /* power / energy amber */
+  --good:#43c47a; --warn:#f4c04e; --bad:#ff5b5b; --info:#4fb3e8;
+  /* generation technology colors (merit-order stack) */
+  --t-solar:#ffcf3f; --t-wind:#46c7d6; --t-battery:#5fd38a; --t-nuclear:#b98cff;
+  --t-coal:#7a8190; --t-ccgt:#ff9a52; --t-peaker:#ff6b6b; --t-unserved:#ff3b3b;
+  color-scheme:dark;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --disp:"Chakra Petch","IBM Plex Sans",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.45;font-size:14px;
+  background-image:radial-gradient(1200px 600px at 80% -10%, rgba(255,176,46,.06), transparent 60%);}
+img{max-width:100%}
+[hidden]{display:none!important}
+.wrap{max-width:1180px;margin:0 auto;padding-block:16px 40px;padding-left:16px;padding-right:16px;}
+
+/* ---- top HUD ---- */
+header.hud{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;
+  border:1px solid var(--line);background:linear-gradient(180deg,var(--panel),var(--panel-2));
+  border-radius:14px;padding:14px 16px;margin-bottom:14px;}
+.brand{display:flex;flex-direction:column;gap:2px;margin-right:auto;min-width:0}
+.brand h1{font-family:var(--disp);font-weight:700;font-size:1.22rem;letter-spacing:.5px;margin:0;
+  text-transform:uppercase}
+.brand .sub{color:var(--muted);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase}
+.stat{display:flex;flex-direction:column;gap:1px;min-width:72px}
+.stat .k{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.stat .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:1.05rem;font-weight:600}
+.stat .v small{font-size:.66rem;color:var(--muted);font-weight:400}
+
+.grid{display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start}
+@media (max-width:860px){ .grid{grid-template-columns:1fr} }
+
+.card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px}
+.card h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-size:.82rem;
+  color:var(--muted);margin:0 0 10px;font-weight:600;display:flex;align-items:center;gap:8px;justify-content:space-between}
+
+/* chart */
+#chartWrap{position:relative}
+canvas{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--muted)}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+/* results readout */
+.results{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:12px}
+.results div{background:var(--panel);padding:9px 11px}
+.results .k{font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.results .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:.98rem;font-weight:600}
+.msg{margin-top:11px;font-size:.84rem;color:var(--muted);min-height:1.2em}
+.msg b{color:var(--fg);font-weight:600}
+
+/* fleet rail */
+.tech{border:1px solid var(--line);border-radius:11px;padding:9px 10px;margin-bottom:8px;
+  background:var(--panel-2);display:grid;grid-template-columns:auto 1fr auto;gap:4px 9px;align-items:center}
+.tech .swatch{width:10px;height:34px;border-radius:3px;grid-row:1/3}
+.tech .nm{font-weight:600;font-size:.86rem}
+.tech .meta{font-size:.66rem;color:var(--faint);font-family:var(--mono)}
+.tech .cap{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:.82rem;color:var(--muted);text-align:right;grid-row:1/3;align-self:center}
+.tech .cap b{display:block;color:var(--fg);font-size:1.02rem}
+.tech .btns{grid-column:1/4;display:flex;gap:6px;margin-top:5px}
+button{font-family:var(--sans);cursor:pointer;border-radius:8px;border:1px solid var(--line);
+  background:#1b2433;color:var(--fg);font-size:.78rem;padding:5px 9px;transition:.12s}
+button:hover:not(:disabled){border-color:var(--accent);color:#fff}
+button:disabled{opacity:.38;cursor:not-allowed}
+.tech .btns button{flex:1}
+.tech .btns .sell{color:var(--muted)}
+
+.advance{width:100%;margin-top:4px;background:var(--accent);color:#1a1205;border:none;
+  font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-weight:700;
+  font-size:.98rem;padding:13px;border-radius:12px}
+.advance:hover:not(:disabled){filter:brightness(1.08)}
+.goalbar{font-size:.72rem;color:var(--muted);margin-top:8px;text-align:center}
+
+/* news log */
+.log{font-size:.78rem;max-height:150px;overflow:auto;display:flex;flex-direction:column;gap:5px}
+.log .ln{color:var(--muted)} .log .ln b{color:var(--fg)}
+.log .ev{color:var(--accent)}
+
+.pill{font-family:var(--mono);font-size:.7rem;padding:2px 7px;border-radius:20px;border:1px solid var(--line)}
+.pill.good{color:var(--good);border-color:#1f4a33} .pill.warn{color:var(--warn);border-color:#4a3f1f}
+.pill.bad{color:var(--bad);border-color:#4a2222}
+
+/* overlay */
+.overlay{position:fixed;inset:0;background:rgba(6,9,13,.86);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.overlay.on{display:flex}
+.modal{max-width:460px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px}
+.modal h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;margin:0 0 4px}
+.modal .grade{font-family:var(--disp);font-size:3.4rem;font-weight:700;line-height:1;margin:6px 0}
+.modal p{color:var(--muted);font-size:.9rem}
+.modal ul{padding-left:0;list-style:none;margin:14px 0;display:flex;flex-direction:column;gap:6px}
+.modal li{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.85rem;border-bottom:1px dashed var(--line);padding-bottom:5px}
+.modal li span:last-child{font-weight:600}
+.how{font-size:.78rem;color:var(--muted);margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.how summary{cursor:pointer;color:var(--accent);font-weight:600}
+.how p{margin:8px 0;color:var(--muted)}
+.how code{background:var(--panel-2);padding:1px 5px;border-radius:5px;font-size:.92em}
+a{color:var(--accent)}
