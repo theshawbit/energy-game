@@ -1,0 +1,469 @@
+<title>Grid Operator</title>
+<meta name="description" content="Run a city's power grid: build plants, dispatch them by merit order, survive carbon prices and weather." />
+<style>
+  /* Layout concept: a grid control-room HUD — dark console, amber power accent,
+     a live 24-hour dispatch chart as the centerpiece, fleet build rail on the side. */
+  :root{
+    --bg:#0b0f14; --panel:#131924; --panel-2:#0f141d; --line:#222c3a;
+    --fg:#e8eef6; --muted:#8c9bb0; --faint:#5e6b7e;
+    --accent:#ffb02e;            /* power / energy amber */
+    --good:#43c47a; --warn:#f4c04e; --bad:#ff5b5b; --info:#4fb3e8;
+    /* generation technology colors (merit-order stack) */
+    --t-solar:#ffcf3f; --t-wind:#46c7d6; --t-battery:#5fd38a; --t-nuclear:#b98cff;
+    --t-coal:#7a8190; --t-ccgt:#ff9a52; --t-peaker:#ff6b6b; --t-unserved:#ff3b3b;
+    color-scheme:dark;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    --disp:"Chakra Petch","IBM Plex Sans",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.45;
+    background-image:radial-gradient(1200px 600px at 80% -10%, rgba(255,176,46,.06), transparent 60%);}
+  .wrap{max-width:1180px;margin:0 auto;padding-block:16px 40px;padding-left:16px;padding-right:16px;}
+
+  /* ---- top HUD ---- */
+  header.hud{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;
+    border:1px solid var(--line);background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border-radius:14px;padding:14px 16px;margin-bottom:14px;}
+  .brand{display:flex;flex-direction:column;gap:2px;margin-right:auto;min-width:0}
+  .brand h1{font-family:var(--disp);font-weight:700;font-size:1.22rem;letter-spacing:.5px;margin:0;
+    text-transform:uppercase}
+  .brand .sub{color:var(--muted);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase}
+  .stat{display:flex;flex-direction:column;gap:1px;min-width:72px}
+  .stat .k{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .stat .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:1.05rem;font-weight:600}
+  .stat .v small{font-size:.66rem;color:var(--muted);font-weight:400}
+
+  .grid{display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start}
+  @media (max-width:860px){ .grid{grid-template-columns:1fr} }
+
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px}
+  .card h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-size:.82rem;
+    color:var(--muted);margin:0 0 10px;font-weight:600;display:flex;align-items:center;gap:8px;justify-content:space-between}
+
+  /* chart */
+  #chartWrap{position:relative}
+  canvas{width:100%;height:auto;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
+  .legend span{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--muted)}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  /* results readout */
+  .results{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:12px}
+  .results div{background:var(--panel);padding:9px 11px}
+  .results .k{font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .results .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:.98rem;font-weight:600}
+  .msg{margin-top:11px;font-size:.84rem;color:var(--muted);min-height:1.2em}
+  .msg b{color:var(--fg);font-weight:600}
+
+  /* fleet rail */
+  .tech{border:1px solid var(--line);border-radius:11px;padding:9px 10px;margin-bottom:8px;
+    background:var(--panel-2);display:grid;grid-template-columns:auto 1fr auto;gap:4px 9px;align-items:center}
+  .tech .swatch{width:10px;height:34px;border-radius:3px;grid-row:1/3}
+  .tech .nm{font-weight:600;font-size:.86rem}
+  .tech .meta{font-size:.66rem;color:var(--faint);font-family:var(--mono)}
+  .tech .cap{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:.82rem;color:var(--muted);text-align:right;grid-row:1/3;align-self:center}
+  .tech .cap b{display:block;color:var(--fg);font-size:1.02rem}
+  .tech .btns{grid-column:1/4;display:flex;gap:6px;margin-top:5px}
+  button{font-family:var(--sans);cursor:pointer;border-radius:8px;border:1px solid var(--line);
+    background:#1b2433;color:var(--fg);font-size:.78rem;padding:5px 9px;transition:.12s}
+  button:hover:not(:disabled){border-color:var(--accent);color:#fff}
+  button:disabled{opacity:.38;cursor:not-allowed}
+  .tech .btns button{flex:1}
+  .tech .btns .sell{color:var(--muted)}
+
+  .advance{width:100%;margin-top:4px;background:var(--accent);color:#1a1205;border:none;
+    font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-weight:700;
+    font-size:.98rem;padding:13px;border-radius:12px}
+  .advance:hover:not(:disabled){filter:brightness(1.08)}
+  .goalbar{font-size:.72rem;color:var(--muted);margin-top:8px;text-align:center}
+
+  /* news log */
+  .log{font-size:.78rem;max-height:150px;overflow:auto;display:flex;flex-direction:column;gap:5px}
+  .log .ln{color:var(--muted)} .log .ln b{color:var(--fg)}
+  .log .ev{color:var(--accent)}
+
+  .pill{font-family:var(--mono);font-size:.7rem;padding:2px 7px;border-radius:20px;border:1px solid var(--line)}
+  .pill.good{color:var(--good);border-color:#1f4a33} .pill.warn{color:var(--warn);border-color:#4a3f1f}
+  .pill.bad{color:var(--bad);border-color:#4a2222}
+
+  /* overlay */
+  .overlay{position:fixed;inset:0;background:rgba(6,9,13,.86);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+  .overlay.on{display:flex}
+  .modal{max-width:460px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px}
+  .modal h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;margin:0 0 4px}
+  .modal .grade{font-family:var(--disp);font-size:3.4rem;font-weight:700;line-height:1;margin:6px 0}
+  .modal p{color:var(--muted);font-size:.9rem}
+  .modal ul{padding-left:0;list-style:none;margin:14px 0;display:flex;flex-direction:column;gap:6px}
+  .modal li{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.85rem;border-bottom:1px dashed var(--line);padding-bottom:5px}
+  .modal li span:last-child{font-weight:600}
+  .how{font-size:.78rem;color:var(--muted);margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  .how summary{cursor:pointer;color:var(--accent);font-weight:600}
+  .how p{margin:8px 0;color:var(--muted)}
+  .how code{background:var(--panel-2);padding:1px 5px;border-radius:5px;font-size:.92em}
+  a{color:var(--accent)}
+</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<div class="wrap">
+  <header class="hud">
+    <div class="brand">
+      <h1>Grid Operator</h1>
+      <span class="sub">City power authority · merit-order market</span>
+    </div>
+    <div class="stat"><span class="k">Year</span><span class="v" id="s-year">2025</span></div>
+    <div class="stat"><span class="k">Cash</span><span class="v" id="s-cash">—</span></div>
+    <div class="stat"><span class="k">Peak demand</span><span class="v" id="s-peak">—</span></div>
+    <div class="stat"><span class="k">Reliability</span><span class="v" id="s-rel">—</span></div>
+    <div class="stat"><span class="k">CO₂ intensity</span><span class="v" id="s-co2">—</span></div>
+    <div class="stat"><span class="k">Wholesale</span><span class="v" id="s-price">—</span></div>
+    <div class="stat"><span class="k">Carbon price</span><span class="v" id="s-carbon">—</span></div>
+  </header>
+
+  <div class="grid">
+    <section class="card" id="chartWrap">
+      <h2><span>Dispatch — representative day (MW by hour)</span><span class="pill" id="weatherPill">—</span></h2>
+      <canvas id="chart" width="1100" height="430" aria-label="24-hour generation dispatch chart"></canvas>
+      <div class="legend" id="legend"></div>
+
+      <div class="results" id="results"></div>
+      <div class="msg" id="msg"></div>
+    </section>
+
+    <aside>
+      <section class="card" style="margin-bottom:14px">
+        <h2><span>Fleet &amp; investment</span></h2>
+        <div id="fleet"></div>
+        <button class="advance" id="advanceBtn">Advance year ▸</button>
+        <div class="goalbar" id="goalbar"></div>
+      </section>
+      <section class="card">
+        <h2><span>Control room log</span></h2>
+        <div class="log" id="log"></div>
+      </section>
+    </aside>
+  </div>
+
+  <details class="how">
+    <summary>How the economics work</summary>
+    <p>Each year is simulated over a representative 24-hour day and scaled to 365 days. Power is in <b>MW</b>, energy in <b>MWh</b> (MW×h), prices in <b>$/MWh</b>.</p>
+    <p><b>Dispatch</b> follows the <b>merit order</b>: cheapest resources run first — free wind &amp; solar, then stored battery energy, then thermal plants ranked by marginal cost. Batteries charge from midday renewable surplus and discharge into the evening peak.</p>
+    <p><b>Price</b> each hour is the marginal cost of the <i>last</i> plant dispatched (uniform-price auction). You earn that price on every MWh you serve, so cheap plants earn "inframarginal rent". A <b>carbon price</b> adds <code>$/t × tCO₂/MWh</code> to each fossil plant's cost — enough of it flips coal behind gas, then behind clean energy.</p>
+    <p><b>Lose</b> if cash falls below −$150M or a year's reliability drops under 85%. <b>Win</b> by running the grid to 2050 solvent — graded on profit, reliability and emissions.</p>
+  </details>
+</div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script>
+"use strict";
+/* ============================================================
+   ENERGY ECONOMICS ENGINE  (verified merit-order dispatch model)
+   ============================================================ */
+const HOURS=24, DAYS=365;
+const DEMAND_SHAPE=[.55,.52,.50,.49,.50,.54,.62,.72,.80,.82,.83,.84,.84,.83,.82,.83,.86,.92,1.00,.98,.90,.80,.68,.60];
+const SOLAR_CF=[0,0,0,0,0,.05,.15,.30,.50,.68,.82,.90,.92,.88,.78,.62,.42,.22,.08,0,0,0,0,0];
+const WIND_CF=[.45,.47,.48,.48,.46,.44,.40,.36,.33,.30,.30,.32,.34,.36,.38,.40,.42,.45,.48,.50,.50,.49,.47,.46];
+
+const TECH={
+  solar:  {name:"Solar PV",   capex:1.0e6, fixedOM:15000, mc:0,  ef:0,   block:25, color:"--t-solar",   note:"free fuel · daytime only"},
+  wind:   {name:"Wind",       capex:1.4e6, fixedOM:40000, mc:0,  ef:0,   block:25, color:"--t-wind",    note:"free fuel · variable"},
+  battery:{name:"Battery 4h", capex:1.6e6, fixedOM:10000, mc:1,  ef:0,   block:25, color:"--t-battery", note:"4h storage · shifts peaks", duration:4, rte:.9},
+  nuclear:{name:"Nuclear",    capex:6.5e6, fixedOM:120000,mc:10, ef:0,   block:100,color:"--t-nuclear", note:"baseload · 92% avail", avail:.92},
+  coal:   {name:"Coal",       capex:3.0e6, fixedOM:60000, mc:35, ef:.95, block:50, color:"--t-coal",    note:"dirty · 0.95 tCO₂/MWh", avail:.90},
+  ccgt:   {name:"Gas CCGT",   capex:1.0e6, fixedOM:25000, mc:55, ef:.37, block:50, color:"--t-ccgt",    note:"flexible · 0.37 tCO₂/MWh", avail:.90},
+  peaker: {name:"Gas Peaker", capex:0.8e6, fixedOM:20000, mc:120,ef:.55, block:25, color:"--t-peaker",  note:"last resort · pricey", avail:.90},
+};
+const ORDER=["solar","wind","battery","nuclear","coal","ccgt","peaker"];
+const THERMAL=["nuclear","coal","ccgt","peaker"];
+const VOLL=4000, PRICE_CAP=300;
+
+function simulateDay(fleet,peakMW,weather,carbonPrice=0,fuelMult=1){
+  const mcOf = t => (TECH[t].mc*((t==="ccgt"||t==="peaker")?fuelMult:1)) + TECH[t].ef*carbonPrice;
+  const order=[...THERMAL].sort((a,b)=>mcOf(a)-mcOf(b));
+  const battPower=fleet.battery, battEnergy=fleet.battery*TECH.battery.duration, rte=TECH.battery.rte;
+
+  const demand=DEMAND_SHAPE.map(s=>s*peakMW);
+  const solarGen=SOLAR_CF.map(cf=>cf*weather.sun*fleet.solar);
+  const windGen=WIND_CF.map(cf=>cf*weather.wind*fleet.wind);
+  const netLoad=demand.map((d,h)=>d-solarGen[h]-windGen[h]);
+
+  // battery: charge from zero-cost surplus, discharge into biggest net-load hours
+  let stored=0; const chargeHour=new Array(HOURS).fill(0);
+  for(let h=0;h<HOURS;h++){ if(netLoad[h]>=0)continue;
+    const room=battEnergy-stored, draw=Math.min(-netLoad[h],battPower,room/Math.sqrt(rte));
+    if(draw>0){chargeHour[h]=draw; stored+=draw*Math.sqrt(rte);} }
+  const dischargeHour=new Array(HOURS).fill(0);
+  let deliver=stored*Math.sqrt(rte);
+  for(const {h} of netLoad.map((nl,h)=>({nl,h})).filter(x=>x.nl>0).sort((a,b)=>b.nl-a.nl)){
+    if(deliver<=0)break; const give=Math.min(deliver,battPower,netLoad[h]); dischargeHour[h]=give; deliver-=give; }
+
+  let served=0,unserved=0,revenue=0,varCost=0,emissions=0,demandTot=0;
+  const stackSeries=[],priceSeries=[];
+  for(let h=0;h<HOURS;h++){
+    demandTot+=demand[h]; let rem=demand[h], price=0;
+    const S={solar:0,wind:0,battery:0,nuclear:0,coal:0,ccgt:0,peaker:0,unserved:0};
+    const su=Math.min(solarGen[h],rem); rem-=su; S.solar=su;
+    const wu=Math.min(windGen[h],rem); rem-=wu; S.wind=wu;
+    const bu=Math.min(dischargeHour[h],rem); rem-=bu; S.battery=bu; varCost+=bu*TECH.battery.mc; if(bu>0)price=Math.max(price,TECH.battery.mc);
+    for(const t of order){ if(rem<=1e-9)break;
+      const cap=fleet[t]*(TECH[t].avail||1), use=Math.min(cap,rem);
+      if(use>0){ rem-=use; S[t]=use; varCost+=use*mcOf(t); emissions+=use*TECH[t].ef; price=Math.max(price,mcOf(t)); } }
+    if(rem>1e-9){ S.unserved=rem; unserved+=rem; price=PRICE_CAP; }
+    const servedH=demand[h]-Math.max(0,rem); served+=servedH; revenue+=price*servedH;
+    S._demand=demand[h]; stackSeries.push(S); priceSeries.push(price);
+  }
+  const yr=x=>x*DAYS;
+  const fixedOM=Object.keys(fleet).reduce((s,k)=>s+fleet[k]*TECH[k].fixedOM,0);
+  const grossRev=yr(revenue), varY=yr(varCost), penalty=yr(unserved)*VOLL;
+  const energy=yr(served), dem=yr(demandTot), emis=yr(emissions);
+  const profit=grossRev-varY-fixedOM-penalty;
+  return {grossRev,varY,fixedOM,penalty,profit,energy,dem,emis,
+    reliability:dem>0?energy/dem:1, co2:energy>0?emis*1e3/energy:0, avgPrice:energy>0?grossRev/energy:0,
+    unservedY:yr(unserved), stackSeries, priceSeries, peakMW};
+}
+
+/* ============================================================
+   GAME STATE
+   ============================================================ */
+const START={ year:2025, cash:250e6, peak:400, carbon:0,
+  fleet:{solar:0,wind:0,battery:0,nuclear:0,coal:250,ccgt:150,peaker:0},
+  capexMult:{solar:1,wind:1,battery:1}, relSum:0, relYears:0, cumProfit:0 };
+let G, weather, lastResult, logLines=[];
+
+function freshWeather(){ return {sun:+(0.8+Math.random()*0.25).toFixed(3), wind:+(0.7+Math.random()*0.6).toFixed(3)}; }
+function effCapex(t){ return TECH[t].capex*(G.capexMult[t]||1); }
+
+function init(data){
+  G=data && data.G ? data.G : JSON.parse(JSON.stringify(START));
+  weather=data && data.weather ? data.weather : {sun:1.0,wind:1.0};
+  logLines=data && data.log ? data.log : [];
+  G.fuelMult = G.fuelMult||1;
+  if(!logLines.length) pushLog("Grid handed over. Legacy coal &amp; gas online — reliable but dirty. Modernise it.", false);
+  recompute(); render();
+}
+function pushLog(html,isEvent){ logLines.unshift({html,isEvent}); if(logLines.length>40)logLines.pop(); }
+
+function recompute(){ lastResult=simulateDay(G.fleet,G.peak,weather,G.carbon,G.fuelMult); }
+
+/* ---- investment ---- */
+function build(t){
+  const cost=TECH[t].block*effCapex(t);
+  if(G.cash-cost < -150e6){ flashMsg("Not enough credit to build that — advance a year to earn, or build cheaper capacity.",true); return; }
+  G.cash-=cost; G.fleet[t]+=TECH[t].block; recompute(); render();
+}
+function sell(t){
+  if(G.fleet[t]<=0)return;
+  const salvage=TECH[t].block*effCapex(t)*0.25;
+  G.fleet[t]-=TECH[t].block; G.cash+=salvage; recompute(); render();
+}
+
+/* ---- advance a year ---- */
+const EVENTS=[
+  g=>{ g.peak=Math.round(g.peak*1.12); return ["Heat wave","A brutal summer pushes peak demand up 12%."]; },
+  g=>{ g.fuelMult=1.4; return ["Gas price spike","Fuel markets jump — gas marginal costs up 40% this year."]; },
+  g=>{ g.carbon+=20; return ["Carbon tax hike","Regulators raise the carbon price by $20/t."]; },
+  g=>{ g.capexMult.solar*=0.82; g.capexMult.battery*=0.80; return ["Tech breakthrough","Solar &amp; battery capex fall sharply — build clean cheaply now."]; },
+  g=>{ g.peak=Math.round(g.peak*0.97); return ["Mild year","A cool, quiet year trims peak demand slightly."]; },
+  g=>{ g.capexMult.wind*=0.85; return ["Offshore boom","Wind turbine costs drop 15%."]; },
+];
+function advanceYear(){
+  if(G._over)return;
+  // bank the (already-previewed) result for this year's weather
+  G.cash+=lastResult.profit; G.cumProfit+=lastResult.profit;
+  G.relSum+=lastResult.reliability; G.relYears++;
+  const relTxt=(lastResult.reliability*100).toFixed(1);
+  pushLog(`<b>${G.year}</b> banked: profit <b>${fmtMoney(lastResult.profit)}</b> · reliability ${relTxt}% · ${Math.round(lastResult.co2)} kg CO₂/MWh`, false);
+
+  // lose checks on the year just completed
+  if(lastResult.reliability<0.85){ return endGame(false,`Reliability collapsed to ${relTxt}% in ${G.year}. The city revoked your licence.`); }
+  if(G.cash < -150e6){ return endGame(false,`You ran out of credit in ${G.year} — cash hit ${fmtMoney(G.cash)}.`); }
+
+  // win check
+  if(G.year>=2050){ return endGame(true,"You ran the grid to 2050."); }
+
+  // ---- move to next year ----
+  G.year++;
+  G.fuelMult=1; // spike was one-year
+  // policy: carbon price starts escalating from 2029
+  if(G.year>=2029) G.carbon+=6;
+  // demand growth
+  G.peak=Math.round(G.peak*1.025);
+  // learning curves
+  G.capexMult.solar*=0.97; G.capexMult.wind*=0.985; G.capexMult.battery*=0.95;
+  // weather + event
+  weather=freshWeather();
+  let evTxt=null;
+  if(G.year>=2028 && Math.random()<0.55){ const ev=EVENTS[Math.floor(Math.random()*EVENTS.length)](G); evTxt=ev; }
+  pushLog(`<span class="ev">${G.year} ▸</span> ${evTxt? '<b>'+evTxt[0]+'.</b> '+evTxt[1] : 'A steady year. Demand creeps up ~2.5%.'}`, true);
+
+  recompute(); render();
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const $=id=>document.getElementById(id);
+function fmtMoney(x){ const a=Math.abs(x); const s=x<0?"−":"";
+  if(a>=1e9)return s+"$"+(a/1e9).toFixed(2)+"B"; if(a>=1e6)return s+"$"+(a/1e6).toFixed(1)+"M";
+  if(a>=1e3)return s+"$"+(a/1e3).toFixed(0)+"k"; return s+"$"+a.toFixed(0); }
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function render(){
+  const r=lastResult;
+  $("s-year").textContent=G.year;
+  $("s-cash").innerHTML=fmtMoney(G.cash);
+  $("s-cash").style.color = G.cash<0?css("--bad"):(G.cash<30e6?css("--warn"):css("--fg"));
+  $("s-peak").innerHTML=G.peak+" <small>MW</small>";
+  const rel=r.reliability*100;
+  $("s-rel").innerHTML=rel.toFixed(1)+"<small>%</small>";
+  $("s-rel").style.color = rel>=99?css("--good"):(rel>=95?css("--warn"):css("--bad"));
+  $("s-co2").innerHTML=Math.round(r.co2)+" <small>kg/MWh</small>";
+  $("s-co2").style.color = r.co2<100?css("--good"):(r.co2<450?css("--warn"):css("--bad"));
+  $("s-price").innerHTML="$"+r.avgPrice.toFixed(0)+" <small>/MWh</small>";
+  $("s-carbon").innerHTML="$"+Math.round(G.carbon)+" <small>/t</small>";
+
+  $("weatherPill").textContent=`sun ${Math.round(weather.sun*100)}% · wind ${Math.round(weather.wind*100)}%`;
+
+  // results readout
+  $("results").innerHTML = [
+    ["Revenue", fmtMoney(r.grossRev), css("--fg")],
+    ["Net profit / yr", fmtMoney(r.profit), r.profit>=0?css("--good"):css("--bad")],
+    ["Fuel + carbon cost", fmtMoney(r.varY), css("--fg")],
+    ["Fixed O&amp;M / yr", fmtMoney(r.fixedOM), css("--fg")],
+    ["Energy served / yr", (r.energy/1e6).toFixed(2)+" TWh", css("--fg")],
+    ["Blackout penalty", r.penalty>0?fmtMoney(-r.penalty):"$0", r.penalty>0?css("--bad"):css("--muted")],
+  ].map(([k,v,c])=>`<div><div class="k">${k}</div><div class="v" style="color:${c}">${v}</div></div>`).join("");
+
+  // message / coaching
+  let m="";
+  if(r.unservedY>0) m=`<b>Blackouts.</b> Firm capacity can't cover the peak — add dispatchable or storage.`;
+  else if(r.profit<0) m=`Losing money. ${G.carbon>0?"Carbon costs are biting your fossil plants. ":""}Shift toward cheaper or cleaner generation.`;
+  else if(r.co2>450) m=`Lights stay on, but you're carbon-heavy — rising carbon prices will punish this.`;
+  else m=`Grid is solvent, reliable${r.co2<100?" and clean":""}. Build margin for demand growth and events.`;
+  $("msg").innerHTML=m;
+
+  renderFleet(); renderLegend(); renderLog(); drawChart();
+
+  $("goalbar").textContent = `Goal · reach 2050 solvent  (${2050-G.year} ${2050-G.year===1?"year":"years"} left)`;
+  $("advanceBtn").disabled = !!G._over;
+  saveSnapshot();
+}
+
+function renderFleet(){
+  const host=$("fleet"); host.innerHTML="";
+  for(const t of ORDER){
+    const T=TECH[t], cost=T.block*effCapex(t);
+    const el=document.createElement("div"); el.className="tech";
+    el.innerHTML=`
+      <span class="swatch" style="background:${css(T.color)}"></span>
+      <div><div class="nm">${T.name}</div><div class="meta">${T.note}</div></div>
+      <div class="cap"><b>${G.fleet[t]}</b>MW</div>
+      <div class="btns">
+        <button data-b="${t}">+${T.block} MW · ${fmtMoney(cost)}</button>
+        <button class="sell" data-s="${t}" ${G.fleet[t]<=0?"disabled":""}>− retire</button>
+      </div>`;
+    host.appendChild(el);
+  }
+  host.querySelectorAll("[data-b]").forEach(b=>b.onclick=()=>build(b.dataset.b));
+  host.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>sell(b.dataset.s));
+}
+function renderLegend(){
+  $("legend").innerHTML = ORDER.map(t=>`<span><i style="background:${css(TECH[t].color)}"></i>${TECH[t].name}</span>`).join("")
+    + `<span><i style="background:${css("--t-unserved")}"></i>Unserved (blackout)</span>`
+    + `<span><i style="width:16px;height:0;border-top:2px dashed #fff"></i>Demand</span>`;
+}
+function renderLog(){ $("log").innerHTML=logLines.map(l=>`<div class="ln ${l.isEvent?'ev':''}">${l.html}</div>`).join(""); }
+
+function flashMsg(t,warn){ const m=$("msg"); m.innerHTML=`<b style="color:${warn?css('--warn'):css('--fg')}">${t}</b>`; }
+
+/* ---- canvas dispatch chart ---- */
+function drawChart(){
+  const cv=$("chart"), ctx=cv.getContext("2d");
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const cssW=cv.clientWidth||1100, cssH=430;
+  cv.width=cssW*dpr; cv.height=cssH*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const padL=48,padR=14,padT=12,padB=28;
+  const W=cssW-padL-padR, H=cssH-padT-padB;
+  const r=lastResult;
+  let ymax=0;
+  r.stackSeries.forEach(s=>{ const tot=ORDER.reduce((a,t)=>a+s[t],0)+s.unserved; ymax=Math.max(ymax,tot,s._demand); });
+  ymax=Math.max(ymax,50); ymax=niceCeil(ymax);
+  const x=h=>padL+ (h+0.5)/HOURS*W;
+  const bw=W/HOURS*0.72;
+  const y=v=>padT+H-(v/ymax)*H;
+
+  // grid + y labels
+  ctx.font="10px "+css("--mono").replace(/"/g,"")||"monospace";
+  ctx.textAlign="right"; ctx.textBaseline="middle";
+  const ticks=5;
+  for(let i=0;i<=ticks;i++){ const val=ymax*i/ticks, yy=y(val);
+    ctx.strokeStyle=css("--line"); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(padL+W,yy); ctx.stroke();
+    ctx.fillStyle=css("--faint"); ctx.fillText(Math.round(val), padL-6, yy); }
+
+  // stacked bars
+  for(let h=0;h<HOURS;h++){
+    const s=r.stackSeries[h]; let base=0; const cx=x(h)-bw/2;
+    for(const t of ORDER){ const v=s[t]; if(v<=0)continue;
+      ctx.fillStyle=css(TECH[t].color); const y0=y(base), y1=y(base+v);
+      ctx.fillRect(cx,y1,bw,y0-y1); base+=v; }
+    if(s.unserved>0.01){ ctx.fillStyle=css("--t-unserved"); const y0=y(base),y1=y(base+s.unserved); ctx.fillRect(cx,y1,bw,y0-y1); base+=s.unserved; }
+  }
+  // demand line
+  ctx.strokeStyle="#fff"; ctx.lineWidth=1.8; ctx.setLineDash([5,4]); ctx.beginPath();
+  r.stackSeries.forEach((s,h)=>{ const px=x(h),py=y(s._demand); h?ctx.lineTo(px,py):ctx.moveTo(px,py); }); ctx.stroke(); ctx.setLineDash([]);
+  r.stackSeries.forEach((s,h)=>{ ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(x(h),y(s._demand),1.8,0,7); ctx.fill(); });
+
+  // x labels
+  ctx.fillStyle=css("--faint"); ctx.textAlign="center"; ctx.textBaseline="top";
+  for(let h=0;h<HOURS;h+=3){ ctx.fillText(String(h).padStart(2,"0"), x(h), padT+H+6); }
+  ctx.fillStyle=css("--faint"); ctx.textAlign="left"; ctx.fillText("hour", padL, padT+H+6+0);
+}
+function niceCeil(v){ const p=Math.pow(10,Math.floor(Math.log10(v))); const n=v/p;
+  const step=n<=1?1:n<=2?2:n<=5?5:10; return step*p; }
+
+/* ---- end game ---- */
+function endGame(win,reason){
+  G._over=true;
+  const avgRel=G.relYears? G.relSum/G.relYears:0;
+  const co2=lastResult.co2;
+  // score 0-100
+  let sc=0;
+  sc += Math.max(0,Math.min(40, (G.cumProfit/1e9)*10 + 20));          // profitability
+  sc += Math.max(0,Math.min(35, (avgRel-0.9)/0.099*35));              // reliability
+  sc += Math.max(0,Math.min(25, (600-co2)/600*25));                  // cleanliness
+  sc=Math.round(Math.max(0,Math.min(100,sc)));
+  const grade = !win?"—" : sc>=90?"A":sc>=80?"B":sc>=68?"C":sc>=55?"D":"E";
+  const gcol = !win?css("--bad") : sc>=80?css("--good"):sc>=55?css("--warn"):css("--bad");
+  $("modal").innerHTML=`
+    <h2 style="color:${win?css('--good'):css('--bad')}">${win?"Term complete":"Grid failure"}</h2>
+    <p>${reason}</p>
+    ${win?`<div class="grade" style="color:${gcol}">${grade}</div><p>Score ${sc}/100</p>`:""}
+    <ul>
+      <li><span>Years operated</span><span>${G.relYears}</span></li>
+      <li><span>Cumulative profit</span><span style="color:${G.cumProfit>=0?css('--good'):css('--bad')}">${fmtMoney(G.cumProfit)}</span></li>
+      <li><span>Ending cash</span><span>${fmtMoney(G.cash)}</span></li>
+      <li><span>Average reliability</span><span>${(avgRel*100).toFixed(1)}%</span></li>
+      <li><span>Final CO₂ intensity</span><span>${Math.round(co2)} kg/MWh</span></li>
+      <li><span>Final carbon price</span><span>$${Math.round(G.carbon)}/t</span></li>
+    </ul>
+    <button class="advance" id="restart">Play again</button>`;
+  $("overlay").classList.add("on");
+  $("restart").onclick=()=>{ $("overlay").classList.remove("on"); init(null); };
+  render();
+}
+
+/* ---- hot-reload state preservation ---- */
+function saveSnapshot(){ try{ window.claude?.hot?.snapshot?.({G,weather,log:logLines}); }catch(e){} }
+
+$("advanceBtn").onclick=advanceYear;
+window.addEventListener("resize",()=>{ if(G) drawChart(); });
+
+const boot=d=>init(d && d.G ? d : null);
+if(window.claude?.hot?.ready) window.claude.hot.ready(boot); else boot(window.claude?.hot?.data||null);
+</script>
