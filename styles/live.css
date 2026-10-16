@@ -87,3 +87,22 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .modal ul{list-style:none;padding:0;margin:16px 0;display:flex;flex-direction:column;gap:6px;text-align:left}
 .modal li{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.86rem;border-bottom:1px dashed var(--line);padding-bottom:5px}
 .modal li span:last-child{font-weight:600}
+
+/* manage-grid menu */
+.modal.menu{max-width:560px;text-align:left}
+.modal.menu h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;color:var(--muted);margin:18px 0 8px;font-weight:600}
+.modal.menu h3 small{font-family:var(--mono);text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400;font-size:.9em}
+.menu-cash{font-family:var(--mono);font-size:.9rem;color:var(--muted);margin-top:4px}
+.menu-cash b{color:var(--good);font-size:1.1rem}
+.build-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.build-grid button{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.8rem}
+.build-grid button .c{font-family:var(--mono);color:var(--accent);font-weight:600}
+.build-grid button:disabled,.up-row button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line);color:var(--muted)}
+.up-list{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto}
+.up-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:9px;padding:6px 10px;background:var(--panel-2)}
+.up-nm{font-size:.82rem;font-weight:600}
+.up-nm i{color:var(--accent);font-style:normal;font-family:var(--mono);font-size:.78rem}
+.up-nm small{color:var(--faint);font-family:var(--mono);font-weight:400}
+.up-row button{font-family:var(--mono);font-size:.74rem;white-space:nowrap}
+.modal.menu #closeMenu{width:100%;margin-top:16px}
+.unit .nm .mk{font-family:var(--mono);font-size:.64rem;color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:3px;vertical-align:middle}

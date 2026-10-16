@@ -19,7 +19,8 @@ python3 -m http.server 8000   # then open http://localhost:8000
    - Click a reserve plant, or press <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> for peakers and <kbd>B</kbd> for the battery. <kbd>Space</kbd> pauses.
    - Peakers take ~1.6 h to spin up, so pre-arm them before the peak.
 3. **Survive.** Plants randomly **trip offline** (more often as days climb), yanking capacity mid-peak. A small shortfall **browns out** (penalties + a short recovery window); a large or sustained one is a **blackout** — run over, with a scorecard.
-4. Each day survived raises the demand peak, and from day 3 a **carbon price** escalates, lifting fossil plants' running cost and re-sorting the merit order.
+4. **Invest.** Press **Manage** to open the planning panel — this **pauses the clock**. Spend earned cash to **build** new capacity or **upgrade** plants through Mk tiers (more capacity, fewer trips, lower standby cost). Resume when ready.
+5. Each day survived raises the demand peak, and from day 3 a **carbon price** escalates, lifting fossil plants' running cost and re-sorting the merit order.
 
 ## The economics
 
