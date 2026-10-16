@@ -1,32 +1,34 @@
 # Grid Operator
 
-A single-file browser game about **energy economics**. You run a city's power grid year by year — build and retire power plants, then watch them dispatch into a real wholesale electricity market. Keep the lights on, stay solvent, and decarbonize before the carbon price eats your margins.
+A browser game about **energy economics**. The main game (`index.html`) is **Grid Operator — Live**: you keep a growing city powered in real time, dispatching reserves and riding the evening peak while a live wholesale market pays you the merit-order clearing price. Dip below demand and the grid browns out; let it run deep and it's a blackout. Survive each day and demand climbs — and a rising carbon price makes dirty plants cost more.
+
+The original turn-based sim (build a fleet year by year to 2050) is preserved as a reference build at [`batch/index.html`](batch/index.html).
 
 No build step, no dependencies. Because the code is split into ES modules, serve the folder over HTTP rather than opening the file directly:
 
 ```bash
-python -m http.server 8000   # then open http://localhost:8000
+python3 -m http.server 8000   # then open http://localhost:8000
 ```
 
 (Opening `index.html` as a `file://` URL won't work — browsers block module loading over `file://`.)
 
-## How to play
+## How to play (Live)
 
-1. **Each year is simulated over a representative 24-hour day** and scaled to 365 days.
-2. **Build capacity** from the fleet panel. Each technology has its own capital cost, fixed operating cost, marginal (fuel) cost, and CO₂ emissions.
-3. **Advance the year** to bank the result. Demand grows ~2.5%/year, weather varies, random events hit (heat waves, fuel-price spikes, tech-cost breakthroughs), and from 2029 the carbon price escalates.
-4. **Win** by running the grid to 2050 solvent — graded A–E on profit, reliability, and emissions.
-5. **Lose** if cash falls below −$150M or a year's reliability drops under 85%.
+1. **Press Start shift.** A live 24-hour clock runs (~48 real seconds per day); demand follows the daily curve toward the evening peak.
+2. **Keep capacity ≥ demand.** Baseload (nuclear, coal) and renewables (solar, wind — variable with time of day and weather) run automatically. Three gas **peakers** and a **battery** are yours to dispatch:
+   - Click a reserve plant, or press <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> for peakers and <kbd>B</kbd> for the battery. <kbd>Space</kbd> pauses.
+   - Peakers take ~1.6 h to spin up, so pre-arm them before the peak.
+3. **Survive.** Plants randomly **trip offline** (more often as days climb), yanking capacity mid-peak. A small shortfall **browns out** (penalties + a short recovery window); a large or sustained one is a **blackout** — run over, with a scorecard.
+4. Each day survived raises the demand peak, and from day 3 a **carbon price** escalates, lifting fossil plants' running cost and re-sorting the merit order.
 
 ## The economics
 
-The simulation is a genuine **merit-order electricity market**, not a cosmetic score:
+Both games clear the market through the same verified **merit-order dispatch engine**:
 
 - **Dispatch order (cheapest first):** free wind & solar → stored battery energy → thermal plants ranked by marginal cost.
 - **Price** each hour is the marginal cost of the *last* plant dispatched (uniform-price auction). You earn that clearing price on every MWh you serve, so cheap plants collect "inframarginal rent."
-- **Carbon price** adds `$/t × tCO₂/MWh` to every fossil plant's running cost. Enough of it re-sorts the merit order — flipping coal behind gas, then behind clean energy (the real "gas-for-coal switching" effect, which kicks in around $34/t in this model).
-- **Batteries** charge from midday renewable surplus and discharge into the evening demand peak.
-- **Blackouts** (unserved load) are penalized at the value of lost load and never earn revenue — you can't profit by letting the lights go out.
+- **Carbon price** adds `$/t × tCO₂/MWh` to every fossil plant's running cost. Enough of it re-sorts the merit order — flipping coal behind gas, then behind clean energy (real "gas-for-coal switching," around $34/t in this model).
+- **Blackouts** (unserved load) are penalized and never earn revenue — you can't profit by letting the lights go out.
 
 ### Units
 
@@ -37,48 +39,38 @@ The simulation is a genuine **merit-order electricity market**, not a cosmetic s
 | Price / marginal cost | $/MWh |
 | Emissions factor | tCO₂/MWh |
 
-The dispatch engine was verified independently before the UI was built: energy is conserved (dispatched supply never exceeds demand in any hour), and the merit order and carbon-switching behavior match expected results.
-
-## Technologies
-
-| Tech | Marginal cost | CO₂ | Role |
-|---|---|---|---|
-| Solar PV | $0/MWh | 0 | Daytime, free fuel, variable |
-| Wind | $0/MWh | 0 | Free fuel, variable |
-| Battery (4h) | ~$1/MWh | 0 | Shifts energy from surplus to peak |
-| Nuclear | $10/MWh | 0 | Baseload, 92% availability |
-| Coal | $35/MWh | 0.95 tCO₂/MWh | Cheap but dirty |
-| Gas CCGT | $55/MWh | 0.37 tCO₂/MWh | Flexible mid-merit |
-| Gas Peaker | $120/MWh | 0.55 tCO₂/MWh | Expensive last resort |
-
-Capital costs, fuel costs, and emission factors are order-of-magnitude industry values tuned for balanced gameplay, not a forecast of any specific market.
-
 ## Project layout
 
 ```
-index.html              Entry point (markup + font/style links + module bootstrap)
-styles/main.css         All styling and the color/type design tokens
+index.html              Live game entry (markup + style/module bootstrap)
+styles/live.css         Live game styling + design tokens
+styles/main.css         Batch game styling
 src/
-  constants.js          Static config & data tables (tech economics, load shapes)
-  engine.js             Verified merit-order dispatch model — a pure function
-  game.js               Game state & rules (build, sell, advance, events, scoring)
-  render.js             View layer — paints the DOM & canvas chart from state
-  main.js               Glue: owns the game object, wires UI actions to rules
-tests/engine.test.mjs   Engine unit tests (energy balance, pricing, carbon switching)
+  constants.js          Shared static config & data tables (tech economics, load shapes)
+  engine.js             Verified merit-order dispatch — dispatchHour() (pure) + simulateDay()
+  live/
+    config.js           Live tuning (CFG) & the starting fleet
+    sim.js              Live state machine & per-tick step() — no DOM
+    actions.js          Player actions (dispatch toggles) — no DOM
+    render.js           Live view — paints DOM/canvas from state
+    main.js             Live glue: owns state, runs the loop, wires input
+  game.js               Batch game state & rules (build, sell, advance, events, scoring)
+  render.js             Batch view layer
+  main.js               Batch glue
+batch/index.html        Turn-based reference build (loads the shared engine + src/*.js)
+tests/
+  engine.test.mjs       Engine unit tests (dispatchHour, energy balance, carbon switching)
+  sim.test.mjs          Live sim unit tests (state machine, clock, carbon escalation)
 docs/ROADMAP-v2.md      v2 design & roadmap
 archive/                The original single-file MVP, preserved
 ```
 
-The layers don't import each other circularly: `render.js` never mutates state and `game.js` never touches the DOM — `main.js` is the only module that knows about both. The economic engine is isolated as a pure function so it can be tested without a browser.
+Both games share one tested dispatch primitive: `dispatchHour()` in `src/engine.js` clears a single hour of the merit-order market. The live loop calls it each tick; the batch `simulateDay()` sums it over a representative day. The layers don't import circularly — `render.js` never mutates state, `sim.js`/`game.js` never touch the DOM, and `main.js` is the only module that knows about both.
 
 ```bash
-npm test     # runs the engine tests (Node, no dependencies)
+npm test     # runs the engine + live-sim tests (Node, no dependencies)
 ```
 
 ## Roadmap
 
-See [docs/ROADMAP-v2.md](docs/ROADMAP-v2.md) — v2 turns this into a real-time grid-balancing roguelike.
-
-## Modeling notes
-
-Simplifications in the current model: one representative day per year (no seasonality or sub-hourly ramping), heuristic battery dispatch rather than a full optimizer, and a single demand profile. Natural next steps are seasonal simulation, transmission constraints, and the real-time refactor described in the roadmap.
+See [docs/ROADMAP-v2.md](docs/ROADMAP-v2.md) — the real-time roguelike direction, with in-run upgrades, deep maintenance, and roguelike meta-progression layering on top of this core.

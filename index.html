@@ -3,62 +3,79 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Grid Operator</title>
-  <meta name="description" content="Run a city's power grid: build plants, dispatch them by merit order, survive carbon prices and weather." />
+  <title>Grid Operator — Live</title>
+  <meta name="description" content="Keep a growing city powered in real time: dispatch reserves, ride the evening peak, survive the blackout." />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-  <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/live.css" />
 </head>
 <body>
-  <div class="wrap">
-    <header class="hud">
+  <div id="vignette"></div>
+  <div class="wrap" id="shakeTarget">
+    <header>
       <div class="brand">
-        <h1>Grid Operator</h1>
-        <span class="sub">City power authority · merit-order market</span>
+        <h1>Grid Operator — Live</h1>
+        <span class="sub">Real-time grid balancing</span>
       </div>
-      <div class="stat"><span class="k">Year</span><span class="v" id="s-year">2025</span></div>
-      <div class="stat"><span class="k">Cash</span><span class="v" id="s-cash">—</span></div>
-      <div class="stat"><span class="k">Peak demand</span><span class="v" id="s-peak">—</span></div>
-      <div class="stat"><span class="k">Reliability</span><span class="v" id="s-rel">—</span></div>
-      <div class="stat"><span class="k">CO₂ intensity</span><span class="v" id="s-co2">—</span></div>
-      <div class="stat"><span class="k">Wholesale</span><span class="v" id="s-price">—</span></div>
-      <div class="stat"><span class="k">Carbon price</span><span class="v" id="s-carbon">—</span></div>
+      <div class="hstat"><span class="k">Day</span><span class="v" id="s-day">1</span></div>
+      <div class="hstat"><span class="k">Clock</span><span class="v" id="s-clock">06:00</span></div>
+      <div class="hstat"><span class="k">Cash</span><span class="v" id="s-cash">$0</span></div>
+      <div class="hstat"><span class="k">Price</span><span class="v" id="s-price">$0</span></div>
+      <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
+      <div class="hstat"><span class="k">Carbon $/t</span><span class="v" id="s-carbon">$0</span></div>
+      <div class="hstat"><span class="k">Satisfaction</span><span class="v" id="s-sat">100%</span></div>
     </header>
 
     <div class="grid">
-      <section class="card" id="chartWrap">
-        <h2><span>Dispatch — representative day (MW by hour)</span><span class="pill" id="weatherPill">—</span></h2>
-        <canvas id="chart" width="1100" height="430" aria-label="24-hour generation dispatch chart"></canvas>
-        <div class="legend" id="legend"></div>
-        <div class="results" id="results"></div>
-        <div class="msg" id="msg"></div>
+      <section class="card">
+        <div class="live">
+          <div class="big"><div class="k">Demand</div><div class="v"><span id="s-demand">0</span> <small>MW</small></div></div>
+          <div class="big"><div class="k">Capacity online</div><div class="v"><span id="s-capacity">0</span> <small>MW</small></div></div>
+        </div>
+
+        <div class="gauge-wrap">
+          <div class="gauge-head"><span class="lab">Reserve margin</span><span class="val" id="s-margin">—</span></div>
+          <div class="gauge"><div class="fill" id="marginFill"></div></div>
+        </div>
+
+        <canvas id="chart" width="1100" height="260" aria-label="Live demand vs capacity"></canvas>
+        <div class="chart-legend">
+          <span><i style="border-color:#fff"></i>Demand</span>
+          <span><i style="border-color:var(--accent)"></i>Capacity online</span>
+          <span><i style="border-color:var(--bad);border-top-style:solid"></i>Deficit (brownout)</span>
+        </div>
+
+        <div class="ticker" id="ticker"></div>
       </section>
 
       <aside>
         <section class="card" style="margin-bottom:14px">
-          <h2><span>Fleet &amp; investment</span></h2>
-          <div id="fleet"></div>
-          <button class="advance" id="advanceBtn">Advance year ▸</button>
-          <div class="goalbar" id="goalbar"></div>
+          <h2>Generating fleet</h2>
+          <div class="units" id="units"></div>
+          <div class="hintbar">
+            Click a <b>reserve</b> plant (gas / battery) to bring it online. Keys
+            <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> toggle peakers, <kbd>B</kbd> fires the battery,
+            <kbd>Space</kbd> pauses.
+          </div>
         </section>
         <section class="card">
-          <h2><span>Control room log</span></h2>
-          <div class="log" id="log"></div>
+          <h2>Shift</h2>
+          <div class="controls">
+            <button class="btn-primary" id="startBtn" style="flex:1">Start shift</button>
+            <button id="pauseBtn">Pause</button>
+          </div>
+          <div class="hintbar">
+            Keep <b>capacity ≥ demand</b>. Dip below and the grid <b>browns out</b> — a short, punishing
+            window to recover. Let it run deep or long and it's a <b>blackout</b>: run over. Survive each
+            day and demand climbs — and from day 3 a rising <b>carbon price</b> makes dirty plants cost more.
+          </div>
         </section>
       </aside>
     </div>
-
-    <details class="how">
-      <summary>How the economics work</summary>
-      <p>Each year is simulated over a representative 24-hour day and scaled to 365 days. Power is in <b>MW</b>, energy in <b>MWh</b> (MW×h), prices in <b>$/MWh</b>.</p>
-      <p><b>Dispatch</b> follows the <b>merit order</b>: cheapest resources run first — free wind &amp; solar, then stored battery energy, then thermal plants ranked by marginal cost. Batteries charge from midday renewable surplus and discharge into the evening peak.</p>
-      <p><b>Price</b> each hour is the marginal cost of the <i>last</i> plant dispatched (uniform-price auction). You earn that price on every MWh you serve, so cheap plants earn "inframarginal rent". A <b>carbon price</b> adds <code>$/t × tCO₂/MWh</code> to each fossil plant's cost — enough of it flips coal behind gas, then behind clean energy.</p>
-      <p><b>Lose</b> if cash falls below −$150M or a year's reliability drops under 85%. <b>Win</b> by running the grid to 2050 solvent — graded on profit, reliability and emissions.</p>
-    </details>
   </div>
 
   <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
 
-  <script type="module" src="src/main.js"></script>
+  <script type="module" src="src/live/main.js"></script>
 </body>
 </html>
