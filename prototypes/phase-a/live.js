@@ -14,7 +14,7 @@ const CFG = {
   startPeak: 780,             // MW peak demand, day 1
   peakGrowth: 1.06,           // demand growth per day survived
   priceCap: 300,              // $/MWh scarcity price when capacity can't meet demand
-  spinCost: 11,               // $/MW/h just to keep a thermal plant synchronised
+  spinCost: 11,               // $/MW/h default to keep a thermal plant synced (per-unit `spin` overrides)
   strainRate: 55,             // strain gained per second at 100% shortfall
   strainRecover: 45,          // strain shed per second when covered
   instantBlackout: 0.30,      // shortfall/demand above this = immediate blackout
@@ -25,14 +25,14 @@ const CFG = {
 // kind: firm (always-on thermal), renew (variable), peaker (reserve), battery
 function makeFleet() {
   return [
-    { id:"nuc",  name:"Nuclear",   kind:"firm",   cap:250, mc:12, status:"online", ctrl:false, fail:0.010, recover:[6,10], key:null },
-    { id:"colA", name:"Coal A",    kind:"firm",   cap:180, mc:35, status:"online", ctrl:false, fail:0.030, recover:[2,4],  key:null },
-    { id:"colB", name:"Coal B",    kind:"firm",   cap:140, mc:35, status:"online", ctrl:false, fail:0.030, recover:[2,4],  key:null },
+    { id:"nuc",  name:"Nuclear",   kind:"firm",   cap:250, mc:12, spin:2,  status:"online", ctrl:false, fail:0.010, recover:[6,10], key:null },
+    { id:"colA", name:"Coal A",    kind:"firm",   cap:180, mc:35, spin:4,  status:"online", ctrl:false, fail:0.030, recover:[2,4],  key:null },
+    { id:"colB", name:"Coal B",    kind:"firm",   cap:140, mc:35, spin:4,  status:"online", ctrl:false, fail:0.030, recover:[2,4],  key:null },
     { id:"sol",  name:"Solar farm",kind:"renew",  cap:220, mc:0,  status:"online", ctrl:false, cf:SOLAR_CF, key:null },
     { id:"wnd",  name:"Wind",      kind:"renew",  cap:160, mc:0,  status:"online", ctrl:false, cf:WIND_CF,  key:null },
-    { id:"pk1",  name:"Peaker 1",  kind:"peaker", cap:110, mc:75, status:"off",    ctrl:true,  fail:0.015, recover:[1.5,3], startTime:1.6, key:"1" },
-    { id:"pk2",  name:"Peaker 2",  kind:"peaker", cap:110, mc:75, status:"off",    ctrl:true,  fail:0.015, recover:[1.5,3], startTime:1.6, key:"2" },
-    { id:"pk3",  name:"Peaker 3",  kind:"peaker", cap:110, mc:75, status:"off",    ctrl:true,  fail:0.015, recover:[1.5,3], startTime:1.6, key:"3" },
+    { id:"pk1",  name:"Peaker 1",  kind:"peaker", cap:110, mc:75, spin:11, status:"off",    ctrl:true,  fail:0.015, recover:[1.5,3], startTime:1.6, key:"1" },
+    { id:"pk2",  name:"Peaker 2",  kind:"peaker", cap:110, mc:75, spin:11, status:"off",    ctrl:true,  fail:0.015, recover:[1.5,3], startTime:1.6, key:"2" },
+    { id:"pk3",  name:"Peaker 3",  kind:"peaker", cap:110, mc:75, spin:11, status:"off",    ctrl:true,  fail:0.015, recover:[1.5,3], startTime:1.6, key:"3" },
     { id:"bat",  name:"Battery",   kind:"battery",cap:120, mc:0,  status:"off",    ctrl:true,  energy:240, maxEnergy:240, key:"B" },
   ];
 }
@@ -72,7 +72,9 @@ function toggleUnit(id){
   if (!S.running || S.paused || S.over) return;
   const u=S.fleet.find(x=>x.id===id); if (!u||!u.ctrl) return;
   if (u.kind==="battery"){
-    u.status = u.status==="discharge" ? "off" : (u.energy>1 ? "discharge" : u.status);
+    if (u.status==="discharge") u.status="off";
+    else if (u.energy>1) u.status="discharge";
+    else setTicker("Battery depleted — needs surplus capacity to recharge.");
   } else { // peaker
     if (u.status==="off") { u.status="starting"; u.startTimer=u.startTime; }
     else if (u.status==="online"||u.status==="starting") u.status="off";
@@ -98,7 +100,9 @@ function step(dt){
     if (u.status==="starting"){ u.startTimer-=dtH; if (u.startTimer<=0) u.status="online"; }
     else if (u.status==="tripped"){ u.tripTimer-=dtH; if (u.tripTimer<=0) u.status= u.ctrl ? "off" : "online"; }
     else if ((u.kind==="firm"||u.kind==="peaker") && (u.status==="online")){
-      if (Math.random() < u.fail*diff*dt){ // trip!
+      // per-real-second hazard turned into an exact probability for this frame's dt
+      // (1 - e^{-rate·dt}): frame-rate independent and never exceeds 1 on slow frames
+      if (Math.random() < 1 - Math.exp(-u.fail*diff*dt)){ // trip!
         u.status="tripped"; u.tripTimer=rand(u.recover[0],u.recover[1]);
         setTicker(`⚠ ${u.name} tripped offline — ${Math.round(u.cap)} MW lost!`);
       }
@@ -115,7 +119,7 @@ function step(dt){
 
   // economics — merit-order market clearing
   const served=Math.min(S.demand,S.capacity);
-  const spin=S.fleet.reduce((a,u)=>a+(((u.kind==="firm"||u.kind==="peaker")&&u.status==="online")?u.cap*CFG.spinCost:0),0);
+  const spin=S.fleet.reduce((a,u)=>a+(((u.kind==="firm"||u.kind==="peaker")&&u.status==="online")?u.cap*(u.spin??CFG.spinCost):0),0);
   // dispatch cheapest available MW first up to demand; the last unit used sets the clearing price
   let varCost=0, rem=served, clearing=0;
   for (const u of [...S.fleet].filter(u=>unitOutput(u)>0).sort((a,b)=>a.mc-b.mc)){
