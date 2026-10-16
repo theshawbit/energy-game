@@ -36,6 +36,13 @@ export function createGame(){
 
 export function setTicker(S, msg){ S.ticker = msg; S.tickerT = 3.5; }
 
+// Per-real-second trip hazard for a thermal unit: its base rate, scaled up as
+// the run climbs (diff) and as the plant wears (condition → more failures).
+export function tripHazard(u, diff){
+  const wear = u.condition != null ? 1 + CFG.wearTripK * (1 - u.condition / 100) : 1;
+  return u.fail * diff * wear;
+}
+
 // ---- capacity accounting ----
 export function unitOutput(S, u){
   if (u.kind === "renew") return u.cap * interp(u.cf, S.t) * (u.id === "sol" ? S.weather.sun : S.weather.wind);
@@ -71,14 +78,20 @@ export function step(S, dt){
   // unit state machines
   for (const u of S.fleet){
     if (u.status === "starting"){ u.startTimer -= dtH; if (u.startTimer <= 0) u.status = "online"; }
+    else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
     else if (u.status === "tripped"){ u.tripTimer -= dtH; if (u.tripTimer <= 0) u.status = u.ctrl ? "off" : "online"; }
     else if ((u.kind === "firm" || u.kind === "peaker") && u.status === "online"){
       // per-real-second hazard turned into an exact probability for this frame's dt
       // (1 - e^{-rate·dt}): frame-rate independent and never exceeds 1 on slow frames
-      if (Math.random() < 1 - Math.exp(-u.fail * diff * dt)){ // trip!
+      if (Math.random() < 1 - Math.exp(-tripHazard(u, diff) * dt)){ // trip!
         u.status = "tripped"; u.tripTimer = rand(u.recover[0], u.recover[1]);
         setTicker(S, `⚠ ${u.name} tripped offline — ${Math.round(u.cap)} MW lost!`);
       }
+    }
+    // wear: plants degrade while generating (worn plants trip more, via tripHazard)
+    if (u.condition != null){
+      const generating = u.kind === "battery" ? u.status === "discharge" : u.status === "online";
+      if (generating) u.condition = Math.max(0, u.condition - CFG.wearRate * dtH);
     }
   }
 

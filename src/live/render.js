@@ -4,7 +4,7 @@
 // (onToggle, onRestart), so this file imports no action logic.
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
-import { BUILD, BUILD_ORDER, UPGRADE, upgradeCost } from "./config.js";
+import { BUILD, BUILD_ORDER, UPGRADE, upgradeCost, serviceCost } from "./config.js";
 
 const $ = id => document.getElementById(id);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -63,16 +63,17 @@ export function buildUnits(S, onToggle){
     const el = document.createElement("div");
     el.className = "unit" + (u.ctrl ? " ctrl" : "");
     const tierBadge = (u.tier || 1) > 1 ? ` <span class="mk">Mk ${roman(u.tier)}</span>` : "";
+    const condBar = u.condition != null ? `<div class="condbar" title="condition"><i data-cond></i></div>` : "";
     el.innerHTML = `
       <div class="top">
         <span class="nm">${u.name}${tierBadge}</span>
         <span class="st" data-st>—</span>
       </div>
       <div class="top"><span class="cap"><b data-out>0</b>/${u.cap} MW</span></div>
-      <div class="hint" data-hint></div>`;
+      <div class="hint" data-hint></div>${condBar}`;
     if (u.ctrl) el.onclick = () => onToggle(u.id);
     host.appendChild(el);
-    unitEls[u.id] = { st:el.querySelector("[data-st]"), out:el.querySelector("[data-out]"), hint:el.querySelector("[data-hint]") };
+    unitEls[u.id] = { st:el.querySelector("[data-st]"), out:el.querySelector("[data-out]"), hint:el.querySelector("[data-hint]"), cond:el.querySelector("[data-cond]") };
   }
 }
 function updateUnits(S){
@@ -80,12 +81,14 @@ function updateUnits(S){
     const refs = unitEls[u.id]; if (!refs) continue;
     const out = Math.round(unitOutput(S, u));
     let stClass, stText;
-    if (u.status === "online" || u.status === "discharge"){ stClass = "st-online"; stText = u.kind === "battery" ? "DISCHARGE" : "ONLINE"; }
+    if (u.status === "service"){ stClass = "st-service"; stText = "SERVICE"; }
+    else if (u.status === "online" || u.status === "discharge"){ stClass = "st-online"; stText = u.kind === "battery" ? "DISCHARGE" : "ONLINE"; }
     else if (u.status === "starting"){ stClass = "st-starting"; stText = "STARTING"; }
     else if (u.status === "tripped"){ stClass = "st-tripped"; stText = "TRIPPED"; }
     else { stClass = "st-off"; stText = u.kind === "renew" ? "IDLE" : "RESERVE"; }
     let hint = "";
-    if (u.kind === "battery") hint = `charge ${Math.round(u.energy)}/${u.maxEnergy} MWh`;
+    if (u.status === "service") hint = "under maintenance";
+    else if (u.kind === "battery") hint = `charge ${Math.round(u.energy)}/${u.maxEnergy} MWh`;
     else if (u.kind === "renew") hint = `output ${out} MW now`;
     else if (u.ctrl) hint = `$${u.mc}/MWh · tap ${u.key} to ${u.status === "off" ? "start" : "stop"}`;
     else hint = `$${u.mc}/MWh baseload`;
@@ -93,6 +96,11 @@ function updateUnits(S){
     if (refs.st.textContent != stText) refs.st.textContent = stText;
     const cls = "st " + stClass; if (refs.st.className != cls) refs.st.className = cls;
     if (refs.hint.textContent != hint) refs.hint.textContent = hint;
+    if (refs.cond && u.condition != null){
+      const c = u.condition;
+      refs.cond.style.width = c + "%";
+      refs.cond.style.background = css(c > 60 ? "--good" : c > 30 ? "--warn" : "--bad");
+    }
   }
 }
 
@@ -169,10 +177,16 @@ export function renderMenu(S, actions){
     return `<button data-build="${t}" ${can ? "" : "disabled"}>+${b.mw} MW ${b.label}<span class="c">${money(b.cost)}</span></button>`;
   }).join("");
   const upRows = S.fleet.map(u => {
-    const tier = u.tier || 1, max = tier >= UPGRADE.maxTier, cost = upgradeCost(tier), can = !max && S.cash >= cost;
-    const label = max ? "Max tier" : `→ Mk ${roman(tier + 1)} · ${money(cost)}`;
-    return `<div class="up-row"><span class="up-nm">${u.name} <i>Mk ${roman(tier)}</i><br><small>${Math.round(u.cap)} MW</small></span>` +
-           `<button data-up="${u.id}" ${can ? "" : "disabled"}>${label}</button></div>`;
+    const tier = u.tier || 1, max = tier >= UPGRADE.maxTier, uCost = upgradeCost(tier), canUp = !max && S.cash >= uCost;
+    const upLabel = max ? "Max tier" : `→ Mk ${roman(tier + 1)} · ${money(uCost)}`;
+    let svc = "";
+    if (u.condition != null){
+      const inSvc = u.status === "service", sCost = serviceCost(u), canSvc = !inSvc && S.cash >= sCost;
+      svc = `<button class="svc" data-svc="${u.id}" ${canSvc ? "" : "disabled"}>${inSvc ? "In service…" : `Service · ${money(sCost)}`}</button>`;
+    }
+    const cond = u.condition != null ? ` · <b class="condtxt ${u.condition > 60 ? "ok" : u.condition > 30 ? "warn" : "bad"}">${Math.round(u.condition)}%</b>` : "";
+    return `<div class="up-row"><span class="up-nm">${u.name} <i>Mk ${roman(tier)}</i><br><small>${Math.round(u.cap)} MW${cond}</small></span>` +
+           `<span class="up-btns"><button data-up="${u.id}" ${canUp ? "" : "disabled"}>${upLabel}</button>${svc}</span></div>`;
   }).join("");
   $("menu").innerHTML = `
     <h2>Manage grid</h2>
@@ -185,6 +199,7 @@ export function renderMenu(S, actions){
     <button class="btn-primary" id="closeMenu">Resume shift ▸</button>`;
   $("menu").querySelectorAll("[data-build]").forEach(btn => btn.onclick = () => actions.build(btn.dataset.build));
   $("menu").querySelectorAll("[data-up]").forEach(btn => btn.onclick = () => actions.upgrade(btn.dataset.up));
+  $("menu").querySelectorAll("[data-svc]").forEach(btn => btn.onclick = () => actions.service(btn.dataset.svc));
   $("closeMenu").onclick = () => actions.closeMenu();
   $("menuOverlay").classList.add("on");
 }
