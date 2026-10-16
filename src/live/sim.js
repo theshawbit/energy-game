@@ -23,11 +23,11 @@ export function interp(arr, t){
 
 export function createGame(){
   return {
-    running:false, paused:false, over:false, reason:"",
+    running:false, paused:false, menuOpen:false, over:false, reason:"",
     t:CFG.startHour, day:1, peak:CFG.startPeak,
-    cash:0, satisfaction:100, strain:0,
+    cash:CFG.startCash, satisfaction:100, strain:0,
     carbon:0, co2:0, co2Total:0,
-    fleet:makeFleet(), weather:freshWeather(),
+    fleet:makeFleet(), weather:freshWeather(), buildSeq:1,
     demand:0, capacity:0, price:0, brownout:false,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0,
     ticker:"", tickerT:0,

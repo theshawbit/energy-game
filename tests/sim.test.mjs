@@ -2,8 +2,8 @@
 // These pin the real-time loop's state machine and economics so the Phase B+
 // feature work can't silently break pacing or the dispatch wiring.
 import { createGame, step, surviveDay, unitOutput, totalCapacity, interp } from "../src/live/sim.js";
-import { toggleUnit } from "../src/live/actions.js";
-import { CFG } from "../src/live/config.js";
+import { toggleUnit, buildCapacity, upgradeUnit } from "../src/live/actions.js";
+import { CFG, UPGRADE, upgradeCost } from "../src/live/config.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -15,7 +15,7 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 // 1) Fresh game state
 let S = createGame();
 check("fresh game: day 1, not running, not over", S.day === 1 && !S.running && !S.over);
-check("fresh game: 9 units, carbon 0, cash 0", S.fleet.length === 9 && S.carbon === 0 && S.cash === 0);
+check("fresh game: 9 units, carbon 0, starting cash", S.fleet.length === 9 && S.carbon === 0 && S.cash === CFG.startCash);
 
 // 2) unitOutput respects status and weather
 S = createGame();
@@ -63,6 +63,37 @@ check("toggle arms a peaker during live play (off → starting)", S.fleet.find(u
 S = createGame(); S.t = 18; S.weather = { sun: 1, wind: 1 };
 const byHand = S.fleet.reduce((a, u) => a + unitOutput(S, u), 0);
 check("totalCapacity = Σ unitOutput", near(totalCapacity(S), byHand, 1e-9), Math.round(totalCapacity(S)) + " MW");
+
+// 8) Build capacity: spends cash, grows the fleet, adds the block's MW
+S = createGame();
+const fleet0 = S.fleet.length, cash0 = S.cash;
+let res = buildCapacity(S, "coal");
+check("build adds a unit and charges cash", res.ok && S.fleet.length === fleet0 + 1 && S.cash < cash0,
+  `fleet ${fleet0}→${S.fleet.length}, cash ${cash0}→${S.cash}`);
+const built = S.fleet[S.fleet.length - 1];
+check("built unit carries tech, tier 1, online", built.tech === "coal" && built.tier === 1 && built.status === "online");
+
+// 9) Build is gated by cash
+S = createGame(); S.cash = 0;
+res = buildCapacity(S, "nuclear");
+check("build refused without cash", !res.ok && S.fleet.length === 9);
+
+// 10) Upgrade: tier up, capacity up, trip rate + standby cost down, cash spent
+S = createGame();
+const nucU = S.fleet.find(u => u.id === "nuc");
+const cap0 = nucU.cap, fail0 = nucU.fail, spin0 = nucU.spin, before = S.cash;
+res = upgradeUnit(S, "nuc");
+check("upgrade raises tier to 2", res.ok && nucU.tier === 2);
+check("upgrade raises capacity", nucU.cap > cap0, `${cap0}→${nucU.cap} MW`);
+check("upgrade lowers trip rate and standby cost", nucU.fail < fail0 && nucU.spin < spin0);
+check("upgrade charges the tier cost", near(before - S.cash, upgradeCost(1), 1e-6), "$" + (before - S.cash));
+
+// 11) Upgrade stops at max tier
+S = createGame(); S.cash = 1e9;
+const pk = S.fleet.find(u => u.id === "pk1");
+while ((pk.tier || 1) < UPGRADE.maxTier) upgradeUnit(S, "pk1");
+res = upgradeUnit(S, "pk1");
+check("upgrade refused past max tier", !res.ok && pk.tier === UPGRADE.maxTier, "tier " + pk.tier);
 
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

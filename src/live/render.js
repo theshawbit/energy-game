@@ -4,11 +4,13 @@
 // (onToggle, onRestart), so this file imports no action logic.
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
+import { BUILD, BUILD_ORDER, UPGRADE, upgradeCost } from "./config.js";
 
 const $ = id => document.getElementById(id);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 function money(x){ const a = Math.abs(x), s = x < 0 ? "−" : ""; if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(2) + "M"; if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(0) + "k"; return s + "$" + a.toFixed(0); }
 function clock(t){ const h = Math.floor(t), m = Math.floor((t - h) * 60); return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
+const roman = n => ["", "I", "II", "III", "IV", "V"][n] || String(n);
 
 export function render(S){
   $("s-day").textContent = S.day;
@@ -60,9 +62,10 @@ export function buildUnits(S, onToggle){
   for (const u of S.fleet){
     const el = document.createElement("div");
     el.className = "unit" + (u.ctrl ? " ctrl" : "");
+    const tierBadge = (u.tier || 1) > 1 ? ` <span class="mk">Mk ${roman(u.tier)}</span>` : "";
     el.innerHTML = `
       <div class="top">
-        <span class="nm">${u.name}</span>
+        <span class="nm">${u.name}${tierBadge}</span>
         <span class="st" data-st>—</span>
       </div>
       <div class="top"><span class="cap"><b data-out>0</b>/${u.cap} MW</span></div>
@@ -158,3 +161,31 @@ export function clearEndGame(){
   $("overlay").classList.remove("on");
   $("vignette").style.opacity = "0";
 }
+
+// ---- manage-grid menu (opens paused: build capacity + upgrade plants) ----
+export function renderMenu(S, actions){
+  const buildBtns = BUILD_ORDER.filter(t => BUILD[t]).map(t => {
+    const b = BUILD[t], can = S.cash >= b.cost;
+    return `<button data-build="${t}" ${can ? "" : "disabled"}>+${b.mw} MW ${b.label}<span class="c">${money(b.cost)}</span></button>`;
+  }).join("");
+  const upRows = S.fleet.map(u => {
+    const tier = u.tier || 1, max = tier >= UPGRADE.maxTier, cost = upgradeCost(tier), can = !max && S.cash >= cost;
+    const label = max ? "Max tier" : `→ Mk ${roman(tier + 1)} · ${money(cost)}`;
+    return `<div class="up-row"><span class="up-nm">${u.name} <i>Mk ${roman(tier)}</i><br><small>${Math.round(u.cap)} MW</small></span>` +
+           `<button data-up="${u.id}" ${can ? "" : "disabled"}>${label}</button></div>`;
+  }).join("");
+  $("menu").innerHTML = `
+    <h2>Manage grid</h2>
+    <p>Clock paused. Build capacity and upgrade plants, then resume the shift.</p>
+    <div class="menu-cash">On hand <b>${money(S.cash)}</b></div>
+    <h3>Build capacity</h3>
+    <div class="build-grid">${buildBtns}</div>
+    <h3>Upgrade fleet <small>capacity ↑ · trips ↓ · standby cost ↓</small></h3>
+    <div class="up-list">${upRows}</div>
+    <button class="btn-primary" id="closeMenu">Resume shift ▸</button>`;
+  $("menu").querySelectorAll("[data-build]").forEach(btn => btn.onclick = () => actions.build(btn.dataset.build));
+  $("menu").querySelectorAll("[data-up]").forEach(btn => btn.onclick = () => actions.upgrade(btn.dataset.up));
+  $("closeMenu").onclick = () => actions.closeMenu();
+  $("menuOverlay").classList.add("on");
+}
+export function hideMenu(){ $("menuOverlay").classList.remove("on"); }
