@@ -21,6 +21,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 3. **Survive.** Plants **wear down** as they run and **trip offline** — worn plants and later days both raise the odds — yanking capacity mid-peak. A small shortfall **browns out** (penalties + a short recovery window); a large or sustained one is a **blackout** — run over, with a scorecard.
 4. **Invest & maintain.** Press **Manage** to open the planning panel — this **pauses the clock**. Spend earned cash to **build** new capacity, **upgrade** plants through Mk tiers (more capacity, fewer trips, lower standby cost), or **service** a worn plant (pay cash and lose it to downtime for a few hours, returning it to 100%). Choose when to pull a plant for service vs. gamble it holds through the peak. Resume when ready.
 5. Each day survived raises the demand peak, and from day 3 a **carbon price** escalates, lifting fossil plants' running cost and re-sorting the merit order.
+6. **Chase milestones, then come back stronger.** Hitting peak/cash **milestones** and surviving longer raise your end-of-run **score**, which converts to **meta-currency**. Spend it in the **Skills** tree on permanent passives (more starting cash, cheaper maintenance, faster peaker starts, slower demand growth, bigger battery). Currency, skills, and your best run are saved in your browser, so each run starts a little stronger.
 
 ## The economics
 

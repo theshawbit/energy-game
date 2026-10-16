@@ -114,4 +114,25 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .up-row button.svc{border-color:#24415e;color:#7fb8ff}
 .up-row button.svc:hover:not(:disabled){border-color:#7fb8ff;color:#fff}
 .modal.menu #closeMenu{width:100%;margin-top:16px}
+
+/* end-of-run score + currency */
+.modal .score{font-family:var(--mono);font-weight:700;font-size:3rem;line-height:1.05;color:var(--accent);margin:8px 0 0}
+.modal .score small{display:block;font-size:.6rem;letter-spacing:.2em;color:var(--faint);font-weight:600}
+.modal .earned{color:var(--good);font-weight:600;margin:4px 0 2px}
+.end-btns{display:flex;gap:8px;margin-top:14px}
+.end-btns button{flex:1}
+
+/* skill tree */
+.meta-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;font-family:var(--mono);font-size:.8rem;margin:6px 0 2px}
+.meta-head .bank b{color:var(--accent);font-size:1.2rem}
+.meta-head .best{color:var(--faint);font-size:.72rem}
+.skill-list{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;margin-top:6px}
+.skill-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:var(--panel-2)}
+.sk-nm{font-size:.82rem;font-weight:600}
+.sk-nm small{color:var(--faint);font-family:var(--mono);font-weight:400}
+.sk-nm .pips{display:inline-flex;gap:3px;margin-left:4px;vertical-align:middle}
+.sk-nm .pip{width:8px;height:8px;border-radius:50%;border:1px solid var(--off);background:transparent}
+.sk-nm .pip.on{background:var(--accent);border-color:var(--accent)}
+.skill-row button{font-family:var(--mono);font-size:.76rem;white-space:nowrap}
+.modal.menu #startRun{width:100%;margin-top:16px}
 .unit .nm .mk{font-family:var(--mono);font-size:.64rem;color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:3px;vertical-align:middle}
