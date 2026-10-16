@@ -1,14 +1,60 @@
 // ============================================================
 // ENERGY ECONOMICS ENGINE — verified merit-order dispatch model.
-// Pure function: given a fleet and conditions, returns one year's result.
-// No state, no DOM. This is the economic core and is unit-tested in isolation.
+// Pure functions, no state, no DOM. This is the economic core, unit-tested
+// in isolation.
+//
+//   dispatchHour() — clears ONE hour of a merit-order market. Given the MW
+//                    available from each resource and the demand to meet, it
+//                    dispatches cheapest-first and returns the served energy,
+//                    the uniform clearing price, cost, and emissions. This is
+//                    the reusable primitive the real-time loop dispatches with.
+//   simulateDay()  — scales a fleet over a representative 24-hour day by
+//                    building each hour's availability (renewable profiles +
+//                    a day-level battery heuristic) and summing dispatchHour().
 // ============================================================
 import { HOURS, DAYS, DEMAND_SHAPE, SOLAR_CF, WIND_CF, TECH, THERMAL, VOLL, PRICE_CAP } from "./constants.js";
 
-export function simulateDay(fleet, peakMW, weather, carbonPrice = 0, fuelMult = 1) {
-  // effective marginal cost includes carbon price and (for gas) a fuel-price multiplier
-  const mcOf = t => (TECH[t].mc * ((t === "ccgt" || t === "peaker") ? fuelMult : 1)) + TECH[t].ef * carbonPrice;
+// Effective marginal cost of a thermal tech, including carbon price and (for
+// gas) a fuel-price multiplier. Exported so callers can rank/preview costs.
+export function marginalCost(t, carbonPrice = 0, fuelMult = 1) {
+  return TECH[t].mc * ((t === "ccgt" || t === "peaker") ? fuelMult : 1) + TECH[t].ef * carbonPrice;
+}
+
+// Clear a single hour. `avail` is the MW available right now from each resource
+// (already derated for weather/forced-outage): {solar, wind, battery, nuclear,
+// coal, ccgt, peaker}. Dispatch is cheapest-first — free renewables, then
+// battery, then thermal ranked by effective marginal cost — and the clearing
+// price is the marginal cost of the last resource dispatched (uniform-price
+// auction). Unserved load sets the scarcity price but is never sold.
+export function dispatchHour(avail, demandMW, carbonPrice = 0, fuelMult = 1) {
+  const mcOf = t => marginalCost(t, carbonPrice, fuelMult);
   const order = [...THERMAL].sort((a, b) => mcOf(a) - mcOf(b));
+
+  let rem = demandMW, price = 0, varCost = 0, emissions = 0;
+  const S = { solar: 0, wind: 0, battery: 0, nuclear: 0, coal: 0, ccgt: 0, peaker: 0, unserved: 0 };
+
+  const su = Math.min(avail.solar || 0, rem); rem -= su; S.solar = su;
+  const wu = Math.min(avail.wind || 0, rem); rem -= wu; S.wind = wu;
+  const bu = Math.min(avail.battery || 0, rem); rem -= bu; S.battery = bu;
+  varCost += bu * TECH.battery.mc; if (bu > 0) price = Math.max(price, TECH.battery.mc);
+
+  for (const t of order) {
+    if (rem <= 1e-9) break;
+    const use = Math.min(avail[t] || 0, rem);
+    if (use > 0) {
+      rem -= use; S[t] = use;
+      varCost += use * mcOf(t); emissions += use * TECH[t].ef; price = Math.max(price, mcOf(t));
+    }
+  }
+
+  const unserved = rem > 1e-9 ? rem : 0;
+  if (unserved > 0) { S.unserved = unserved; price = PRICE_CAP; } // scarcity, but lost load is never sold
+  const served = demandMW - unserved;
+  S._demand = demandMW;
+  return { stack: S, price, served, unserved, varCost, emissions, demand: demandMW };
+}
+
+export function simulateDay(fleet, peakMW, weather, carbonPrice = 0, fuelMult = 1) {
   const battPower = fleet.battery, battEnergy = fleet.battery * TECH.battery.duration, rte = TECH.battery.rte;
 
   const demand = DEMAND_SHAPE.map(s => s * peakMW);
@@ -30,26 +76,19 @@ export function simulateDay(fleet, peakMW, weather, carbonPrice = 0, fuelMult = 
     const give = Math.min(deliver, battPower, netLoad[h]); dischargeHour[h] = give; deliver -= give;
   }
 
+  // thermal available capacity is constant across the representative day
+  const thermalAvail = {};
+  for (const t of THERMAL) thermalAvail[t] = fleet[t] * (TECH[t].avail || 1);
+
   let served = 0, unserved = 0, revenue = 0, varCost = 0, emissions = 0, demandTot = 0;
   const stackSeries = [], priceSeries = [];
   for (let h = 0; h < HOURS; h++) {
-    demandTot += demand[h]; let rem = demand[h], price = 0;
-    const S = { solar: 0, wind: 0, battery: 0, nuclear: 0, coal: 0, ccgt: 0, peaker: 0, unserved: 0 };
-    const su = Math.min(solarGen[h], rem); rem -= su; S.solar = su;
-    const wu = Math.min(windGen[h], rem); rem -= wu; S.wind = wu;
-    const bu = Math.min(dischargeHour[h], rem); rem -= bu; S.battery = bu;
-    varCost += bu * TECH.battery.mc; if (bu > 0) price = Math.max(price, TECH.battery.mc);
-    for (const t of order) {
-      if (rem <= 1e-9) break;
-      const cap = fleet[t] * (TECH[t].avail || 1), use = Math.min(cap, rem);
-      if (use > 0) {
-        rem -= use; S[t] = use;
-        varCost += use * mcOf(t); emissions += use * TECH[t].ef; price = Math.max(price, mcOf(t));
-      }
-    }
-    if (rem > 1e-9) { S.unserved = rem; unserved += rem; price = PRICE_CAP; } // scarcity, but lost load is never sold
-    const servedH = demand[h] - Math.max(0, rem); served += servedH; revenue += price * servedH;
-    S._demand = demand[h]; stackSeries.push(S); priceSeries.push(price);
+    const avail = { solar: solarGen[h], wind: windGen[h], battery: dischargeHour[h], ...thermalAvail };
+    const hr = dispatchHour(avail, demand[h], carbonPrice, fuelMult);
+    demandTot += demand[h];
+    served += hr.served; unserved += hr.unserved; varCost += hr.varCost; emissions += hr.emissions;
+    revenue += hr.price * hr.served;
+    stackSeries.push(hr.stack); priceSeries.push(hr.price);
   }
 
   const yr = x => x * DAYS;

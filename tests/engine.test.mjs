@@ -1,8 +1,8 @@
 // Unit tests for the economic engine. Run: `npm test` (or `node tests/engine.test.mjs`).
 // These lock the verified merit-order dispatch behaviour so the Phase A refactor
 // can't silently break the physics or arithmetic.
-import { simulateDay } from "../src/engine.js";
-import { ORDER } from "../src/constants.js";
+import { simulateDay, dispatchHour, marginalCost } from "../src/engine.js";
+import { ORDER, PRICE_CAP } from "../src/constants.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -40,6 +40,52 @@ const lowC = simulateDay(fleet, 350, { sun: 1, wind: 1 }, 0);
 const highC = simulateDay(fleet, 350, { sun: 1, wind: 1 }, 100);
 check("carbon pricing cuts emissions (gas displaces coal)", highC.co2 < lowC.co2 - 50,
   `${lowC.co2.toFixed(0)} → ${highC.co2.toFixed(0)} kg/MWh`);
+
+// ---- dispatchHour: the per-hour merit-order primitive the real-time loop uses ----
+
+// 5) Free renewables alone set a $0 clearing price and serve the load
+let h = dispatchHour({ solar: 200, wind: 100 }, 150);
+check("renewables-only clears at $0", h.price === 0, "$" + h.price);
+check("renewables-only fully served", near(h.served, 150, 1e-9) && h.unserved === 0);
+check("renewables-only zero emissions", h.emissions === 0);
+
+// 6) Clearing price is the marginal (last, most expensive) unit dispatched
+h = dispatchHour({ nuclear: 100, coal: 100 }, 150);
+check("marginal unit sets price (coal on top of nuclear → $35)", near(h.price, 35, 1e-9), "$" + h.price);
+check("cheaper inframarginal unit runs full", near(h.stack.nuclear, 100, 1e-9));
+
+// 7) An unneeded expensive plant left online does NOT raise the price
+h = dispatchHour({ nuclear: 200, peaker: 100 }, 150);
+check("idle peaker doesn't set price (nuclear marginal → $10)", near(h.price, 10, 1e-9), "$" + h.price);
+check("unneeded peaker dispatches 0 MW", h.stack.peaker === 0);
+
+// 8) Carbon price lifts the clearing price when fossil is marginal
+h = dispatchHour({ nuclear: 100, coal: 100 }, 150, 50); // $50/t carbon
+check("carbon lifts marginal price (coal $35 + 0.95·50)", near(h.price, marginalCost("coal", 50), 1e-9), "$" + h.price.toFixed(1));
+
+// 9) Carbon re-sorts the merit order: gas displaces coal as the cheaper pick
+const need = { coal: 100, ccgt: 100 }; // only ~80 MW needed — one of them is marginal
+const lo = dispatchHour(need, 80, 0);    // coal $35 < gas $55 → coal runs
+const hi = dispatchHour(need, 80, 200);  // heavy carbon flips gas ahead of coal
+check("carbon flips dispatch coal → gas", lo.stack.coal > 0 && lo.stack.ccgt === 0 && hi.stack.ccgt > 0 && hi.stack.coal === 0,
+  `lo: coal ${lo.stack.coal|0}/gas ${lo.stack.ccgt|0} · hi: coal ${hi.stack.coal|0}/gas ${hi.stack.ccgt|0}`);
+
+// 10) Scarcity: demand above available capacity → price cap, surplus unserved, lost load unsold
+h = dispatchHour({ nuclear: 100 }, 150);
+check("scarcity hits the price cap", h.price === PRICE_CAP, "$" + h.price);
+check("scarcity leaves 50 MW unserved", near(h.unserved, 50, 1e-9) && near(h.served, 100, 1e-9));
+
+// 11) simulateDay is exactly a sum of dispatchHour over the representative day
+{
+  const fleet = { solar: 300, wind: 200, battery: 80, nuclear: 100, coal: 100, ccgt: 150, peaker: 50 };
+  const r = simulateDay(fleet, 450, { sun: 1, wind: 1 }, 20);
+  const handRev = r.priceSeries.reduce((a, p, i) => {
+    const s = r.stackSeries[i];
+    const servedH = ORDER.reduce((x, t) => x + s[t], 0);
+    return a + p * servedH;
+  }, 0) * 365;
+  check("simulateDay revenue = Σ price·served over hours", near(handRev, r.grossRev, 1), "$" + (handRev / 1e6).toFixed(2) + "M vs $" + (r.grossRev / 1e6).toFixed(2) + "M");
+}
 
 console.log(failed === 0 ? "\nAll engine tests passed." : `\n${failed} test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
