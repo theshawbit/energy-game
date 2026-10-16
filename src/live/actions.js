@@ -4,7 +4,7 @@
 // live, unpaused play.
 // ============================================================
 import { setTicker } from "./sim.js";
-import { BUILD, UPGRADE, upgradeCost, makeUnit } from "./config.js";
+import { CFG, BUILD, UPGRADE, upgradeCost, serviceCost, makeUnit } from "./config.js";
 
 export function toggleUnit(S, id){
   if (!S.running || S.paused || S.over) return;
@@ -47,5 +47,21 @@ export function upgradeUnit(S, id){
   if (u.fail != null) u.fail *= UPGRADE.failMult;
   if (u.spin != null) u.spin *= UPGRADE.spinMult;
   setTicker(S, `✓ ${u.name} upgraded to Mk ${u.tier}.`);
+  return { ok:true };
+}
+
+// Pull a unit for scheduled service: it goes offline for CFG.serviceTime
+// game-hours (the downtime cost), then returns at 100% condition. Costs cash
+// scaled by how worn it is. The gamble is losing that capacity now vs. a trip
+// at the worst moment later.
+export function serviceUnit(S, id){
+  if (S.over) return { ok:false };
+  const u = S.fleet.find(x => x.id === id); if (!u || u.condition == null) return { ok:false, msg:"Nothing to service." };
+  if (u.status === "service") return { ok:false, msg:"Already in service." };
+  const cost = serviceCost(u);
+  if (S.cash < cost) return { ok:false, msg:"Not enough cash to service." };
+  S.cash -= cost;
+  u.status = "service"; u.serviceTimer = CFG.serviceTime;
+  setTicker(S, `${u.name} pulled for service — back in ${CFG.serviceTime}h.`);
   return { ok:true };
 }

@@ -1,9 +1,9 @@
 // Unit tests for the live simulation (no DOM). Run: `npm test`.
 // These pin the real-time loop's state machine and economics so the Phase B+
 // feature work can't silently break pacing or the dispatch wiring.
-import { createGame, step, surviveDay, unitOutput, totalCapacity, interp } from "../src/live/sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit } from "../src/live/actions.js";
-import { CFG, UPGRADE, upgradeCost } from "../src/live/config.js";
+import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHazard } from "../src/live/sim.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit } from "../src/live/actions.js";
+import { CFG, UPGRADE, upgradeCost, serviceCost } from "../src/live/config.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -94,6 +94,37 @@ const pk = S.fleet.find(u => u.id === "pk1");
 while ((pk.tier || 1) < UPGRADE.maxTier) upgradeUnit(S, "pk1");
 res = upgradeUnit(S, "pk1");
 check("upgrade refused past max tier", !res.ok && pk.tier === UPGRADE.maxTier, "tier " + pk.tier);
+
+// 12) Wear drives trip hazard: a worn plant trips more than a healthy one
+S = createGame();
+const u100 = { fail: 0.02, condition: 100 }, u0 = { fail: 0.02, condition: 0 };
+check("tripHazard rises with wear", tripHazard(u0, 1) > tripHazard(u100, 1),
+  `${tripHazard(u100, 1).toFixed(4)} → ${tripHazard(u0, 1).toFixed(4)}/s`);
+check("worn hazard = (1+wearTripK)× healthy", near(tripHazard(u0, 1), tripHazard(u100, 1) * (1 + CFG.wearTripK), 1e-9));
+
+// 13) Condition degrades while a plant generates
+S = createGame();
+const nucW = S.fleet.find(u => u.id === "nuc"); nucW.fail = 0; // isolate wear from random trips
+step(S, 2.0);
+check("online plant wears down", nucW.condition < 100, nucW.condition.toFixed(1) + "%");
+
+// 14) Service: pulls offline, costs cash, then restores condition
+S = createGame();
+const colA = S.fleet.find(u => u.id === "colA"); colA.condition = 40;
+const cashA = S.cash, expCost = serviceCost(colA);
+let sres = serviceUnit(S, "colA");
+check("service pulls the unit offline and charges cash", sres.ok && colA.status === "service" && near(cashA - S.cash, expCost, 1e-6),
+  "$" + (cashA - S.cash) + " for a 40% plant");
+colA.serviceTimer = 0.05; // nearly done
+step(S, 0.3);
+check("service completes at 100% condition, back online", colA.condition > 99 && colA.status === "online",
+  colA.condition.toFixed(1) + "% / " + colA.status);
+
+// 15) Service is gated by cash
+S = createGame(); S.cash = 0;
+const colB = S.fleet.find(u => u.id === "colB"); colB.condition = 20;
+sres = serviceUnit(S, "colB");
+check("service refused without cash", !sres.ok && colB.status === "online");
 
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

@@ -4,7 +4,7 @@
 // the sim and the view.
 // ============================================================
 import { createGame, step } from "./sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit } from "./actions.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit } from "./actions.js";
 import { render, buildUnits, showEndGame, clearEndGame, renderMenu, hideMenu } from "./render.js";
 
 const $ = id => document.getElementById(id);
@@ -18,6 +18,7 @@ function act(id){ toggleUnit(S, id); render(S); }
 const menu = {
   build(tech){ buildCapacity(S, tech); buildUnits(S, act); renderMenu(S, menu); render(S); },
   upgrade(id){ upgradeUnit(S, id); buildUnits(S, act); renderMenu(S, menu); render(S); },
+  service(id){ serviceUnit(S, id); renderMenu(S, menu); render(S); },
   closeMenu(){ S.menuOpen = false; hideMenu(); last = 0; render(S); },
 };
 function openMenu(){ if (S.over) return; S.menuOpen = true; renderMenu(S, menu); }
