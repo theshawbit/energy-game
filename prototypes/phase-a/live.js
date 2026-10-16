@@ -20,6 +20,8 @@ const CFG = {
   strainRecover: 45,          // strain shed per second when covered
   instantBlackout: 0.30,      // shortfall/demand above this = immediate blackout
   battRecharge: 70,           // MW recharge rate when idle
+  carbonStartDay: 3,          // carbon pricing kicks in after the opening days
+  carbonPerDay: 3.5,          // $/t added each day thereafter (~day 13 flips coal→gas)
 };
 
 // ---- fleet definition ----
@@ -46,6 +48,7 @@ function newGame() {
     running:false, paused:false, over:false,
     t:CFG.startHour, day:1, peak:CFG.startPeak,
     cash:0, satisfaction:100, strain:0,
+    carbon:0, co2:0, co2Total:0,
     fleet:makeFleet(), weather:freshWeather(),
     demand:0, capacity:0, price:0, brownout:false,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0,
@@ -122,8 +125,10 @@ function step(dt){
   // cost and emissions — the same dispatch the batch game is tested against.
   const avail = {};
   for (const u of S.fleet) avail[u.tech] = (avail[u.tech]||0) + unitOutput(u);
-  const hr = dispatchHour(avail, S.demand, 0, 1); // carbon / fuel-multiplier hooks for later escalation
+  const hr = dispatchHour(avail, S.demand, S.carbon, 1); // carbon price re-sorts the merit order; fuel-mult hook reserved
   S.price = hr.price;
+  S.co2 = hr.served>0 ? hr.emissions*1e3/hr.served : 0; // live intensity, kg CO₂/MWh
+  S.co2Total += hr.emissions*dtH;                        // run total, tCO₂ (emissions is tCO₂/h)
 
   // spin: cost of keeping thermal plants synced even when not fully dispatched (prototype-only)
   const spin=S.fleet.reduce((a,u)=>a+(((u.kind==="firm"||u.kind==="peaker")&&u.status==="online")?u.cap*(u.spin??CFG.spinCost):0),0);
@@ -169,7 +174,11 @@ function setTicker(msg){ S.ticker=msg; S.tickerT=3.5; }
 function surviveDay(){
   S.day++; S.peak=Math.round(S.peak*CFG.peakGrowth); S.weather=freshWeather();
   S.strain=Math.max(0,S.strain-30);
-  setTicker(`✓ Day ${S.day-1} cleared — demand rising to ${S.peak} MW peak.`);
+  const firstCarbon = S.carbon===0 && S.day>=CFG.carbonStartDay;
+  if (S.day>=CFG.carbonStartDay) S.carbon += CFG.carbonPerDay; // policy tightens as the run climbs
+  setTicker(firstCarbon
+    ? `✓ Day ${S.day-1} cleared — carbon pricing begins at $${Math.round(S.carbon)}/t. Dirty plants cost more now.`
+    : `✓ Day ${S.day-1} cleared — demand rising to ${S.peak} MW peak.`);
 }
 
 function blackout(reason){
@@ -187,6 +196,8 @@ function blackout(reason){
       <li><span>Uptime</span><span>${upPct.toFixed(1)}%</span></li>
       <li><span>Cash balance</span><span>${money(S.cash)}</span></li>
       <li><span>Satisfaction</span><span>${Math.round(S.satisfaction)}%</span></li>
+      <li><span>Final carbon price</span><span>$${Math.round(S.carbon)}/t</span></li>
+      <li><span>CO₂ emitted</span><span>${(S.co2Total/1e3).toFixed(1)} kt</span></li>
     </ul>
     <button class="btn-primary" id="again" style="width:100%">Run it back</button>`;
   $("overlay").classList.add("on");
@@ -208,6 +219,10 @@ function render(){
   $("s-price").textContent="$"+Math.round(S.price);
   $("s-sat").textContent=Math.round(S.satisfaction)+"%";
   $("s-sat").style.color = S.satisfaction>70?css("--good"):S.satisfaction>40?css("--warn"):css("--bad");
+  $("s-co2").textContent=Math.round(S.co2);
+  $("s-co2").style.color = S.co2<100?css("--good"):S.co2<450?css("--warn"):css("--bad");
+  $("s-carbon").textContent="$"+Math.round(S.carbon);
+  $("s-carbon").style.color = S.carbon>0?css("--warn"):css("--faint");
 
   $("s-demand").textContent=Math.round(S.demand);
   $("s-capacity").textContent=Math.round(S.capacity);
