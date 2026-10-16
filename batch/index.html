@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Grid Operator — Batch (reference)</title>
+  <meta name="description" content="The original turn-based Grid Operator: build plants, dispatch them by merit order, survive carbon prices and weather." />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../styles/main.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="hud">
+      <div class="brand">
+        <h1>Grid Operator</h1>
+        <span class="sub">City power authority · merit-order market</span>
+      </div>
+      <div class="stat"><span class="k">Year</span><span class="v" id="s-year">2025</span></div>
+      <div class="stat"><span class="k">Cash</span><span class="v" id="s-cash">—</span></div>
+      <div class="stat"><span class="k">Peak demand</span><span class="v" id="s-peak">—</span></div>
+      <div class="stat"><span class="k">Reliability</span><span class="v" id="s-rel">—</span></div>
+      <div class="stat"><span class="k">CO₂ intensity</span><span class="v" id="s-co2">—</span></div>
+      <div class="stat"><span class="k">Wholesale</span><span class="v" id="s-price">—</span></div>
+      <div class="stat"><span class="k">Carbon price</span><span class="v" id="s-carbon">—</span></div>
+    </header>
+
+    <div class="grid">
+      <section class="card" id="chartWrap">
+        <h2><span>Dispatch — representative day (MW by hour)</span><span class="pill" id="weatherPill">—</span></h2>
+        <canvas id="chart" width="1100" height="430" aria-label="24-hour generation dispatch chart"></canvas>
+        <div class="legend" id="legend"></div>
+        <div class="results" id="results"></div>
+        <div class="msg" id="msg"></div>
+      </section>
+
+      <aside>
+        <section class="card" style="margin-bottom:14px">
+          <h2><span>Fleet &amp; investment</span></h2>
+          <div id="fleet"></div>
+          <button class="advance" id="advanceBtn">Advance year ▸</button>
+          <div class="goalbar" id="goalbar"></div>
+        </section>
+        <section class="card">
+          <h2><span>Control room log</span></h2>
+          <div class="log" id="log"></div>
+        </section>
+      </aside>
+    </div>
+
+    <details class="how">
+      <summary>How the economics work</summary>
+      <p>Each year is simulated over a representative 24-hour day and scaled to 365 days. Power is in <b>MW</b>, energy in <b>MWh</b> (MW×h), prices in <b>$/MWh</b>.</p>
+      <p><b>Dispatch</b> follows the <b>merit order</b>: cheapest resources run first — free wind &amp; solar, then stored battery energy, then thermal plants ranked by marginal cost. Batteries charge from midday renewable surplus and discharge into the evening peak.</p>
+      <p><b>Price</b> each hour is the marginal cost of the <i>last</i> plant dispatched (uniform-price auction). You earn that price on every MWh you serve, so cheap plants earn "inframarginal rent". A <b>carbon price</b> adds <code>$/t × tCO₂/MWh</code> to each fossil plant's cost — enough of it flips coal behind gas, then behind clean energy.</p>
+      <p><b>Lose</b> if cash falls below −$150M or a year's reliability drops under 85%. <b>Win</b> by running the grid to 2050 solvent — graded on profit, reliability and emissions.</p>
+    </details>
+  </div>
+
+  <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+  <script type="module" src="../src/main.js"></script>
+</body>
+</html>
