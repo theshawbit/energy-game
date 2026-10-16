@@ -13,7 +13,7 @@ const CFG = {
   startHour: 6,               // shift begins at 06:00
   startPeak: 780,             // MW peak demand, day 1
   peakGrowth: 1.06,           // demand growth per day survived
-  price: 65,                  // $/MWh sale price (flat, prototype)
+  priceCap: 300,              // $/MWh scarcity price when capacity can't meet demand
   spinCost: 11,               // $/MW/h just to keep a thermal plant synchronised
   strainRate: 55,             // strain gained per second at 100% shortfall
   strainRecover: 45,          // strain shed per second when covered
@@ -44,10 +44,11 @@ function newGame() {
     t:CFG.startHour, day:1, peak:CFG.startPeak,
     cash:0, satisfaction:100, strain:0,
     fleet:makeFleet(), weather:freshWeather(),
-    demand:0, capacity:0, brownout:false,
+    demand:0, capacity:0, price:0, brownout:false,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0,
     ticker:"", tickerT:0, flash:"", flashT:0,
   };
+  buildUnits();
 }
 const rand=(a,b)=>a+Math.random()*(b-a);
 function freshWeather(){ return { sun:rand(0.7,1.05), wind:rand(0.6,1.25) }; }
@@ -108,20 +109,31 @@ function step(dt){
   S.demand = S.peak * interp(DEMAND_SHAPE, S.t);
   S.capacity = totalCapacity();
 
-  // battery energy drain / recharge
+  // battery discharge drain (recharge is handled below, once the market has cleared)
   const bat=S.fleet.find(u=>u.id==="bat");
   if (bat.status==="discharge"){ bat.energy=Math.max(0,bat.energy - bat.cap*dtH); if (bat.energy<=0){ bat.status="off"; setTicker("Battery depleted."); } }
-  else if (bat.energy < bat.maxEnergy && S.capacity>S.demand){ bat.energy=Math.min(bat.maxEnergy, bat.energy + CFG.battRecharge*dtH); }
 
-  // economics
+  // economics — merit-order market clearing
   const served=Math.min(S.demand,S.capacity);
   const spin=S.fleet.reduce((a,u)=>a+(((u.kind==="firm"||u.kind==="peaker")&&u.status==="online")?u.cap*CFG.spinCost:0),0);
-  // dispatch variable cost: cheapest online MW first up to demand
-  let varCost=0, rem=served;
+  // dispatch cheapest available MW first up to demand; the last unit used sets the clearing price
+  let varCost=0, rem=served, clearing=0;
   for (const u of [...S.fleet].filter(u=>unitOutput(u)>0).sort((a,b)=>a.mc-b.mc)){
-    const use=Math.min(unitOutput(u),rem); varCost+=use*u.mc; rem-=use; if (rem<=0) break;
+    if (rem<=1e-9) break;
+    const use=Math.min(unitOutput(u),rem);
+    if (use>0){ varCost+=use*u.mc; clearing=Math.max(clearing,u.mc); rem-=use; }
   }
-  S.cash += (CFG.price*served - varCost - spin) * dtH;
+  if (S.demand-served>0.5) clearing=CFG.priceCap; // scarcity: capacity can't cover demand
+  S.price=clearing;
+  S.cash += (clearing*served - varCost - spin) * dtH; // unserved load earns nothing
+
+  // battery recharge: only from genuine surplus, bought at the clearing price
+  // (free when renewables set a $0 price — exactly the surplus you want to store)
+  if (bat.status!=="discharge" && bat.energy < bat.maxEnergy){
+    const surplus=Math.max(0, S.capacity-S.demand);
+    const add=Math.min(CFG.battRecharge*dtH, surplus*dtH, bat.maxEnergy-bat.energy);
+    if (add>0){ bat.energy+=add; S.cash-=add*clearing; }
+  }
 
   // reserve margin, brownout, strain
   const shortfall=S.demand-S.capacity;
@@ -187,6 +199,7 @@ function render(){
   $("s-clock").textContent=clock(S.t);
   $("s-cash").textContent=money(S.cash);
   $("s-cash").style.color = S.cash<0?css("--bad"):css("--fg");
+  $("s-price").textContent="$"+Math.round(S.price);
   $("s-sat").textContent=Math.round(S.satisfaction)+"%";
   $("s-sat").style.color = S.satisfaction>70?css("--good"):S.satisfaction>40?css("--warn"):css("--bad");
 
@@ -209,7 +222,7 @@ function render(){
   $("ticker").textContent=S.ticker;
   $("ticker").style.color = S.ticker.startsWith("✓")?css("--good"):css("--warn");
 
-  renderUnits();
+  updateUnits();
   drawChart();
 
   $("startBtn").textContent = S.running? "Shift live" : "Start shift";
@@ -217,31 +230,46 @@ function render(){
   $("pauseBtn").textContent = S.paused? "Resume" : "Pause";
 }
 
-function renderUnits(){
+// Unit cards are built once per game (buildUnits) and only their dynamic bits are
+// patched each frame (updateUnits) — no per-frame DOM teardown, so hover/focus and
+// click targets stay stable and the 60fps loop stays cheap.
+const unitEls={};
+function buildUnits(){
   const host=$("units"); host.innerHTML="";
+  for (const k in unitEls) delete unitEls[k];
   for (const u of S.fleet){
+    const el=document.createElement("div");
+    el.className="unit"+(u.ctrl?" ctrl":"");
+    el.innerHTML=`
+      <div class="top">
+        <span class="nm">${u.name}</span>
+        <span class="st" data-st>—</span>
+      </div>
+      <div class="top"><span class="cap"><b data-out>0</b>/${u.cap} MW</span></div>
+      <div class="hint" data-hint></div>`;
+    if (u.ctrl) el.onclick=()=>toggleUnit(u.id);
+    host.appendChild(el);
+    unitEls[u.id]={ st:el.querySelector("[data-st]"), out:el.querySelector("[data-out]"), hint:el.querySelector("[data-hint]") };
+  }
+}
+function updateUnits(){
+  for (const u of S.fleet){
+    const refs=unitEls[u.id]; if (!refs) continue;
     const out=Math.round(unitOutput(u));
     let stClass, stText;
     if (u.status==="online"||u.status==="discharge"){ stClass="st-online"; stText=u.kind==="battery"?"DISCHARGE":"ONLINE"; }
     else if (u.status==="starting"){ stClass="st-starting"; stText="STARTING"; }
     else if (u.status==="tripped"){ stClass="st-tripped"; stText="TRIPPED"; }
     else { stClass="st-off"; stText=u.kind==="renew"?"IDLE":"RESERVE"; }
-    const el=document.createElement("div");
-    el.className="unit"+(u.ctrl?" ctrl":"");
     let hint="";
     if (u.kind==="battery") hint=`charge ${Math.round(u.energy)}/${u.maxEnergy} MWh`;
     else if (u.kind==="renew") hint=`output ${out} MW now`;
     else if (u.ctrl) hint=`$${u.mc}/MWh · tap ${u.key} to ${u.status==="off"?"start":"stop"}`;
     else hint=`$${u.mc}/MWh baseload`;
-    el.innerHTML=`
-      <div class="top">
-        <span class="nm">${u.name}</span>
-        <span class="st ${stClass}">${stText}</span>
-      </div>
-      <div class="top"><span class="cap"><b>${out}</b>/${u.cap} MW</span></div>
-      <div class="hint">${hint}</div>`;
-    if (u.ctrl) el.onclick=()=>toggleUnit(u.id);
-    host.appendChild(el);
+    if (refs.out.textContent!=String(out)) refs.out.textContent=out;
+    if (refs.st.textContent!=stText) refs.st.textContent=stText;
+    const cls="st "+stClass; if (refs.st.className!=cls) refs.st.className=cls;
+    if (refs.hint.textContent!=hint) refs.hint.textContent=hint;
   }
 }
 
@@ -291,8 +319,9 @@ function frame(now){
   if (!last) last=now;
   let dt=(now-last)/1000; last=now;
   dt=Math.min(dt,0.1); // clamp big gaps (tab switch)
-  if (S.running && !S.paused && !S.over){ step(dt); }
-  if (!S.over) render();
+  // Only step + repaint while the shift is actually live. Title/paused/dead
+  // screens are painted once by their own handlers, so the loop idles cheaply.
+  if (S.running && !S.paused && !S.over){ step(dt); render(); }
   requestAnimationFrame(frame);
 }
 
