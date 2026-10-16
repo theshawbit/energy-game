@@ -10,6 +10,7 @@
 import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet } from "./config.js";
+import { computeMods, effPeakGrowth, newMilestones } from "./meta.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -21,13 +22,21 @@ export function interp(arr, t){
   return arr[i] * (1 - f) + arr[(i + 1) % 24] * f;
 }
 
-export function createGame(){
+export function createGame(skills = {}){
+  const mods = computeMods(skills);
+  const fleet = makeFleet();
+  const bat = fleet.find(u => u.id === "bat");
+  if (bat && mods.battMult !== 1){
+    bat.cap = Math.round(bat.cap * mods.battMult);
+    bat.maxEnergy = Math.round(bat.maxEnergy * mods.battMult);
+    bat.energy = bat.maxEnergy;
+  }
   return {
     running:false, paused:false, menuOpen:false, over:false, reason:"",
-    t:CFG.startHour, day:1, peak:CFG.startPeak,
-    cash:CFG.startCash, satisfaction:100, strain:0,
-    carbon:0, co2:0, co2Total:0,
-    fleet:makeFleet(), weather:freshWeather(), buildSeq:1,
+    t:CFG.startHour, day:1, peak:CFG.startPeak, peakGrowth:effPeakGrowth(mods),
+    cash:CFG.startCash + mods.startCashBonus, satisfaction:100, strain:0,
+    carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
+    fleet, weather:freshWeather(), buildSeq:1,
     demand:0, capacity:0, price:0, brownout:false,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0,
     ticker:"", tickerT:0,
@@ -54,7 +63,7 @@ export function totalCapacity(S){ return S.fleet.reduce((a, u) => a + unitOutput
 function gameOver(S, reason){ S.over = true; S.running = false; S.reason = reason; }
 
 export function surviveDay(S){
-  S.day++; S.peak = Math.round(S.peak * CFG.peakGrowth); S.weather = freshWeather();
+  S.day++; S.peak = Math.round(S.peak * S.peakGrowth); S.weather = freshWeather();
   S.strain = Math.max(0, S.strain - 30);
   const firstCarbon = S.carbon === 0 && S.day >= CFG.carbonStartDay;
   if (S.day >= CFG.carbonStartDay) S.carbon += CFG.carbonPerDay; // policy tightens as the run climbs
@@ -91,7 +100,7 @@ export function step(S, dt){
     // wear: plants degrade while generating (worn plants trip more, via tripHazard)
     if (u.condition != null){
       const generating = u.kind === "battery" ? u.status === "discharge" : u.status === "online";
-      if (generating) u.condition = Math.max(0, u.condition - CFG.wearRate * dtH);
+      if (generating) u.condition = Math.max(0, u.condition - CFG.wearRate * S.mods.wearMult * dtH);
     }
   }
 
@@ -139,6 +148,9 @@ export function step(S, dt){
     S.strain = Math.max(0, S.strain - CFG.strainRecover * dt);
     if (S.satisfaction < 100) S.satisfaction = Math.min(100, S.satisfaction + 3 * dt);
   }
+
+  // milestones reached this tick (near-term goals; scored at end of run)
+  for (const m of newMilestones(S)){ S.milestonesHit.push(m.id); setTicker(S, `★ Milestone — ${m.label}!`); }
 
   // history sample for the scrolling chart (~every 0.2s)
   S.sampleAcc += dt;

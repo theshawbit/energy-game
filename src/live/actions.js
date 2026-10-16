@@ -14,7 +14,7 @@ export function toggleUnit(S, id){
     else if (u.energy > 1) u.status = "discharge";
     else setTicker(S, "Battery depleted — needs surplus capacity to recharge.");
   } else { // peaker
-    if (u.status === "off"){ u.status = "starting"; u.startTimer = u.startTime; }
+    if (u.status === "off"){ u.status = "starting"; u.startTimer = u.startTime * (S.mods?.startTimeMult ?? 1); }
     else if (u.status === "online" || u.status === "starting") u.status = "off";
   }
 }
@@ -58,7 +58,7 @@ export function serviceUnit(S, id){
   if (S.over) return { ok:false };
   const u = S.fleet.find(x => x.id === id); if (!u || u.condition == null) return { ok:false, msg:"Nothing to service." };
   if (u.status === "service") return { ok:false, msg:"Already in service." };
-  const cost = serviceCost(u);
+  const cost = Math.round(serviceCost(u) * (S.mods?.repairMult ?? 1));
   if (S.cash < cost) return { ok:false, msg:"Not enough cash to service." };
   S.cash -= cost;
   u.status = "service"; u.serviceTimer = CFG.serviceTime;

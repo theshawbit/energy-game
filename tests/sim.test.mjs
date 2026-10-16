@@ -126,5 +126,45 @@ const colB = S.fleet.find(u => u.id === "colB"); colB.condition = 20;
 sres = serviceUnit(S, "colB");
 check("service refused without cash", !sres.ok && colB.status === "online");
 
+// ---- Phase C meta: scoring, milestones, skills, modifiers ----
+const meta = await import("../src/live/meta.js");
+
+// 16) Skills modify a fresh game's starting conditions
+S = createGame({ reserves: 2 });
+check("Grid Reserves adds starting cash", S.cash === CFG.startCash + 80000, "$" + S.cash);
+S = createGame({ battery: 1 });
+const batU = S.fleet.find(u => u.id === "bat");
+check("Battery Science grows the battery", batU.cap > 120 && batU.maxEnergy > 240, `${batU.cap} MW / ${batU.maxEnergy} MWh`);
+S = createGame({ efficiency: 2 });
+check("Efficiency Drive slows demand growth", S.peakGrowth < CFG.peakGrowth, S.peakGrowth.toFixed(3));
+
+// 17) computeMods is neutral with no skills
+const m0 = meta.computeMods({});
+check("no skills → neutral mods", m0.startCashBonus === 0 && m0.wearMult === 1 && m0.battMult === 1);
+
+// 18) Milestones trigger at their thresholds
+S = createGame(); S.peak = 1000; S.cash = 0;
+let nm = meta.newMilestones(S);
+check("peak milestone fires at threshold", nm.some(m => m.id === "p900") && !nm.some(m => m.id === "p1200"),
+  nm.map(m => m.id).join(","));
+S.milestonesHit = ["p900"];
+check("already-hit milestones aren't repeated", !meta.newMilestones(S).some(m => m.id === "p900"));
+
+// 19) Scoring rewards survival; currency is always ≥ 1
+const weak = meta.scoreRun({ day: 1, peak: 780, cash: 0, upAcc: 1, downAcc: 1, milestonesHit: [] });
+const strong = meta.scoreRun({ day: 8, peak: 1400, cash: 500000, upAcc: 10, downAcc: 0, milestonesHit: ["p900", "p1200"] });
+check("more survival → higher score", strong.score > weak.score, `${weak.score} → ${strong.score}`);
+check("currency award is at least 1", meta.currencyFor(0) >= 1 && meta.currencyFor(strong.score) >= 1);
+
+// 20) Buying skills spends currency, caps at max, refuses when broke
+const prof = { currency: 20, skills: {}, best: {} };
+check("buy a skill deducts currency and records the level", meta.buySkill(prof, "reserves") && prof.skills.reserves === 1 && prof.currency === 15);
+prof.currency = 0;
+check("buy refused when broke", !meta.buySkill(prof, "maintenance") && !prof.skills.maintenance);
+const prof2 = { currency: 9999, skills: {}, best: {} };
+const sk = meta.SKILLS.find(s => s.id === "faststart");
+for (let i = 0; i < sk.max; i++) meta.buySkill(prof2, "faststart");
+check("buy refused past max level", !meta.buySkill(prof2, "faststart") && prof2.skills.faststart === sk.max);
+
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

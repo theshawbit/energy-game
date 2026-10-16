@@ -5,6 +5,7 @@
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
 import { BUILD, BUILD_ORDER, UPGRADE, upgradeCost, serviceCost } from "./config.js";
+import { SKILLS, skillCost, MILESTONES } from "./meta.js";
 
 const $ = id => document.getElementById(id);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -142,33 +143,64 @@ function line(ctx, data, x, y, key, color, lw){
   data.forEach((p, i) => { const px = x(i), py = y(p[key]); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.stroke();
 }
 
-// ---- end-of-run modal ----
-export function showEndGame(S, onRestart){
+// ---- end-of-run modal (score, meta-currency earned, milestones) ----
+export function showEndGame(S, result, actions){
   const upPct = (S.upAcc + S.downAcc) > 0 ? S.upAcc / (S.upAcc + S.downAcc) * 100 : 100;
   $("shakeTarget").classList.add("shake");
   $("vignette").style.opacity = "1";
   setTimeout(() => { $("shakeTarget").classList.remove("shake"); }, 700);
+  const reached = (S.milestonesHit || []).length, best = result.best || {};
   $("modal").innerHTML = `
     <h2 style="color:var(--bad)">Blackout</h2>
     <p>${S.reason}</p>
+    <div class="score">${result.score}<small>SCORE</small></div>
+    <p class="earned">+${result.earned} ⚡ meta-currency earned${result.score >= (best.score || 0) ? " · <b>new best!</b>" : ""}</p>
     <ul>
       <li><span>Days survived</span><span>${S.day - 1}</span></li>
       <li><span>Peak reached</span><span>${S.peak} MW</span></li>
       <li><span>Uptime</span><span>${upPct.toFixed(1)}%</span></li>
+      <li><span>Milestones</span><span>${reached} / ${MILESTONES.length}</span></li>
       <li><span>Cash balance</span><span>${money(S.cash)}</span></li>
-      <li><span>Satisfaction</span><span>${Math.round(S.satisfaction)}%</span></li>
-      <li><span>Final carbon price</span><span>$${Math.round(S.carbon)}/t</span></li>
       <li><span>CO₂ emitted</span><span>${(S.co2Total / 1e3).toFixed(1)} kt</span></li>
     </ul>
-    <button class="btn-primary" id="again" style="width:100%">Run it back</button>`;
+    <div class="end-btns">
+      <button id="toSkills">Skills ⚡</button>
+      <button class="btn-primary" id="again">Run it back ▸</button>
+    </div>`;
   $("overlay").classList.add("on");
-  $("again").onclick = onRestart;
+  $("toSkills").onclick = actions.skills;
+  $("again").onclick = actions.restart;
 }
 
 export function clearEndGame(){
   $("overlay").classList.remove("on");
   $("vignette").style.opacity = "0";
 }
+
+// ---- skill tree (between runs: spend meta-currency on permanent passives) ----
+export function renderMeta(profile, actions){
+  const best = profile.best || {};
+  const rows = SKILLS.map(sk => {
+    const owned = profile.skills[sk.id] || 0, maxed = owned >= sk.max, cost = skillCost(sk, owned);
+    const can = !maxed && profile.currency >= cost;
+    const pips = Array.from({ length: sk.max }, (_, i) => `<span class="pip ${i < owned ? "on" : ""}"></span>`).join("");
+    const btn = maxed ? `<button disabled>Maxed</button>` : `<button data-skill="${sk.id}" ${can ? "" : "disabled"}>${cost} ⚡</button>`;
+    return `<div class="skill-row">
+      <span class="sk-nm">${sk.name} <span class="pips">${pips}</span><br><small>${sk.desc}</small></span>${btn}</div>`;
+  }).join("");
+  $("meta").innerHTML = `
+    <h2>Skill tree</h2>
+    <p>Permanent upgrades, bought with meta-currency earned at the end of each run.</p>
+    <div class="meta-head"><span class="bank"><b>${profile.currency}</b> ⚡ banked</span>
+      <span class="best">best: ${best.score || 0} pts · ${best.days || 0} days · ${best.peak || 0} MW</span></div>
+    <div class="skill-list">${rows}</div>
+    <button class="btn-primary" id="startRun">Start run ▸</button>`;
+  $("meta").querySelectorAll("[data-skill]").forEach(b => b.onclick = () => actions.buy(b.dataset.skill));
+  $("startRun").onclick = actions.start;
+  $("overlay").classList.remove("on");
+  $("metaOverlay").classList.add("on");
+}
+export function hideMeta(){ $("metaOverlay").classList.remove("on"); }
 
 // ---- manage-grid menu (opens paused: build capacity + upgrade plants) ----
 export function renderMenu(S, actions){
@@ -181,7 +213,7 @@ export function renderMenu(S, actions){
     const upLabel = max ? "Max tier" : `→ Mk ${roman(tier + 1)} · ${money(uCost)}`;
     let svc = "";
     if (u.condition != null){
-      const inSvc = u.status === "service", sCost = serviceCost(u), canSvc = !inSvc && S.cash >= sCost;
+      const inSvc = u.status === "service", sCost = Math.round(serviceCost(u) * (S.mods?.repairMult ?? 1)), canSvc = !inSvc && S.cash >= sCost;
       svc = `<button class="svc" data-svc="${u.id}" ${canSvc ? "" : "disabled"}>${inSvc ? "In service…" : `Service · ${money(sCost)}`}</button>`;
     }
     const cond = u.condition != null ? ` · <b class="condtxt ${u.condition > 60 ? "ok" : u.condition > 30 ? "warn" : "bad"}">${Math.round(u.condition)}%</b>` : "";
