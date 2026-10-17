@@ -106,7 +106,7 @@ export function step(S, dt){
   S.weather.sun  = clamp(S.weather.sun  + rand(-0.4, 0.4) * dt * 0.15, 0.55, 1.1);
   S.weather.wind = clamp(S.weather.wind + rand(-0.6, 0.6) * dt * 0.15, 0.45, 1.35);
 
-  const diff = 1 + (S.day - 1) * 0.18; // outages get worse as days climb
+  const diff = 1 + (S.day - 1) * CFG.outageRamp; // outages get worse as days climb
 
   // unit state machines
   for (const u of S.fleet){
@@ -143,7 +143,9 @@ export function step(S, dt){
 
   // spin: cost of keeping thermal plants synced even when not fully dispatched
   const spin = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "peaker") && u.status === "online") ? u.cap * (u.spin ?? CFG.spinCost) : 0), 0);
-  S.cash += (hr.price * hr.served - hr.varCost - spin) * dtH; // unserved load earns nothing
+  // fixed O&M: owning capacity costs money whether or not it runs (punishes overbuilding)
+  const fixedOM = S.fleet.reduce((a, u) => a + u.cap, 0) * CFG.fixedOM;
+  S.cash += (hr.price * hr.served - hr.varCost - spin - fixedOM) * dtH; // unserved load earns nothing
 
   // battery: drain only by the MW the market actually dispatched this tick; otherwise
   // recharge from genuine surplus, bought at the clearing price (free at a $0 price)
