@@ -63,6 +63,8 @@ batch/index.html        Turn-based reference build (loads the shared engine + sr
 tests/
   engine.test.mjs       Engine unit tests (dispatchHour, energy balance, carbon switching)
   sim.test.mjs          Live sim unit tests (state machine, clock, carbon escalation)
+tools/
+  balance.mjs           Headless balance harness — plays the sim many times, reports the survival curve
 docs/ROADMAP-v2.md      v2 design & roadmap
 archive/                The original single-file MVP, preserved
 ```
