@@ -143,8 +143,10 @@ export function step(S, dt){
 
   // spin: cost of keeping thermal plants synced even when not fully dispatched
   const spin = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "peaker") && u.status === "online") ? u.cap * (u.spin ?? CFG.spinCost) : 0), 0);
-  // fixed O&M: owning capacity costs money whether or not it runs (punishes overbuilding)
-  const fixedOM = S.fleet.reduce((a, u) => a + u.cap, 0) * CFG.fixedOM;
+  // fixed O&M: owning dispatchable capacity costs money whether or not it runs
+  // (punishes overbuilding). Renewables are exempt — they're cheap to own and
+  // earn nothing at midday when they set a $0 price, so taxing them just bleeds.
+  const fixedOM = S.fleet.reduce((a, u) => a + (u.kind === "renew" ? 0 : u.cap), 0) * CFG.fixedOM;
   S.cash += (hr.price * hr.served - hr.varCost - spin - fixedOM) * dtH; // unserved load earns nothing
 
   // battery: drain only by the MW the market actually dispatched this tick; otherwise
