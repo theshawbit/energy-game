@@ -35,14 +35,16 @@
 
         <div class="gauge-wrap">
           <div class="gauge-head"><span class="lab">Reserve margin</span><span class="val" id="s-margin">—</span></div>
-          <div class="gauge"><div class="fill" id="marginFill"></div></div>
+          <div class="gauge"><div class="fill" id="marginFill"></div><div class="mark" style="left:50%"></div><div class="mark" style="left:75%"></div></div>
+          <div class="gauge-scale"><span>−30%</span><span>0%</span><span>+30%</span></div>
         </div>
 
         <canvas id="chart" width="1100" height="260" aria-label="Live demand vs capacity"></canvas>
         <div class="chart-legend">
           <span><i style="border-color:#fff"></i>Demand</span>
           <span><i style="border-color:var(--accent)"></i>Capacity online</span>
-          <span><i style="border-color:var(--bad);border-top-style:solid"></i>Deficit (brownout)</span>
+          <span><i class="box" style="background:var(--good)"></i>Reserve margin</span>
+          <span><i class="box" style="background:var(--bad)"></i>Deficit (brownout)</span>
         </div>
 
         <div class="ticker" id="ticker"></div>

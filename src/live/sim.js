@@ -180,7 +180,7 @@ export function step(S, dt){
 
   // history sample for the scrolling chart (~every 0.2s)
   S.sampleAcc += dt;
-  if (S.sampleAcc >= 0.2){ S.sampleAcc = 0; S.hist.push({ d:S.demand, c:S.capacity }); if (S.hist.length > 260) S.hist.shift(); }
+  if (S.sampleAcc >= 0.2){ S.sampleAcc = 0; S.hist.push({ h:S.t, d:S.demand, c:S.capacity }); if (S.hist.length > 260) S.hist.shift(); }
 
   if (S.tickerT > 0){ S.tickerT -= dt; if (S.tickerT <= 0) S.ticker = ""; }
   return false;
