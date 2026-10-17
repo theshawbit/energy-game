@@ -27,7 +27,8 @@ export function buildCapacity(S, tech){
   if (!b) return { ok:false, msg:"That can't be built." };
   if (S.cash < b.cost) return { ok:false, msg:"Not enough cash to build that." };
   S.cash -= b.cost;
-  const n = S.fleet.filter(u => u.tech === tech).length + 1;
+  // monotonic per-tech number so a build after a sell can't reuse a label
+  const n = (S.techCount[tech] = (S.techCount[tech] || 0) + 1);
   S.fleet.push(makeUnit(tech, n, S.buildSeq++));
   setTicker(S, `✓ Built ${b.label} ${n} — +${b.mw} MW online.`);
   return { ok:true };

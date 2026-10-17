@@ -8,7 +8,11 @@ import { BUILD, BUILD_ORDER, UPGRADE, upgradeCost, serviceCost, salvageValue } f
 import { SKILLS, skillCost, MILESTONES } from "./meta.js";
 
 const $ = id => document.getElementById(id);
-const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+// Theme tokens are static (single committed dark theme), so read each once and
+// memoize — render() runs every frame and getComputedStyle forces style resolution.
+const _cssCache = {};
+const css = v => _cssCache[v] !== undefined ? _cssCache[v]
+  : (_cssCache[v] = getComputedStyle(document.documentElement).getPropertyValue(v).trim());
 function money(x){ const a = Math.abs(x), s = x < 0 ? "−" : ""; if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(2) + "M"; if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(0) + "k"; return s + "$" + a.toFixed(0); }
 function clock(t){ const h = Math.floor(t), m = Math.floor((t - h) * 60); return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
 const roman = n => ["", "I", "II", "III", "IV", "V"][n] || String(n);
@@ -108,16 +112,27 @@ function hexA(hex, a){
   hex = hex.replace("#", ""); if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
   const n = parseInt(hex, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
-// Fill the region between lo(p) and hi(p) across segments where pred(p) holds.
-function fillBand(ctx, data, x, y, pred, lo, hi, color){
-  ctx.fillStyle = color;
+// One trapezoid between the capacity and demand lines over [x1,x2], in `color`.
+function band(ctx, x1, c1, d1, x2, c2, d2, color){
+  ctx.fillStyle = color; ctx.beginPath();
+  ctx.moveTo(x1, c1); ctx.lineTo(x2, c2); ctx.lineTo(x2, d2); ctx.lineTo(x1, d1);
+  ctx.closePath(); ctx.fill();
+}
+// Shade the gap between demand and capacity: green where there's reserve
+// (c≥d), red where there's a deficit (d>c). Segments that cross are split at
+// the exact intersection so neither colour spills onto the wrong side.
+function fillBands(ctx, data, x, y, goodColor, badColor){
   for (let i = 1; i < data.length; i++){
     const a = data[i - 1], b = data[i];
-    if (pred(a) || pred(b)){
-      ctx.beginPath();
-      ctx.moveTo(x(i - 1), y(lo(a))); ctx.lineTo(x(i), y(lo(b)));
-      ctx.lineTo(x(i), y(hi(b))); ctx.lineTo(x(i - 1), y(hi(a)));
-      ctx.closePath(); ctx.fill();
+    const da = a.d - a.c, db = b.d - b.c;              // >0 = deficit
+    const xa = x(i - 1), xb = x(i);
+    if ((da > 0) === (db > 0) || da === db){           // same side across the segment
+      band(ctx, xa, y(a.c), y(a.d), xb, y(b.c), y(b.d), da > 0 ? badColor : goodColor);
+    } else {                                           // crosses: split at d == c
+      const t = da / (da - db), xc = xa + (xb - xa) * t;
+      const yc = y(a.c + (b.c - a.c) * t);             // capacity == demand at the crossing
+      band(ctx, xa, y(a.c), y(a.d), xc, yc, yc, da > 0 ? badColor : goodColor);
+      band(ctx, xc, yc, yc, xb, y(b.c), y(b.d), db > 0 ? badColor : goodColor);
     }
   }
 }
@@ -126,7 +141,9 @@ function drawChart(S){
   const cv = $("chart"), ctx = cv.getContext("2d");
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = cv.clientWidth || 1100, h = 270;
-  cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+  if (cv.width !== bw || cv.height !== bh){ cv.width = bw; cv.height = bh; } // realloc backing store only on resize
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   const padL = 46, padR = 58, padT = 14, padB = 22, W = w - padL - padR, H = h - padT - padB;
   const hist = S.hist, n = hist.length, WINDOW = 260;
@@ -144,8 +161,7 @@ function drawChart(S){
 
   if (n > 1){
     // the margin, as status-colored bands between the two lines (the hero read):
-    fillBand(ctx, hist, x, y, p => p.c >= p.d, p => p.d, p => p.c, hexA(css("--good"), 0.14)); // reserve (surplus)
-    fillBand(ctx, hist, x, y, p => p.d > p.c, p => p.c, p => p.d, hexA(css("--bad"), 0.32));    // deficit
+    fillBands(ctx, hist, x, y, hexA(css("--good"), 0.14), hexA(css("--bad"), 0.32));
 
     // peak reference — the demand ceiling you're climbing toward
     const yp = y(S.peak);

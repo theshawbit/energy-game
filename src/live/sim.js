@@ -25,6 +25,10 @@ export function interp(arr, t){
 export function createGame(skills = {}){
   const mods = computeMods(skills);
   const fleet = makeFleet();
+  // monotonic per-tech counter for naming built units, so numbers are never
+  // reused after a decommission (which would duplicate a card label).
+  const techCount = {};
+  for (const u of fleet) techCount[u.tech] = (techCount[u.tech] || 0) + 1;
   const bat = fleet.find(u => u.id === "bat");
   if (bat && mods.battMult !== 1){
     bat.cap = Math.round(bat.cap * mods.battMult);
@@ -36,7 +40,7 @@ export function createGame(skills = {}){
     t:CFG.startHour, day:1, peak:CFG.startPeak, peakGrowth:effPeakGrowth(mods),
     cash:CFG.startCash + mods.startCashBonus, satisfaction:100, strain:0,
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
-    fleet, weather:freshWeather(), buildSeq:1,
+    fleet, techCount, weather:freshWeather(), buildSeq:1,
     demand:0, capacity:0, price:0, brownout:false,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
@@ -121,10 +125,10 @@ export function step(S, dt){
         setTicker(S, `⚠ ${u.name} tripped offline — ${Math.round(u.cap)} MW lost!`);
       }
     }
-    // wear: plants degrade while generating (worn plants trip more, via tripHazard)
-    if (u.condition != null){
-      const generating = u.kind === "battery" ? u.status === "discharge" : u.status === "online";
-      if (generating) u.condition = Math.max(0, u.condition - CFG.wearRate * S.mods.wearMult * dtH);
+    // wear: thermal plants (the only units with condition) degrade while online;
+    // worn plants trip more, via tripHazard. Batteries and renewables don't wear.
+    if (u.condition != null && u.status === "online"){
+      u.condition = Math.max(0, u.condition - CFG.wearRate * S.mods.wearMult * dtH);
     }
   }
 
