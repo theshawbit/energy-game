@@ -147,7 +147,11 @@ export function step(S, dt){
   // (punishes overbuilding). Renewables are exempt — they're cheap to own and
   // earn nothing at midday when they set a $0 price, so taxing them just bleeds.
   const fixedOM = S.fleet.reduce((a, u) => a + (u.kind === "renew" ? 0 : u.cap), 0) * CFG.fixedOM;
-  S.cash += (hr.price * hr.served - hr.varCost - spin - fixedOM) * dtH; // unserved load earns nothing
+  // Revenue is the retail price on SERVED load — decoupled from the volatile
+  // wholesale clearing price so a shortfall is never a scarcity windfall. The
+  // merit-order clearing price (hr.price) and carbon still drive costs (varCost).
+  const revenue = CFG.retailPrice * hr.served;
+  S.cash += (revenue - hr.varCost - spin - fixedOM) * dtH; // unserved load earns nothing
 
   // battery: drain only by the MW the market actually dispatched this tick; otherwise
   // recharge from genuine surplus, bought at the clearing price (free at a $0 price)
@@ -169,14 +173,15 @@ export function step(S, dt){
   if (shortfall > 0.5){
     S.brownout = true; S.downAcc += dt;
     S.strain = Math.min(100, S.strain + sev * CFG.strainRate * dt);
-    S.satisfaction = Math.max(0, S.satisfaction - sev * 22 * dt);
-    S.cash -= shortfall * 120 * dtH; // unserved load is costly
+    S.satisfaction = Math.max(0, S.satisfaction - sev * CFG.satDrain * dt);
+    S.cash -= shortfall * CFG.unservedPenalty * dtH; // lost sales already sting; this adds fines / emergency buys
     if (sev > CFG.instantBlackout){ gameOver(S, `A ${Math.round(sev * 100)}% shortfall collapsed the grid.`); return true; }
     if (S.strain >= 100){ gameOver(S, "Sustained brownout cascaded into a blackout."); return true; }
+    if (S.satisfaction <= 0){ gameOver(S, "Customers lost all confidence — the city pulled your licence."); return true; }
   } else {
     S.brownout = false; S.upAcc += dt;
     S.strain = Math.max(0, S.strain - CFG.strainRecover * dt);
-    if (S.satisfaction < 100) S.satisfaction = Math.min(100, S.satisfaction + 3 * dt);
+    if (S.satisfaction < 100) S.satisfaction = Math.min(100, S.satisfaction + CFG.satRecover * dt);
   }
 
   // milestones reached this tick (near-term goals; scored at end of run)

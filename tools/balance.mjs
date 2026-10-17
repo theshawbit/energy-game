@@ -11,12 +11,14 @@ const SKILLS = process.argv[3] ? JSON.parse(process.argv[3]) : {};
 // Pre-arm peakers through the evening ramp, stand them down off-peak to save
 // cash, fire the battery in emergencies, service worn plants and invest surplus.
 function play(S){
-  const peakWindow = S.t >= 14.5 && S.t <= 20.5;
   const margin = (S.capacity - S.demand) / Math.max(1, S.demand);
+  // arm reserves through the evening ramp, OR any time the margin gets thin
+  // (e.g. a plant trips off-peak) — a competent player reacts to emergencies.
+  const wantPeakers = (S.t >= 14.5 && S.t <= 20.5) || margin < 0.12;
   for (const u of S.fleet){
     if (u.kind === "peaker"){
-      if (peakWindow && u.status === "off") toggleUnit(S, u.id);
-      else if (!peakWindow && (u.status === "online" || u.status === "starting") && margin > 0.30) toggleUnit(S, u.id);
+      if (wantPeakers && u.status === "off") toggleUnit(S, u.id);
+      else if (!wantPeakers && (u.status === "online" || u.status === "starting") && margin > 0.30) toggleUnit(S, u.id);
     }
     if (u.id === "bat"){
       if (margin < 0.05 && u.status !== "discharge" && u.energy > 1) toggleUnit(S, u.id);
