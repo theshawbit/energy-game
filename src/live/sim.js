@@ -9,7 +9,7 @@
 // ============================================================
 import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
-import { CFG, makeFleet } from "./config.js";
+import { CFG, makeFleet, serviceCost } from "./config.js";
 import { computeMods, effPeakGrowth, newMilestones } from "./meta.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
@@ -38,9 +38,33 @@ export function createGame(skills = {}){
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
     fleet, weather:freshWeather(), buildSeq:1,
     demand:0, capacity:0, price:0, brownout:false,
-    hist:[], sampleAcc:0, upAcc:0, downAcc:0,
+    hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
+}
+
+// Service Manager (meta skill): once per game-hour, pull the single most-worn
+// plant below the unlocked threshold for service — but only when it's safe
+// (an offline plant has no downtime cost; an online one only if the reserve
+// margin stays positive without it) and affordable. Paid automatically.
+export function autoService(S, dtH){
+  const at = S.mods?.autoServiceAt || 0;
+  if (!at) return;
+  S.autoSvcAcc += dtH;
+  if (S.autoSvcAcc < 1) return;
+  S.autoSvcAcc = 0;
+  const cands = S.fleet
+    .filter(u => u.condition != null && u.status !== "service" && u.condition < at)
+    .sort((a, b) => a.condition - b.condition);
+  for (const u of cands){
+    const cost = Math.round(serviceCost(u) * (S.mods.repairMult ?? 1));
+    if (S.cash < cost) break;
+    const offline = u.kind === "battery" ? u.status !== "discharge" : u.status !== "online";
+    if (!offline && (S.capacity - S.demand) <= u.cap * 1.1) continue; // would risk a shortfall
+    S.cash -= cost; u.status = "service"; u.serviceTimer = CFG.serviceTime;
+    setTicker(S, `⚙ Service Manager: ${u.name} pulled for maintenance.`);
+    break; // at most one per interval, to spread downtime
+  }
 }
 
 export function setTicker(S, msg){ S.ticker = msg; S.tickerT = 3.5; }
@@ -127,11 +151,13 @@ export function step(S, dt){
   if (bat.status === "discharge"){
     bat.energy = Math.max(0, bat.energy - hr.stack.battery * dtH);
     if (bat.energy <= 0){ bat.status = "off"; setTicker(S, "Battery depleted."); }
-  } else if (bat.energy < bat.maxEnergy){
+  } else if (bat.status !== "service" && bat.energy < bat.maxEnergy){
     const surplus = Math.max(0, S.capacity - S.demand);
     const add = Math.min(CFG.battRecharge * dtH, surplus * dtH, bat.maxEnergy - bat.energy);
     if (add > 0){ bat.energy += add; S.cash -= add * hr.price; }
   }
+
+  autoService(S, dtH); // Service Manager skill (no-op unless owned)
 
   // reserve margin, brownout, strain
   const shortfall = S.demand - S.capacity;

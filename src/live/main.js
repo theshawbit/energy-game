@@ -5,7 +5,7 @@
 // opening it never disturbs a run.
 // ============================================================
 import { createGame, step } from "./sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit } from "./actions.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit } from "./actions.js";
 import { render, buildUnits, showEndGame, clearEndGame, renderMenu, hideMenu, renderMeta, renderHome } from "./render.js";
 import { scoreRun, currencyFor, buySkill } from "./meta.js";
 import { loadProfile, saveProfile } from "./persist.js";
@@ -35,6 +35,7 @@ const menu = {
   build(tech){ buildCapacity(S, tech); buildUnits(S, act); renderMenu(S, menu); render(S); },
   upgrade(id){ upgradeUnit(S, id); buildUnits(S, act); renderMenu(S, menu); render(S); },
   service(id){ serviceUnit(S, id); renderMenu(S, menu); render(S); },
+  decommission(id){ decommissionUnit(S, id); buildUnits(S, act); renderMenu(S, menu); render(S); },
   closeMenu(){ S.menuOpen = false; hideMenu(); last = 0; render(S); },
 };
 function openMenu(){ if (S.over) return; S.menuOpen = true; renderMenu(S, menu); }

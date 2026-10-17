@@ -32,6 +32,15 @@ export function serviceCost(u){
   return Math.round(CFG.repairPerMW * u.cap * damage) + CFG.repairMin;
 }
 
+// Salvage cash recovered by decommissioning a unit — a fraction of its notional
+// build value (scaled by current capacity, so upgraded plants salvage higher).
+export const SALVAGE_FRAC = 0.3;
+export function salvageValue(u){
+  const b = BUILD[u.tech];
+  const perMw = b ? b.cost / b.mw : 800; // fallback $/MW for techs not in the build catalogue
+  return Math.round(SALVAGE_FRAC * perMw * u.cap);
+}
+
 // ---- build catalogue: spend in-run cash to add a block of capacity ----
 // cost is a live-tuned capital cost ($); mw is the block size. Battery is
 // upgrade-only (the sim tracks a single battery), so it is absent here.

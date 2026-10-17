@@ -1,9 +1,9 @@
 // Unit tests for the live simulation (no DOM). Run: `npm test`.
 // These pin the real-time loop's state machine and economics so the Phase B+
 // feature work can't silently break pacing or the dispatch wiring.
-import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHazard } from "../src/live/sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit } from "../src/live/actions.js";
-import { CFG, UPGRADE, upgradeCost, serviceCost } from "../src/live/config.js";
+import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHazard, autoService } from "../src/live/sim.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit } from "../src/live/actions.js";
+import { CFG, UPGRADE, upgradeCost, serviceCost, salvageValue } from "../src/live/config.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -165,6 +165,35 @@ const prof2 = { currency: 9999, skills: {}, best: {} };
 const sk = meta.SKILLS.find(s => s.id === "faststart");
 for (let i = 0; i < sk.max; i++) meta.buySkill(prof2, "faststart");
 check("buy refused past max level", !meta.buySkill(prof2, "faststart") && prof2.skills.faststart === sk.max);
+
+// 21) Decommission: removes the unit and refunds salvage; battery is protected
+S = createGame();
+const colAd = S.fleet.find(u => u.id === "colA");
+const n0 = S.fleet.length, cash0d = S.cash, salv = salvageValue(colAd);
+let dres = decommissionUnit(S, "colA");
+check("decommission removes the unit and refunds salvage", dres.ok && S.fleet.length === n0 - 1 && !S.fleet.some(u => u.id === "colA") && near(S.cash - cash0d, salv, 1e-6),
+  `fleet ${n0}→${S.fleet.length}, +$${S.cash - cash0d}`);
+dres = decommissionUnit(S, "bat");
+check("battery cannot be decommissioned", !dres.ok && S.fleet.some(u => u.id === "bat"));
+
+// 22) Service Manager modifier is off without the skill, on with it
+check("no Service Manager by default", meta.computeMods({}).autoServiceAt === 0);
+check("Service Manager unlocks an auto-service threshold", meta.computeMods({ servicemgr: 2 }).autoServiceAt > 0);
+
+// 23) autoService pulls a worn OFFLINE plant without risking capacity
+S = createGame({ servicemgr: 3 }); S.cash = 1e6;
+const pkR = S.fleet.find(u => u.id === "pk1"); // a reserve peaker, offline
+pkR.condition = 20;                            // well below the lvl-3 threshold (70)
+S.autoSvcAcc = 5;                              // force the once-per-hour check to fire
+autoService(S, 1);
+check("Service Manager auto-services a worn reserve plant", pkR.status === "service", pkR.status);
+
+// 24) autoService won't pull an online plant when it would cause a shortfall
+S = createGame({ servicemgr: 3 }); S.cash = 1e6;
+const nucS = S.fleet.find(u => u.id === "nuc"); nucS.condition = 10;
+S.capacity = 600; S.demand = 590; S.autoSvcAcc = 5; // only 10 MW margin, nuclear is 250 MW
+autoService(S, 1);
+check("Service Manager won't pull an online plant into a shortfall", nucS.status === "online", nucS.status);
 
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

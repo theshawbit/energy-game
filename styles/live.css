@@ -113,6 +113,9 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .up-row button{font-family:var(--mono);font-size:.74rem;white-space:nowrap}
 .up-row button.svc{border-color:#24415e;color:#7fb8ff}
 .up-row button.svc:hover:not(:disabled){border-color:#7fb8ff;color:#fff}
+.up-row button.dec{border-color:#4a2a22;color:#e8926b}
+.up-row button.dec:hover:not(:disabled){border-color:#e8926b;color:#fff}
+.svc-note{font-family:var(--mono);font-size:.74rem;color:#7fb8ff;margin:0 0 6px}
 .modal.menu #closeMenu{width:100%;margin-top:16px}
 
 /* end-of-run score + currency */

@@ -4,7 +4,7 @@
 // (onToggle, onRestart), so this file imports no action logic.
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
-import { BUILD, BUILD_ORDER, UPGRADE, upgradeCost, serviceCost } from "./config.js";
+import { BUILD, BUILD_ORDER, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
 import { SKILLS, skillCost, MILESTONES } from "./meta.js";
 
 const $ = id => document.getElementById(id);
@@ -235,22 +235,27 @@ export function renderMenu(S, actions){
       const inSvc = u.status === "service", sCost = Math.round(serviceCost(u) * (S.mods?.repairMult ?? 1)), canSvc = !inSvc && S.cash >= sCost;
       svc = `<button class="svc" data-svc="${u.id}" ${canSvc ? "" : "disabled"}>${inSvc ? "In service…" : `Service · ${money(sCost)}`}</button>`;
     }
+    const dec = u.kind !== "battery" ? `<button class="dec" data-dec="${u.id}">Sell · ${money(salvageValue(u))}</button>` : "";
     const cond = u.condition != null ? ` · <b class="condtxt ${u.condition > 60 ? "ok" : u.condition > 30 ? "warn" : "bad"}">${Math.round(u.condition)}%</b>` : "";
     return `<div class="up-row"><span class="up-nm">${u.name} <i>Mk ${roman(tier)}</i><br><small>${Math.round(u.cap)} MW${cond}</small></span>` +
-           `<span class="up-btns"><button data-up="${u.id}" ${canUp ? "" : "disabled"}>${upLabel}</button>${svc}</span></div>`;
+           `<span class="up-btns"><button data-up="${u.id}" ${canUp ? "" : "disabled"}>${upLabel}</button>${svc}${dec}</span></div>`;
   }).join("");
+  const svcNote = S.mods?.autoServiceAt
+    ? `<p class="svc-note">⚙ Service Manager active — auto-servicing worn plants below ${S.mods.autoServiceAt}%.</p>` : "";
   $("menu").innerHTML = `
     <h2>Manage grid</h2>
     <p>Clock paused. Build capacity and upgrade plants, then resume the shift.</p>
     <div class="menu-cash">On hand <b>${money(S.cash)}</b></div>
     <h3>Build capacity</h3>
     <div class="build-grid">${buildBtns}</div>
-    <h3>Upgrade fleet <small>capacity ↑ · trips ↓ · standby cost ↓</small></h3>
+    <h3>Upgrade &amp; fleet <small>capacity ↑ · trips ↓ · standby cost ↓ · or sell to retire</small></h3>
+    ${svcNote}
     <div class="up-list">${upRows}</div>
     <button class="btn-primary" id="closeMenu">Resume shift ▸</button>`;
   $("menu").querySelectorAll("[data-build]").forEach(btn => btn.onclick = () => actions.build(btn.dataset.build));
   $("menu").querySelectorAll("[data-up]").forEach(btn => btn.onclick = () => actions.upgrade(btn.dataset.up));
   $("menu").querySelectorAll("[data-svc]").forEach(btn => btn.onclick = () => actions.service(btn.dataset.svc));
+  $("menu").querySelectorAll("[data-dec]").forEach(btn => btn.onclick = () => actions.decommission(btn.dataset.dec));
   $("closeMenu").onclick = () => actions.closeMenu();
   $("menuOverlay").classList.add("on");
 }

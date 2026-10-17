@@ -30,7 +30,10 @@ export const SKILLS = [
   { id:"faststart",   name:"Fast Start",       max:3, baseCost:5, desc:"−20% peaker spin-up / level" },
   { id:"efficiency",  name:"Efficiency Drive", max:3, baseCost:7, desc:"−10% demand growth / level" },
   { id:"battery",     name:"Battery Science",  max:3, baseCost:6, desc:"+20% battery capacity / level" },
+  { id:"servicemgr",  name:"Service Manager",  max:3, baseCost:8, desc:"auto-services worn plants (higher = sooner)" },
 ];
+// Condition threshold the Service Manager auto-services below, by owned level.
+const AUTO_SERVICE_AT = [0, 40, 55, 70];
 // Cost to buy the next level given how many are already owned.
 export function skillCost(skill, owned){ return skill.baseCost * (owned + 1); }
 
@@ -57,6 +60,7 @@ export function computeMods(skills = {}){
     startTimeMult:  Math.pow(0.80, lv("faststart")),
     peakGrowthMult: Math.pow(0.90, lv("efficiency")), // scales the growth *above* 1.0
     battMult:       1 + 0.20 * lv("battery"),
+    autoServiceAt:  AUTO_SERVICE_AT[lv("servicemgr")] || 0, // 0 = Service Manager not owned
   };
 }
 
