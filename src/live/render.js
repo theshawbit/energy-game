@@ -103,38 +103,74 @@ function updateUnits(S){
   }
 }
 
+const MONO = () => "10px " + css("--mono");
+function hexA(hex, a){
+  hex = hex.replace("#", ""); if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
+  const n = parseInt(hex, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+// Fill the region between lo(p) and hi(p) across segments where pred(p) holds.
+function fillBand(ctx, data, x, y, pred, lo, hi, color){
+  ctx.fillStyle = color;
+  for (let i = 1; i < data.length; i++){
+    const a = data[i - 1], b = data[i];
+    if (pred(a) || pred(b)){
+      ctx.beginPath();
+      ctx.moveTo(x(i - 1), y(lo(a))); ctx.lineTo(x(i), y(lo(b)));
+      ctx.lineTo(x(i), y(hi(b))); ctx.lineTo(x(i - 1), y(hi(a)));
+      ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
 function drawChart(S){
   const cv = $("chart"), ctx = cv.getContext("2d");
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = cv.clientWidth || 1100, h = 260;
+  const w = cv.clientWidth || 1100, h = 270;
   cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const padL = 42, padR = 10, padT = 10, padB = 18, W = w - padL - padR, H = h - padT - padB;
-  const n = S.hist.length;
-  let ymax = S.peak * 1.15;
-  S.hist.forEach(p => ymax = Math.max(ymax, p.d, p.c)); ymax = Math.ceil(ymax / 100) * 100;
-  const x = i => padL + (n <= 1 ? 0 : i / (260 - 1)) * W;
+  const padL = 46, padR = 58, padT = 14, padB = 22, W = w - padL - padR, H = h - padT - padB;
+  const hist = S.hist, n = hist.length, WINDOW = 260;
+  let ymax = S.peak * 1.12;
+  hist.forEach(p => ymax = Math.max(ymax, p.d, p.c)); ymax = Math.ceil(ymax / 100) * 100;
+  const x = i => padL + (i / (WINDOW - 1)) * W;
   const y = v => padT + H - (v / ymax) * H;
 
-  ctx.font = "10px monospace"; ctx.fillStyle = css("--faint"); ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  // recessive gridlines + y labels
+  ctx.font = MONO(); ctx.textAlign = "right"; ctx.textBaseline = "middle";
   for (let i = 0; i <= 4; i++){ const val = ymax * i / 4, yy = y(val);
-    ctx.strokeStyle = css("--line"); ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + W, yy); ctx.stroke();
-    ctx.fillStyle = css("--faint"); ctx.fillText(Math.round(val), padL - 5, yy); }
+    ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + W, yy); ctx.stroke();
+    ctx.fillStyle = css("--faint"); ctx.fillText(Math.round(val), padL - 6, yy); }
+  ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = css("--faint"); ctx.fillText("MW", padL - 40, padT - 2);
 
   if (n > 1){
-    // deficit shading where demand>capacity
-    for (let i = 1; i < n; i++){
-      const a = S.hist[i - 1], b = S.hist[i];
-      if (a.d > a.c || b.d > b.c){
-        ctx.fillStyle = "rgba(255,91,91,.28)";
-        ctx.beginPath(); ctx.moveTo(x(i - 1), y(a.c)); ctx.lineTo(x(i), y(b.c)); ctx.lineTo(x(i), y(b.d)); ctx.lineTo(x(i - 1), y(a.d)); ctx.closePath(); ctx.fill();
-      }
-    }
-    line(ctx, S.hist, x, y, "c", css("--accent"), 2); // capacity (amber)
-    line(ctx, S.hist, x, y, "d", "#fff", 2);           // demand (white)
+    // the margin, as status-colored bands between the two lines (the hero read):
+    fillBand(ctx, hist, x, y, p => p.c >= p.d, p => p.d, p => p.c, hexA(css("--good"), 0.14)); // reserve (surplus)
+    fillBand(ctx, hist, x, y, p => p.d > p.c, p => p.c, p => p.d, hexA(css("--bad"), 0.32));    // deficit
+
+    // peak reference — the demand ceiling you're climbing toward
+    const yp = y(S.peak);
+    ctx.strokeStyle = css("--faint"); ctx.setLineDash([3, 4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, yp); ctx.lineTo(padL + W, yp); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = css("--faint"); ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText("peak " + S.peak, padL + 2, yp - 2);
+
+    line(ctx, hist, x, y, "c", css("--accent"), 2); // capacity (amber)
+    line(ctx, hist, x, y, "d", "#fff", 2);           // demand (white)
+
+    // live "now" markers at the leading edge
+    const last = hist[n - 1], xn = x(n - 1);
+    nowDot(ctx, xn, y(last.c), css("--accent"), "cap " + Math.round(last.c));
+    nowDot(ctx, xn, y(last.d), "#fff", "dem " + Math.round(last.d));
+
+    // x-axis hour ticks from the stored clock
+    ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.textBaseline = "top";
+    const step = Math.max(1, Math.floor(n / 5));
+    for (let i = 0; i < n; i += step) ctx.fillText(String(Math.floor(hist[i].h)).padStart(2, "0") + "h", x(i), padT + H + 5);
   }
-  ctx.fillStyle = css("--faint"); ctx.textAlign = "left"; ctx.textBaseline = "top";
-  ctx.fillText("MW", padL - 38, padT - 2);
+}
+function nowDot(ctx, px, py, color, label){
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(px, py, 3, 0, 7); ctx.fill();
+  ctx.font = MONO(); ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = color;
+  ctx.fillText(label, px + 6, py);
 }
 function line(ctx, data, x, y, key, color, lw){
   ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
