@@ -48,8 +48,6 @@ export function render(S){
   updateUnits(S);
   drawChart(S);
 
-  $("startBtn").textContent = S.running ? "Shift live" : "Start shift";
-  $("startBtn").disabled = S.running;
   $("pauseBtn").textContent = S.paused ? "Resume" : "Pause";
 }
 
@@ -164,12 +162,12 @@ export function showEndGame(S, result, actions){
       <li><span>CO₂ emitted</span><span>${(S.co2Total / 1e3).toFixed(1)} kt</span></li>
     </ul>
     <div class="end-btns">
-      <button id="toSkills">Skills ⚡</button>
+      <button id="toHome">Home</button>
       <button class="btn-primary" id="again">Run it back ▸</button>
     </div>`;
   $("overlay").classList.add("on");
-  $("toSkills").onclick = actions.skills;
-  $("again").onclick = actions.restart;
+  $("toHome").onclick = actions.home;
+  $("again").onclick = actions.replay;
 }
 
 export function clearEndGame(){
@@ -194,13 +192,34 @@ export function renderMeta(profile, actions){
     <div class="meta-head"><span class="bank"><b>${profile.currency}</b> ⚡ banked</span>
       <span class="best">best: ${best.score || 0} pts · ${best.days || 0} days · ${best.peak || 0} MW</span></div>
     <div class="skill-list">${rows}</div>
-    <button class="btn-primary" id="startRun">Start run ▸</button>`;
+    <button class="btn-primary" id="metaBack">← Back</button>`;
   $("meta").querySelectorAll("[data-skill]").forEach(b => b.onclick = () => actions.buy(b.dataset.skill));
-  $("startRun").onclick = actions.start;
-  $("overlay").classList.remove("on");
+  $("metaBack").onclick = actions.back;
   $("metaOverlay").classList.add("on");
 }
 export function hideMeta(){ $("metaOverlay").classList.remove("on"); }
+
+// ---- home screen (the front door: start a run, open skills, how-to) ----
+export function renderHome(profile, actions){
+  const best = profile.best || {};
+  $("home").innerHTML = `
+    <h1 class="home-title">Grid Operator</h1>
+    <p class="home-tag">Keep a growing city powered in real time. Ride the evening peak. Don't go dark.</p>
+    <div class="home-stats">
+      <div><b>${profile.currency || 0}</b><small>⚡ banked</small></div>
+      <div><b>${best.score || 0}</b><small>best score</small></div>
+      <div><b>${best.days || 0}</b><small>best days</small></div>
+    </div>
+    <button class="btn-primary" id="homeStart">Start run ▸</button>
+    <div class="home-btns">
+      <button id="homeSkills">Skills ⚡</button>
+      <button id="homeHowto">How to play</button>
+    </div>`;
+  $("homeStart").onclick = actions.start;
+  $("homeSkills").onclick = actions.skills;
+  $("homeHowto").onclick = actions.howto;
+  $("homeOverlay").classList.add("on");
+}
 
 // ---- manage-grid menu (opens paused: build capacity + upgrade plants) ----
 export function renderMenu(S, actions){
