@@ -4,7 +4,7 @@
 // live, unpaused play.
 // ============================================================
 import { setTicker } from "./sim.js";
-import { CFG, BUILD, UPGRADE, upgradeCost, serviceCost, makeUnit } from "./config.js";
+import { CFG, BUILD, UPGRADE, upgradeCost, serviceCost, salvageValue, makeUnit } from "./config.js";
 
 export function toggleUnit(S, id){
   if (!S.running || S.paused || S.over) return;
@@ -63,5 +63,20 @@ export function serviceUnit(S, id){
   S.cash -= cost;
   u.status = "service"; u.serviceTimer = CFG.serviceTime;
   setTicker(S, `${u.name} pulled for service — back in ${CFG.serviceTime}h.`);
+  return { ok:true };
+}
+
+// Decommission a unit and recover salvage cash. Lets the player transition the
+// fleet mix (e.g. retire early coal for nuclear/peakers). The battery is kept
+// (the sim tracks a single battery), everything else can go.
+export function decommissionUnit(S, id){
+  if (S.over) return { ok:false };
+  const idx = S.fleet.findIndex(x => x.id === id);
+  if (idx < 0) return { ok:false };
+  const u = S.fleet[idx];
+  if (u.kind === "battery") return { ok:false, msg:"The battery can't be decommissioned." };
+  S.cash += salvageValue(u);
+  S.fleet.splice(idx, 1);
+  setTicker(S, `${u.name} decommissioned — ${u.cap} MW retired for salvage.`);
   return { ok:true };
 }
