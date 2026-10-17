@@ -69,12 +69,15 @@ export function scoreRun(S){
   const days = Math.max(0, S.day - 1);
   const uptime = (S.upAcc + S.downAcc) > 0 ? S.upAcc / (S.upAcc + S.downAcc) : 1;
   const milestones = (S.milestonesHit || []).length;
+  // Reward good operation — days survived, reliability (uptime), and milestones
+  // — over cash. Cash is a minor bonus so hoarding (or a lucky run) can't
+  // dominate the score the way a scarcity windfall once did.
   const score = Math.round(
-    days * 25 +
-    S.peak / 100 * 8 +
-    Math.max(0, S.cash) / 10000 * 3 +
-    uptime * 60 +
-    milestones * 20
+    days * 40 +
+    uptime * 110 +
+    milestones * 25 +
+    S.peak / 100 * 6 +
+    Math.max(0, S.cash) / 50000 * 4
   );
   return { score, days, uptime, milestones };
 }

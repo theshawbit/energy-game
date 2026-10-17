@@ -11,11 +11,19 @@ export const CFG = {
   startPeak: 780,             // MW peak demand, day 1
   startCash: 120000,          // $ on hand day 1, so the manage panel has an opening move
   peakGrowth: 1.06,           // demand growth per day survived
+  retailPrice: 62,            // $/MWh the city pays for SERVED energy. Revenue is retail×served,
+                              //   NOT the volatile wholesale clearing price — so a shortfall can
+                              //   never be a scarcity jackpot. Wholesale/carbon still drive costs.
   spinCost: 11,               // $/MW/h default to keep a thermal plant synced (per-unit `spin` overrides)
   fixedOM: 10,                // $/MW/h fixed operating cost on dispatchable capacity (renewables exempt; owning it costs money)
-  strainRate: 38,             // strain gained per second at 100% shortfall
+  unservedPenalty: 120,       // $/MWh extra penalty on unserved load (emergency purchases / fines)
+  strainRate: 52,             // strain gained per second at 100% shortfall
   strainRecover: 45,          // strain shed per second when covered
-  instantBlackout: 0.45,      // shortfall/demand above this = immediate blackout
+  instantBlackout: 0.42,      // only a catastrophic shortfall kills instantly; smaller ones
+                              //   fill the strain meter instead, giving a window to react
+                              //   (fire the battery, start peakers) — so deaths feel earned
+  satDrain: 40,               // satisfaction lost per second at 100% shortfall (chronic brownouts erode it)
+  satRecover: 1.5,            // satisfaction regained per second when fully covered (slow — mistakes linger)
   outageRamp: 0.10,           // trip rate grows this much per day survived
   battRecharge: 70,           // MW recharge rate when idle
   carbonStartDay: 3,          // carbon pricing kicks in after the opening days
@@ -80,7 +88,7 @@ export function makeFleet() {
     { id:"pk1",  name:"Peaker 1",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.009, recover:[1.5,3], startTime:1.6, key:"1" },
     { id:"pk2",  name:"Peaker 2",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.009, recover:[1.5,3], startTime:1.6, key:"2" },
     { id:"pk3",  name:"Peaker 3",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.009, recover:[1.5,3], startTime:1.6, key:"3" },
-    { id:"bat",  name:"Battery",   kind:"battery",tech:"battery", cap:120, mc:TECH.battery.mc, tier:1, condition:100, status:"off",    ctrl:true,  energy:240, maxEnergy:240, key:"B" },
+    { id:"bat",  name:"Battery",   kind:"battery",tech:"battery", cap:120, mc:TECH.battery.mc, tier:1, status:"off",    ctrl:true,  energy:240, maxEnergy:240, key:"B" },
   ];
 }
 

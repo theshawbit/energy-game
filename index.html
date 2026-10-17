@@ -20,7 +20,7 @@
       <div class="hstat"><span class="k">Day</span><span class="v" id="s-day">1</span></div>
       <div class="hstat"><span class="k">Clock</span><span class="v" id="s-clock">06:00</span></div>
       <div class="hstat"><span class="k">Cash</span><span class="v" id="s-cash">$0</span></div>
-      <div class="hstat"><span class="k">Price</span><span class="v" id="s-price">$0</span></div>
+      <div class="hstat"><span class="k">Wholesale</span><span class="v" id="s-price">$0</span></div>
       <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
       <div class="hstat"><span class="k">Carbon $/t</span><span class="v" id="s-carbon">$0</span></div>
       <div class="hstat"><span class="k">Satisfaction</span><span class="v" id="s-sat">100%</span></div>
@@ -92,13 +92,14 @@
     </ul>
     <h3>Failing</h3>
     <ul class="howto-list">
-      <li><b>Brownout</b> — a small shortfall: penalties, falling satisfaction, and a short window to recover.</li>
+      <li><b>Brownout</b> — a small shortfall: lost sales, fines, falling satisfaction, and a short window to recover.</li>
       <li><b>Blackout</b> — a big or sustained shortfall: the run ends.</li>
+      <li><b>Lost confidence</b> — let satisfaction fall to 0 (chronic brownouts) and the city pulls your licence.</li>
     </ul>
     <h3>FAQ</h3>
     <ul class="howto-list">
       <li><b>Why did a plant trip?</b> Plants fail at random — more often as days climb and as they wear down. Service them before they're critical.</li>
-      <li><b>What sets the price I earn?</b> A merit-order market: the clearing price is the running cost of the most expensive plant dispatched that moment. Cheap plants still earn it.</li>
+      <li><b>How do I earn?</b> You sell served power to the city at a stable retail price, so serving more load earns more — and a shortfall means lost sales, never a windfall. The <b>wholesale</b> price up top is a merit-order signal of what it costs you to run plants right now (carbon lifts it for dirty plants); keep your running costs under the retail price to profit.</li>
       <li><b>What's the carbon price?</b> From day 3 it rises, adding cost to fossil plants and eventually making gas cheaper to run than coal.</li>
       <li><b>Why is my cash falling when nothing's wrong?</b> Thermal plants (nuclear, coal, gas) have a fixed operating cost each hour, running or not — idle capacity bleeds money, so retire what you don't need in <b>Manage</b> for salvage. Solar and wind are cheap to own.</li>
       <li><b>What carries between runs?</b> Meta-currency (⚡) earned at the end of a run buys permanent <b>Skills</b>. Everything else resets.</li>
