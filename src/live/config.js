@@ -12,7 +12,7 @@ export const CFG = {
   startCash: 120000,          // $ on hand day 1, so the manage panel has an opening move
   peakGrowth: 1.06,           // demand growth per day survived
   spinCost: 11,               // $/MW/h default to keep a thermal plant synced (per-unit `spin` overrides)
-  fixedOM: 12,                // $/MW/h fixed operating cost on ALL installed capacity (owning it costs money)
+  fixedOM: 10,                // $/MW/h fixed operating cost on dispatchable capacity (renewables exempt; owning it costs money)
   strainRate: 38,             // strain gained per second at 100% shortfall
   strainRecover: 45,          // strain shed per second when covered
   instantBlackout: 0.45,      // shortfall/demand above this = immediate blackout

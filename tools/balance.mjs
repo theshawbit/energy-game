@@ -41,12 +41,13 @@ function manage(S){
 function runOne(){
   const S = createGame(SKILLS);
   S.running = true;
-  let playAcc = 0, manageAcc = 0;
+  let playAcc = 0, manageAcc = 0, minCash = S.cash;
   const DT = 0.05; // ~20 decision frames per real second
   let guard = 0;
   while (!S.over && guard < 2_000_000){
     guard++;
     const endedByStep = step(S, DT);
+    minCash = Math.min(minCash, S.cash);
     playAcc += DT; manageAcc += DT * (24 / 48); // manageAcc in game-hours
     if (playAcc >= 0.25){ playAcc = 0; play(S); }    // ~5× per real second
     if (manageAcc >= 6){ manageAcc = 0; manage(S); }  // 4× per in-game day
@@ -55,7 +56,7 @@ function runOne(){
   const cause = S.reason.includes("collapsed") ? "instant" : S.reason.includes("cascaded") ? "strain" : "other";
   const online = S.fleet.filter(u => (u.kind === "firm" || u.kind === "peaker") && u.status === "online").length;
   const tripped = S.fleet.filter(u => u.status === "tripped").length;
-  return { days: S.day - 1, peak: S.peak, cash: Math.round(S.cash), cause,
+  return { days: S.day - 1, peak: S.peak, cash: Math.round(S.cash), minCash: Math.round(minCash), cause,
            deathHour: Math.round(S.t), deathShort: Math.round((S.demand - S.capacity) / Math.max(1, S.demand) * 100), tripped, online };
 }
 
@@ -71,6 +72,7 @@ console.log(`days survived:  min ${days[0]}  p25 ${pct(0.25)}  median ${pct(0.5)
 console.log(`reached day:    ≥1 ${survN(1)}%   ≥3 ${survN(3)}%   ≥5 ${survN(5)}%   ≥8 ${survN(8)}%   ≥12 ${survN(12)}%`);
 console.log(`death cause:    ${Object.entries(causes).map(([k, v]) => `${k} ${Math.round(100 * v / RUNS)}%`).join("   ")}`);
 console.log(`end cash:       median $${(pct2(res.map(r => r.cash))).toLocaleString()}`);
+console.log(`min cash:       median $${(pct2(res.map(r => r.minCash))).toLocaleString()}   dipped <−$50k in ${Math.round(100 * res.filter(r => r.minCash < -50000).length / RUNS)}% of runs`);
 const dh = res.map(r => r.deathHour).sort((a, b) => a - b);
 console.log(`death hour:     p25 ${dh[Math.floor(.25*dh.length)]}h  median ${dh[Math.floor(.5*dh.length)]}h  p75 ${dh[Math.floor(.75*dh.length)]}h`);
 console.log(`at death:       median shortfall ${pct2(res.map(r => r.deathShort))}%  tripped plants ${pct2(res.map(r => r.tripped))}  avg online firm/peaker ${mean(res.map(r => r.online)).toFixed(1)}`);
