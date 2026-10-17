@@ -135,4 +135,24 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .sk-nm .pip.on{background:var(--accent);border-color:var(--accent)}
 .skill-row button{font-family:var(--mono);font-size:.76rem;white-space:nowrap}
 .modal.menu #startRun{width:100%;margin-top:16px}
+.modal.menu #metaBack{width:100%;margin-top:16px}
+
+/* home screen */
+.modal.home{max-width:460px;text-align:center}
+.home-title{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:2rem;margin:0}
+.home-tag{color:var(--muted);font-size:.9rem;margin:8px 0 18px}
+.home-stats{display:flex;justify-content:center;gap:18px;margin-bottom:20px}
+.home-stats div{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;padding:10px 16px;background:var(--panel-2);min-width:78px}
+.home-stats b{font-family:var(--mono);font-size:1.5rem;color:var(--accent)}
+.home-stats small{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-top:2px}
+.modal.home #homeStart{width:100%;font-size:1rem;padding:12px}
+.home-btns{display:flex;gap:8px;margin-top:10px}
+.home-btns button{flex:1}
+
+/* how-to / FAQ */
+.modal.howto{max-width:560px;text-align:left;max-height:82vh;overflow-y:auto}
+.modal.howto h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:.74rem;color:var(--muted);margin:16px 0 6px}
+.howto-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font-size:.84rem;color:var(--fg)}
+.howto-list b{color:var(--fg)}
+.modal.howto #howtoBack{width:100%;margin-top:18px}
 .unit .nm .mk{font-family:var(--mono);font-size:.64rem;color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:3px;vertical-align:middle}

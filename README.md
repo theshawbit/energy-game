@@ -14,7 +14,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 
 ## How to play (Live)
 
-1. **Press Start shift.** A live 24-hour clock runs (~48 real seconds per day); demand follows the daily curve toward the evening peak.
+1. **From the home screen, press Start run** (Skills and a How-to/FAQ live here too; you return here after each run). A live 24-hour clock runs (~48 real seconds per day); demand follows the daily curve toward the evening peak.
 2. **Keep capacity ≥ demand.** Baseload (nuclear, coal) and renewables (solar, wind — variable with time of day and weather) run automatically. Three gas **peakers** and a **battery** are yours to dispatch:
    - Click a reserve plant, or press <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> for peakers and <kbd>B</kbd> for the battery. <kbd>Space</kbd> pauses.
    - Peakers take ~1.6 h to spin up, so pre-arm them before the peak.
