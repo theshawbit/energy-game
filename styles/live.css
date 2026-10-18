@@ -26,6 +26,8 @@ header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px;border:1px s
 .hstat{display:flex;flex-direction:column;min-width:64px}
 .hstat .k{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
 .hstat .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:1.05rem;font-weight:600}
+.hstat .rd-sub{font-size:.62rem;font-weight:500;color:var(--accent)}
+.hdiv{align-self:stretch;width:1px;background:var(--line);margin:2px 0}
 
 .grid{display:grid;grid-template-columns:1fr 360px;gap:14px;align-items:start}
 @media (max-width:880px){.grid{grid-template-columns:1fr}}

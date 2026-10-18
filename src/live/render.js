@@ -24,6 +24,11 @@ export function render(S){
   $("s-clock").textContent = clock(S.t);
   $("s-cash").textContent = money(S.cash);
   $("s-cash").style.color = S.cash < 0 ? css("--bad") : css("--fg");
+  // research points + live R&D funding rate (so the lever is legible without pausing)
+  $("s-rp").childNodes[0].nodeValue = Math.floor(S.rp || 0) + " ";
+  const funding = (S.rdFunding || 0) > 0;
+  $("s-rdsub").textContent = funding ? `+${((S.rdFunding || 0) * CFG.rpPerDollar).toFixed(1)}/h` : "";
+  $("s-rp").style.color = funding ? css("--accent") : css("--fg");
   $("s-price").textContent = "$" + Math.round(S.price);
   $("s-sat").textContent = Math.round(S.satisfaction) + "%";
   $("s-sat").style.color = S.satisfaction > 70 ? css("--good") : S.satisfaction > 40 ? css("--warn") : css("--bad");
