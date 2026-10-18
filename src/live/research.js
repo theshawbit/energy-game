@@ -23,9 +23,17 @@ export const RESEARCH = [
     desc:"Every Mk upgrade adds +10% more capacity" },
   { id:"buff-wear",    branch:"transmission", label:"Condition Monitoring", rpCost:50, prereq:[], metaGate:null,
     desc:"−15% plant wear while generating" },
-  // generation (builds unlocked in B4)
+  { id:"grid-efficiency", branch:"transmission", label:"Grid Efficiency", rpCost:65, prereq:[], metaGate:null,
+    desc:"−15% thermal standby (spin) cost" },
+  { id:"fast-ramp",       branch:"transmission", label:"Fast Ramp", rpCost:55, prereq:[], metaGate:null,
+    desc:"−20% peaker spin-up time" },
+  // generation — each unlocks a buildable clean/abated plant
   { id:"unlock-smr",   branch:"generation",   label:"Small Modular Reactor", rpCost:80, prereq:[], metaGate:null,
     desc:"Unlocks building SMRs (clean firm baseload)" },
+  { id:"unlock-geo",   branch:"generation",   label:"Geothermal Drilling", rpCost:75, prereq:[], metaGate:null,
+    desc:"Unlocks building Geothermal (clean cheap baseload)" },
+  { id:"unlock-ccs",   branch:"generation",   label:"Carbon Capture", rpCost:95, prereq:[], metaGate:null,
+    desc:"Unlocks Coal+CCS and Gas+CCS (beat the carbon price)" },
   // storage — buffs every battery
   { id:"storage-power",    branch:"storage", label:"High-Power Inverters", rpCost:55, prereq:[], metaGate:null,
     desc:"+30% discharge power on all batteries" },
@@ -75,7 +83,11 @@ export function computeResearchMods(research = {}){
   return {
     wearMult:        has("buff-wear")    ? 0.85 : 1,   // multiplies CFG.wearRate
     upgradeCapBonus: has("amp-upgrades") ? 0.10 : 0,   // added to UPGRADE.capMult−1
-    smrUnlocked:     has("unlock-smr"),                // gates the SMR build (Phase B)
+    spinMult:        has("grid-efficiency") ? 0.85 : 1,// multiplies thermal spin cost
+    startTimeMult:   has("fast-ramp")    ? 0.80 : 1,   // multiplies peaker spin-up time
+    smrUnlocked:     has("unlock-smr"),                // build gates (see config.BUILD_GATE)
+    geoUnlocked:     has("unlock-geo"),
+    ccsUnlocked:     has("unlock-ccs"),
     battCapMult:      has("storage-power")    ? 1.30 : 1,  // battery discharge power
     battEnergyMult:   has("storage-depth")    ? 1.50 : 1,  // battery stored-energy depth
     battRechargeMult: has("storage-recharge") ? 1.50 : 1,  // battery recharge rate

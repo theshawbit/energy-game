@@ -65,8 +65,34 @@ export const BUILD = {
   nuclear: { label:"Nuclear",    mw:100, cost:220000 },
   coal:    { label:"Coal",       mw:60,  cost:70000 },
   peaker:  { label:"Peaker",     mw:55,  cost:45000 },
+  // ---- v3 advanced generation: buildable only once their research unlocks them ----
+  smr:      { label:"SMR",       mw:90,  cost:240000 },
+  geo:      { label:"Geothermal",mw:80,  cost:180000 },
+  ccs_coal: { label:"Coal + CCS",mw:80,  cost:150000 },
+  ccs_gas:  { label:"Gas + CCS", mw:90,  cost:130000 },
 };
-export const BUILD_ORDER = ["solar", "wind", "battery", "coal", "peaker", "nuclear"];
+export const BUILD_ORDER = ["solar", "wind", "battery", "coal", "peaker", "nuclear", "smr", "geo", "ccs_coal", "ccs_gas"];
+
+// Build gates: a tech here can only be built once the named research mod is set
+// (see research.computeResearchMods). Techs absent from this map are always
+// buildable. CCS (coal & gas) shares one unlock.
+export const BUILD_GATE = {
+  smr:      "smrUnlocked",
+  geo:      "geoUnlocked",
+  ccs_coal: "ccsUnlocked",
+  ccs_gas:  "ccsUnlocked",
+};
+
+// Per-tech firm-plant operating params for units built mid-run (spin $/MW/h,
+// per-second trip rate, and the [min,max] game-hours to recover from a trip).
+const FIRM_PARAMS = {
+  nuclear:  { spin:2, fail:0.006, recover:[5, 9] },
+  smr:      { spin:2, fail:0.006, recover:[5, 9] },
+  geo:      { spin:3, fail:0.007, recover:[3, 6] },
+  coal:     { spin:4, fail:0.013, recover:[1.5, 3] },
+  ccs_coal: { spin:4, fail:0.013, recover:[1.5, 3] },
+  ccs_gas:  { spin:4, fail:0.011, recover:[1.5, 3] },
+};
 
 // ---- upgrade tiers (Mk I→II→III): capacity up, trips down, standby cost down ----
 export const UPGRADE = {
@@ -110,7 +136,7 @@ export function makeUnit(tech, n, seq){
   if (kind === "firm" || kind === "peaker") u.condition = 100; // mechanical plants wear & can be serviced
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
   if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
-  if (kind === "firm"){ u.spin = tech === "nuclear" ? 2 : 4; u.fail = tech === "nuclear" ? 0.006 : 0.013; u.recover = tech === "nuclear" ? [5, 9] : [1.5, 3]; }
+  if (kind === "firm"){ const p = FIRM_PARAMS[tech] || FIRM_PARAMS.coal; u.spin = p.spin; u.fail = p.fail; u.recover = [...p.recover]; }
   if (kind === "peaker"){ u.spin = 11; u.fail = 0.009; u.recover = [1.5, 3]; u.startTime = 1.6; }
   return u;
 }

@@ -4,7 +4,7 @@
 // live, unpaused play.
 // ============================================================
 import { setTicker } from "./sim.js";
-import { CFG, BUILD, UPGRADE, upgradeCost, serviceCost, salvageValue, makeUnit } from "./config.js";
+import { CFG, BUILD, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue, makeUnit } from "./config.js";
 import { doResearch, researchById } from "./research.js";
 
 export function toggleUnit(S, id){
@@ -15,7 +15,7 @@ export function toggleUnit(S, id){
     else if (u.energy > 1) u.status = "discharge";
     else setTicker(S, "Battery depleted — needs surplus capacity to recharge.");
   } else { // peaker
-    if (u.status === "off"){ u.status = "starting"; u.startTimer = u.startTime * (S.mods?.startTimeMult ?? 1); }
+    if (u.status === "off"){ u.status = "starting"; u.startTimer = u.startTime * (S.mods?.startTimeMult ?? 1) * (S.rmods?.startTimeMult ?? 1); }
     else if (u.status === "online" || u.status === "starting") u.status = "off";
   }
 }
@@ -26,6 +26,8 @@ export function buildCapacity(S, tech){
   if (S.over) return { ok:false, msg:"Run is over." };
   const b = BUILD[tech];
   if (!b) return { ok:false, msg:"That can't be built." };
+  const gate = BUILD_GATE[tech];
+  if (gate && !(S.rmods?.[gate])) return { ok:false, msg:`${b.label} needs research before you can build it.` };
   if (S.cash < b.cost) return { ok:false, msg:"Not enough cash to build that." };
   S.cash -= b.cost;
   // monotonic per-tech number so a build after a sell can't reuse a label

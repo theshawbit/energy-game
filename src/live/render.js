@@ -4,7 +4,7 @@
 // (onToggle, onRestart), so this file imports no action logic.
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
-import { CFG, BUILD, BUILD_ORDER, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
+import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
 import { SKILLS, skillCost, MILESTONES } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 
@@ -277,8 +277,10 @@ export function renderHome(profile, actions){
 // ---- manage-grid menu (opens paused: build capacity + upgrade plants) ----
 export function renderMenu(S, actions){
   const buildBtns = BUILD_ORDER.filter(t => BUILD[t]).map(t => {
-    const b = BUILD[t], can = S.cash >= b.cost;
-    return `<button data-build="${t}" ${can ? "" : "disabled"}>+${b.mw} MW ${b.label}<span class="c">${money(b.cost)}</span></button>`;
+    const b = BUILD[t], gate = BUILD_GATE[t], locked = gate && !(S.rmods?.[gate]);
+    const can = !locked && S.cash >= b.cost;
+    const right = locked ? `<span class="c lock">🔒 research</span>` : `<span class="c">${money(b.cost)}</span>`;
+    return `<button data-build="${t}" ${can ? "" : "disabled"}>+${b.mw} MW ${b.label}${right}</button>`;
   }).join("");
   const upRows = S.fleet.map(u => {
     const tier = u.tier || 1, max = tier >= UPGRADE.maxTier, uCost = upgradeCost(tier), canUp = !max && S.cash >= uCost;
