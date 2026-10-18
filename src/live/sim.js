@@ -12,6 +12,7 @@ import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, serviceCost } from "./config.js";
 import { computeMods, effPeakGrowth, newMilestones } from "./meta.js";
 import { computeResearchMods } from "./research.js";
+import { computeMutatorMods } from "./mutators.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -23,7 +24,9 @@ export function interp(arr, t){
   return arr[i] * (1 - f) + arr[(i + 1) % 24] * f;
 }
 
-export function createGame(skills = {}, researchUnlocked = {}){
+// `mutators` is the rolled per-run mutator id list — supplied by the caller
+// (main.js rolls it at run start) so createGame itself stays deterministic.
+export function createGame(skills = {}, researchUnlocked = {}, mutators = []){
   const mods = computeMods(skills);
   const fleet = makeFleet();
   // monotonic per-tech counter for naming built units, so numbers are never
@@ -43,6 +46,7 @@ export function createGame(skills = {}, researchUnlocked = {}){
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
     rp:0, rdFunding:0, research:{}, rmods:computeResearchMods({}), // in-run research (v3)
     researchUnlocked: { ...researchUnlocked },                     // meta-unlocked branches (read-only this run)
+    mutators: [...mutators], mmods:computeMutatorMods(mutators),   // per-run mutators (v3)
     fleet, techCount, weather:freshWeather(), buildSeq:1,
     demand:0, capacity:0, price:0, brownout:false,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
@@ -85,7 +89,12 @@ export function tripHazard(u, diff){
 
 // ---- capacity accounting ----
 export function unitOutput(S, u){
-  if (u.kind === "renew") return u.cap * interp(u.cf, S.t) * (u.id === "sol" ? S.weather.sun : S.weather.wind);
+  if (u.kind === "renew"){
+    const solar = u.tech === "solar"; // by tech, so BUILT solar/wind pick the right weather+mutator
+    const wx  = solar ? S.weather.sun : S.weather.wind;
+    const mut = solar ? (S.mmods?.cfMult?.sun ?? 1) : (S.mmods?.cfMult?.wind ?? 1);
+    return u.cap * interp(u.cf, S.t) * wx * mut;
+  }
   if (u.kind === "battery") return (u.status === "discharge" && u.energy > 0) ? u.cap * (S.rmods?.battCapMult ?? 1) : 0;
   return u.status === "online" ? u.cap : 0; // firm / peaker
 }
@@ -135,16 +144,16 @@ export function step(S, dt){
     }
   }
 
-  // demand (daily shape, scaled to current peak), then shaved by demand-response
-  // research — the first demand-SIDE lever (research reduces load, not just supply).
-  S.demand = S.peak * interp(DEMAND_SHAPE, S.t) * (1 - (S.rmods?.demandShave ?? 0));
+  // demand: daily shape × peak, lifted by mutators (heat wave / cold snap), then
+  // shaved by demand-response research (the demand-SIDE lever).
+  S.demand = S.peak * interp(DEMAND_SHAPE, S.t) * (S.mmods?.demandMult ?? 1) * (1 - (S.rmods?.demandShave ?? 0));
   S.capacity = totalCapacity(S);
 
   // economics — clear the hour through the shared, verified merit-order engine.
   // Aggregate every unit's available MW (0 when off/tripped) into per-tech supply.
   const avail = {};
   for (const u of S.fleet) avail[u.tech] = (avail[u.tech] || 0) + unitOutput(S, u);
-  const hr = dispatchHour(avail, S.demand, S.carbon, 1); // carbon price re-sorts the merit order; fuel-mult hook reserved
+  const hr = dispatchHour(avail, S.demand, S.carbon, S.mmods?.fuelMult ?? 1); // carbon + mutator fuel spike re-sort the merit order
   S.price = hr.price;
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
   S.co2Total += hr.emissions * dtH;                           // run total, tCO₂ (emissions is tCO₂/h)

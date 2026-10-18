@@ -5,6 +5,7 @@ import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHa
 import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit } from "../src/live/actions.js";
 import { CFG, UPGRADE, upgradeCost, serviceCost, salvageValue } from "../src/live/config.js";
 import { computeResearchMods } from "../src/live/research.js";
+import { computeMutatorMods } from "../src/live/mutators.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -315,6 +316,40 @@ check("fast-ramp cuts peaker spin-up 20%", near(t2, t1 * 0.80, 1e-9), `${t1.toFi
   const unlocks = { storage: true };
   const g = createGame({}, unlocks);
   check("createGame copies researchUnlocked onto state", g.researchUnlocked.storage === true && g.researchUnlocked !== unlocks);
+}
+
+// ---- D1: per-run mutators folded into the sim ----
+
+// 38) createGame is deterministic: no mutators by default; stores & derives what's passed
+{
+  const plain = createGame();
+  check("createGame defaults to no mutators (deterministic)", plain.mutators.length === 0 && plain.mmods.demandMult === 1);
+  const g = createGame({}, {}, ["heatwave"]);
+  check("createGame stores passed mutators and derives mmods", g.mutators.join() === "heatwave" && g.mmods.demandMult === CFG.mut.heatwave && g.mutators !== undefined);
+}
+
+// 39) A heat-wave mutator lifts live demand
+{
+  const A = createGame(); A.mmods = computeMutatorMods([]); A.t = 18; step(A, 0.01); const dBase = A.demand;
+  const B = createGame(); B.mmods = computeMutatorMods(["heatwave"]); B.t = 18; step(B, 0.01); const dHot = B.demand;
+  check("heat wave raises demand ~18%", near(dHot, dBase * CFG.mut.heatwave, 1), `${dBase.toFixed(0)} → ${dHot.toFixed(0)} MW`);
+}
+
+// 40) A renewable lull cuts solar & wind output
+{
+  S = createGame(); S.t = 12; S.weather = { sun: 1, wind: 1 }; S.mmods = computeMutatorMods([]);
+  const sol = S.fleet.find(u => u.id === "sol"), wnd = S.fleet.find(u => u.id === "wnd");
+  const solBase = unitOutput(S, sol), wndBase = unitOutput(S, wnd);
+  S.mmods = computeMutatorMods(["renewable-lull"]);
+  check("renewable lull derates solar & wind", near(unitOutput(S, sol), solBase * CFG.mut.lull, 1e-6) && near(unitOutput(S, wnd), wndBase * CFG.mut.lull, 1e-6));
+}
+
+// 41) BUILT solar uses solar weather (tech-based), not wind — the latent id==="sol" fix
+{
+  S = createGame(); S.cash = 1e9; S.t = 12; S.weather = { sun: 1, wind: 0 };
+  buildCapacity(S, "solar");
+  const builtSolar = S.fleet.find(u => u.tech === "solar" && u.id !== "sol");
+  check("a built solar farm follows sun weather, not wind", unitOutput(S, builtSolar) > 0, `${unitOutput(S, builtSolar).toFixed(0)} MW at sun=1,wind=0`);
 }
 
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);

@@ -36,6 +36,16 @@ export const CFG = {
   // ---- research / R&D lab (v3) ----
   rpPerDollar: 0.0015,        // Research Points earned per $ diverted into R&D
   rdFundingMax: 20000,        // $/game-hour cap on R&D funding (conservative; tuned in Phase F)
+  // ---- per-run mutators (v3) — magnitudes live here so balance is central ----
+  mut: {
+    minRoll: 1,               // fewest mutators a run rolls
+    maxRoll: 2,               // most mutators a run rolls
+    fuelSpike: 1.5,           // gas fuel-price multiplier (re-sorts the merit order)
+    heatwave: 1.18,           // demand multiplier (air-con all day)
+    coldSnap: 1.12,           // demand multiplier (heating load)
+    drought: 0.6,             // wind capacity-factor multiplier
+    lull: 0.55,               // solar AND wind capacity-factor multiplier
+  },
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and
