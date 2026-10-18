@@ -1,5 +1,9 @@
 # Grid Operator v3 — Design & Roadmap
 
+> **Status: shipped** (2026-10-18). All of this is implemented and merged; see the
+> README for how it plays. The one deferred item is the juice pass (§6). The
+> phase-by-phase build is in [PLAN-v3.md](PLAN-v3.md).
+
 **Theme:** The real-time grid-balancing roguelike grows a brain. v2 proved the core
 loop is tense and fun; v3 adds **strategic depth and run-to-run variety** on top of
 it. The headline is a live **research tech tree** — you decide, mid-run, how to bend
