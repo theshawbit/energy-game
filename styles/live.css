@@ -118,6 +118,18 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .up-row button.dec{border-color:#4a2a22;color:#e8926b}
 .up-row button.dec:hover:not(:disabled){border-color:#e8926b;color:#fff}
 .svc-note{font-family:var(--mono);font-size:.74rem;color:#7fb8ff;margin:0 0 6px}
+/* research & R&D (v3) */
+.rd-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-family:var(--mono);font-size:.8rem;color:var(--muted);margin-top:4px}
+.rd-head .rd-bank b{color:var(--accent);font-size:1.1rem}
+.rd-head #rdReadout b{color:var(--good)}
+.rd-slider{width:100%;margin:8px 0 10px;accent-color:var(--accent);cursor:pointer}
+.rs-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto}
+.rs-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:9px;padding:6px 10px;background:var(--panel-2)}
+.rs-row.done{opacity:.6}
+.rs-nm{font-size:.82rem;font-weight:600}
+.rs-nm small{color:var(--faint);font-family:var(--mono);font-weight:400}
+.rs-row button{font-family:var(--mono);font-size:.74rem;white-space:nowrap}
+.rs-row button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line);color:var(--muted)}
 .modal.menu #closeMenu{width:100%;margin-top:16px}
 
 /* end-of-run score + currency */

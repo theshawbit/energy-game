@@ -4,8 +4,9 @@
 // (onToggle, onRestart), so this file imports no action logic.
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
-import { BUILD, BUILD_ORDER, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
+import { CFG, BUILD, BUILD_ORDER, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
 import { SKILLS, skillCost, MILESTONES } from "./meta.js";
+import { RESEARCH, canResearch } from "./research.js";
 
 const $ = id => document.getElementById(id);
 // Theme tokens are static (single committed dark theme), so read each once and
@@ -294,6 +295,22 @@ export function renderMenu(S, actions){
   }).join("");
   const svcNote = S.mods?.autoServiceAt
     ? `<p class="svc-note">⚙ Service Manager active — auto-servicing worn plants below ${S.mods.autoServiceAt}%.</p>` : "";
+  // ---- research section (v3): RP readout, R&D funding lever, node list ----
+  const rpRate = (S.rdFunding || 0) * CFG.rpPerDollar;
+  const rsRows = RESEARCH.map(n => {
+    const owned = !!S.research?.[n.id], can = canResearch(S, n.id);
+    const locked = n.metaGate && !(S.researchUnlocked?.[n.metaGate]);
+    const btn = owned ? `<button disabled>Researched</button>`
+      : locked ? `<button disabled>Locked</button>`
+      : `<button data-research="${n.id}" ${can ? "" : "disabled"}>${n.rpCost} RP</button>`;
+    return `<div class="rs-row ${owned ? "done" : ""}"><span class="rs-nm">${n.label}<br><small>${n.desc}</small></span>${btn}</div>`;
+  }).join("");
+  const research = `
+    <h3>Research &amp; R&amp;D <small>divert cash into Research Points</small></h3>
+    <div class="rd-head"><span class="rd-bank"><b>${Math.floor(S.rp || 0)}</b> RP banked</span>
+      <span id="rdReadout">R&amp;D funding <b>${money(S.rdFunding || 0)}</b>/h → +${rpRate.toFixed(1)} RP/h</span></div>
+    <input type="range" id="rdFunding" class="rd-slider" min="0" max="${CFG.rdFundingMax}" step="500" value="${S.rdFunding || 0}">
+    <div class="rs-list">${rsRows}</div>`;
   $("menu").innerHTML = `
     <h2>Manage grid</h2>
     <p>Clock paused. Build capacity and upgrade plants, then resume the shift.</p>
@@ -303,11 +320,19 @@ export function renderMenu(S, actions){
     <h3>Upgrade &amp; fleet <small>capacity ↑ · trips ↓ · standby cost ↓ · or sell to retire</small></h3>
     ${svcNote}
     <div class="up-list">${upRows}</div>
+    ${research}
     <button class="btn-primary" id="closeMenu">Resume shift ▸</button>`;
   $("menu").querySelectorAll("[data-build]").forEach(btn => btn.onclick = () => actions.build(btn.dataset.build));
   $("menu").querySelectorAll("[data-up]").forEach(btn => btn.onclick = () => actions.upgrade(btn.dataset.up));
   $("menu").querySelectorAll("[data-svc]").forEach(btn => btn.onclick = () => actions.service(btn.dataset.svc));
   $("menu").querySelectorAll("[data-dec]").forEach(btn => btn.onclick = () => actions.decommission(btn.dataset.dec));
+  $("menu").querySelectorAll("[data-research]").forEach(btn => btn.onclick = () => actions.research(btn.dataset.research));
+  const rd = $("rdFunding");
+  if (rd) rd.oninput = () => {
+    const v = Number(rd.value);
+    actions.setFunding(v); // persist to state
+    $("rdReadout").innerHTML = `R&amp;D funding <b>${money(v)}</b>/h → +${(v * CFG.rpPerDollar).toFixed(1)} RP/h`;
+  };
   $("closeMenu").onclick = () => actions.closeMenu();
   $("menuOverlay").classList.add("on");
 }
