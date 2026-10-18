@@ -152,48 +152,74 @@ function drawChart(S){
   if (cv.width !== bw || cv.height !== bh){ cv.width = bw; cv.height = bh; } // realloc backing store only on resize
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const padL = 46, padR = 58, padT = 14, padB = 22, W = w - padL - padR, H = h - padT - padB;
+  // generous pads: left for y labels + "MW", right for the leading "now" readouts,
+  // bottom for the hour axis so x labels never collide with the baseline y label.
+  const padL = 52, padR = 66, padT = 20, padB = 30, W = w - padL - padR, H = h - padT - padB;
   const hist = S.hist, n = hist.length, WINDOW = 260;
   let ymax = S.peak * 1.12;
   hist.forEach(p => ymax = Math.max(ymax, p.d, p.c)); ymax = Math.ceil(ymax / 100) * 100;
   const x = i => padL + (i / (WINDOW - 1)) * W;
   const y = v => padT + H - (v / ymax) * H;
 
-  // recessive gridlines + y labels
-  ctx.font = MONO(); ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  // y unit, top-left above the axis
+  ctx.font = MONO(); ctx.fillStyle = css("--faint");
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText("MW", 4, padT - 7);
+
+  // recessive gridlines + right-aligned y labels
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
   for (let i = 0; i <= 4; i++){ const val = ymax * i / 4, yy = y(val);
     ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + W, yy); ctx.stroke();
-    ctx.fillStyle = css("--faint"); ctx.fillText(Math.round(val), padL - 6, yy); }
-  ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = css("--faint"); ctx.fillText("MW", padL - 40, padT - 2);
+    ctx.fillStyle = css("--faint"); ctx.fillText(Math.round(val), padL - 8, yy); }
+
+  // axis lines (left + baseline) for structure
+  ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1; ctx.beginPath();
+  ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + H); ctx.lineTo(padL + W, padT + H); ctx.stroke();
 
   if (n > 1){
     // the margin, as status-colored bands between the two lines (the hero read):
     fillBands(ctx, hist, x, y, hexA(css("--good"), 0.14), hexA(css("--bad"), 0.32));
 
-    // peak reference — the demand ceiling you're climbing toward
+    // peak reference — the demand ceiling you're climbing toward (label at left, clear of the leading edge)
     const yp = y(S.peak);
     ctx.strokeStyle = css("--faint"); ctx.setLineDash([3, 4]); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(padL, yp); ctx.lineTo(padL + W, yp); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = css("--faint"); ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText("peak " + S.peak, padL + 2, yp - 2);
+    ctx.fillStyle = css("--faint"); ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText("peak " + S.peak, padL + 3, yp - 3);
 
     line(ctx, hist, x, y, "c", css("--accent"), 2); // capacity (amber)
     line(ctx, hist, x, y, "d", "#fff", 2);           // demand (white)
 
-    // live "now" markers at the leading edge
+    // live "now" markers at the leading edge, nudged apart if they'd overlap
     const last = hist[n - 1], xn = x(n - 1);
-    nowDot(ctx, xn, y(last.c), css("--accent"), "cap " + Math.round(last.c));
-    nowDot(ctx, xn, y(last.d), "#fff", "dem " + Math.round(last.d));
+    let yc = y(last.c), yd = y(last.d);
+    if (Math.abs(yc - yd) < 12){ const mid = (yc + yd) / 2; yc = mid + 7; yd = mid - 7; } // keep both labels legible
+    nowDot(ctx, xn, y(last.d), yd, "#fff", "dem " + Math.round(last.d), w - padR);
+    nowDot(ctx, xn, y(last.c), yc, css("--accent"), "cap " + Math.round(last.c), w - padR);
 
-    // x-axis hour ticks from the stored clock
-    ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.textBaseline = "top";
-    const step = Math.max(1, Math.floor(n / 5));
-    for (let i = 0; i < n; i += step) ctx.fillText(String(Math.floor(hist[i].h)).padStart(2, "0") + "h", x(i), padT + H + 5);
+    // x-axis hour ticks — spaced by PIXELS across the filled range (not by sample
+    // index, which bunches them left while the buffer fills) and de-duped so a
+    // sub-hour span doesn't print the same hour several times.
+    ctx.fillStyle = css("--faint"); ctx.textBaseline = "top";
+    const xEnd = x(n - 1), filledW = Math.max(1, xEnd - padL);
+    const ticks = Math.max(1, Math.min(6, Math.floor(filledW / 54)));
+    let lastLabel = null;
+    for (let k = 0; k <= ticks; k++){
+      const idx = Math.round((k / ticks) * (n - 1)), px = x(idx);
+      const label = String(Math.floor(hist[idx].h)).padStart(2, "0") + "h";
+      if (label === lastLabel) continue; // don't repeat an hour within a sub-hour span
+      lastLabel = label;
+      ctx.textAlign = px <= padL + 6 ? "left" : (px >= xEnd - 6 ? "right" : "center");
+      ctx.fillText(label, px, padT + H + 7);
+    }
+    ctx.textAlign = "right"; ctx.fillStyle = css("--faint"); ctx.fillText("hour", padL + W, padT + H + 18);
   }
 }
-function nowDot(ctx, px, py, color, label){
-  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(px, py, 3, 0, 7); ctx.fill();
-  ctx.font = MONO(); ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = color;
-  ctx.fillText(label, px + 6, py);
+// dotY lets the label sit at a nudged y while the dot stays on the true value.
+function nowDot(ctx, px, dotY, labelY, color, label, maxRight){
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(px, dotY, 3, 0, 7); ctx.fill();
+  ctx.font = MONO(); ctx.textBaseline = "middle"; ctx.fillStyle = color;
+  // keep the label inside the canvas (right-align it if it'd run off the edge)
+  if (maxRight != null && px + 6 + ctx.measureText(label).width > maxRight){ ctx.textAlign = "right"; ctx.fillText(label, px - 6, labelY); }
+  else { ctx.textAlign = "left"; ctx.fillText(label, px + 6, labelY); }
 }
 function line(ctx, data, x, y, key, color, lw){
   ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
