@@ -207,5 +207,41 @@ S.rdFunding = 8000; const rpBefore = S.rp;
 step(S, 1.0);
 check("step accrues RP from R&D funding", S.rp > rpBefore, `+${(S.rp - rpBefore).toFixed(1)} RP`);
 
+// ---- v3 multi-storage (B2): the single-battery assumption is lifted ----
+
+// 27) Batteries are buildable now, and a built one is a proper storage unit
+S = createGame();
+const nBat0 = S.fleet.filter(u => u.kind === "battery").length;
+let bres = buildCapacity(S, "battery");
+check("battery is buildable from the catalogue", bres.ok && S.fleet.filter(u => u.kind === "battery").length === nBat0 + 1);
+const built2 = S.fleet[S.fleet.length - 1];
+check("built battery is storage: off, controllable, no condition, has energy",
+  built2.kind === "battery" && built2.status === "off" && built2.ctrl === true && built2.condition == null && built2.maxEnergy > 0 && built2.energy === built2.maxEnergy,
+  `${built2.energy}/${built2.maxEnergy} MWh`);
+
+// 28) Two discharging batteries drain in proportion to stored energy, none below 0
+S = createGame(); S.running = true;
+buildCapacity(S, "battery");
+const bats = S.fleet.filter(u => u.kind === "battery");
+S.t = 0; // midnight: no solar
+for (const u of S.fleet){ if (u.kind !== "battery"){ if (u.kind === "renew") u.cap = 0; else u.status = "off"; } } // batteries are the only dispatchable supply
+bats[0].status = "discharge"; bats[0].energy = 100;
+bats[1].status = "discharge"; bats[1].energy = 200;
+const e0 = bats[0].energy, e1 = bats[1].energy;
+step(S, 0.5);
+const d0 = e0 - bats[0].energy, d1 = e1 - bats[1].energy;
+check("both batteries discharged and neither went negative", d0 > 0 && d1 > 0 && bats[0].energy >= 0 && bats[1].energy >= 0,
+  `drained ${d0.toFixed(1)} / ${d1.toFixed(1)} MWh`);
+check("drain splits in proportion to stored energy (100:200 → 1:2)", near(d1 / d0, e1 / e0, 0.02), (d1 / d0).toFixed(3) + "×");
+
+// 29) Decommission a battery when there are two; refuse the last one
+S = createGame(); buildCapacity(S, "battery");
+const firstBat = S.fleet.find(u => u.kind === "battery");
+let dr = decommissionUnit(S, firstBat.id);
+check("a battery can be decommissioned when another remains", dr.ok && S.fleet.filter(u => u.kind === "battery").length === 1);
+const lastBat = S.fleet.find(u => u.kind === "battery");
+dr = decommissionUnit(S, lastBat.id);
+check("the last battery can't be decommissioned", !dr.ok && S.fleet.some(u => u.kind === "battery"));
+
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

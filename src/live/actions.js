@@ -78,7 +78,8 @@ export function decommissionUnit(S, id){
   const idx = S.fleet.findIndex(x => x.id === id);
   if (idx < 0) return { ok:false };
   const u = S.fleet[idx];
-  if (u.kind === "battery") return { ok:false, msg:"The battery can't be decommissioned." };
+  if (u.kind === "battery" && S.fleet.filter(x => x.kind === "battery").length <= 1)
+    return { ok:false, msg:"Can't retire your last battery." };
   S.cash += salvageValue(u);
   S.fleet.splice(idx, 1);
   setTicker(S, `${u.name} decommissioned — ${u.cap} MW retired for salvage.`);

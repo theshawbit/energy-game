@@ -159,16 +159,26 @@ export function step(S, dt){
   const revenue = CFG.retailPrice * hr.served;
   S.cash += (revenue - hr.varCost - spin - fixedOM) * dtH; // unserved load earns nothing
 
-  // battery: drain only by the MW the market actually dispatched this tick; otherwise
-  // recharge from genuine surplus, bought at the clearing price (free at a $0 price)
-  const bat = S.fleet.find(u => u.id === "bat");
-  if (bat.status === "discharge"){
-    bat.energy = Math.max(0, bat.energy - hr.stack.battery * dtH);
-    if (bat.energy <= 0){ bat.status = "off"; setTicker(S, "Battery depleted."); }
-  } else if (bat.status !== "service" && bat.energy < bat.maxEnergy){
-    const surplus = Math.max(0, S.capacity - S.demand);
-    const add = Math.min(CFG.battRecharge * dtH, surplus * dtH, bat.maxEnergy - bat.energy);
-    if (add > 0){ bat.energy += add; S.cash -= add * hr.price; }
+  // storage (one or more batteries): the engine aggregates all battery MW into
+  // hr.stack.battery, so drain that total across the discharging units — split in
+  // proportion to each unit's stored energy, which keeps every unit ≥ 0 whenever
+  // the draw fits within the total stored. Idle units recharge from a shared
+  // surplus budget, each MWh bought at the clearing price (free at a $0 price).
+  const batteries = S.fleet.filter(u => u.kind === "battery");
+  const discharging = batteries.filter(u => u.status === "discharge" && u.energy > 0);
+  const storedTotal = discharging.reduce((a, u) => a + u.energy, 0);
+  if (storedTotal > 0 && hr.stack.battery > 0){
+    const drain = Math.min(hr.stack.battery * dtH, storedTotal); // total MWh pulled this tick
+    for (const u of discharging){
+      u.energy = Math.max(0, u.energy - drain * (u.energy / storedTotal));
+      if (u.energy <= 1e-9){ u.energy = 0; u.status = "off"; setTicker(S, `${u.name} depleted.`); }
+    }
+  }
+  let surplusBudget = Math.max(0, S.capacity - S.demand) * dtH; // MWh of surplus to share
+  for (const u of batteries){
+    if (u.status === "discharge" || u.status === "service" || u.energy >= u.maxEnergy) continue;
+    const add = Math.min(CFG.battRecharge * dtH, surplusBudget, u.maxEnergy - u.energy);
+    if (add > 0){ u.energy += add; S.cash -= add * hr.price; surplusBudget -= add; }
   }
 
   // R&D lab (v3): divert funded cash into Research Points. Can't fund more than
