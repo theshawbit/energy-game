@@ -92,7 +92,7 @@ function updateUnits(S){
     else { stClass = "st-off"; stText = u.kind === "renew" ? "IDLE" : "RESERVE"; }
     let hint = "";
     if (u.status === "service") hint = "under maintenance";
-    else if (u.kind === "battery") hint = `charge ${Math.round(u.energy)}/${u.maxEnergy} MWh`;
+    else if (u.kind === "battery") hint = `charge ${Math.round(u.energy)}/${Math.round(u.maxEnergy * (S.rmods?.battEnergyMult ?? 1))} MWh`;
     else if (u.kind === "renew") hint = `output ${out} MW now`;
     else if (u.ctrl) hint = `$${u.mc}/MWh · tap ${u.key} to ${u.status === "off" ? "start" : "stop"}`;
     else hint = `$${u.mc}/MWh baseload`;

@@ -18,12 +18,26 @@
 // lists node ids that must already be researched; metaGate (Phase C) names the
 // profile.researchUnlocked flag required — null = always available.
 export const RESEARCH = [
+  // transmission / efficiency
   { id:"amp-upgrades", branch:"transmission", label:"Modular Upgrades", rpCost:60, prereq:[], metaGate:null,
     desc:"Every Mk upgrade adds +10% more capacity" },
   { id:"buff-wear",    branch:"transmission", label:"Condition Monitoring", rpCost:50, prereq:[], metaGate:null,
     desc:"−15% plant wear while generating" },
+  // generation (builds unlocked in B4)
   { id:"unlock-smr",   branch:"generation",   label:"Small Modular Reactor", rpCost:80, prereq:[], metaGate:null,
     desc:"Unlocks building SMRs (clean firm baseload)" },
+  // storage — buffs every battery
+  { id:"storage-power",    branch:"storage", label:"High-Power Inverters", rpCost:55, prereq:[], metaGate:null,
+    desc:"+30% discharge power on all batteries" },
+  { id:"storage-depth",    branch:"storage", label:"Deep-Cycle Cells", rpCost:70, prereq:[], metaGate:null,
+    desc:"+50% stored-energy depth on all batteries" },
+  { id:"storage-recharge", branch:"storage", label:"Fast Charging", rpCost:55, prereq:[], metaGate:null,
+    desc:"+50% battery recharge rate" },
+  // demand response — shaves the peak itself (demand-side lever)
+  { id:"demand-response",  branch:"demand", label:"Demand Response", rpCost:65, prereq:[], metaGate:null,
+    desc:"Shave 6% off demand (curtail flexible load)" },
+  { id:"smart-grid",       branch:"demand", label:"Smart Grid", rpCost:90, prereq:["demand-response"], metaGate:null,
+    desc:"Deepen the shave to 12% of demand" },
 ];
 
 export function researchById(id){ return RESEARCH.find(n => n.id === id); }
@@ -62,5 +76,9 @@ export function computeResearchMods(research = {}){
     wearMult:        has("buff-wear")    ? 0.85 : 1,   // multiplies CFG.wearRate
     upgradeCapBonus: has("amp-upgrades") ? 0.10 : 0,   // added to UPGRADE.capMult−1
     smrUnlocked:     has("unlock-smr"),                // gates the SMR build (Phase B)
+    battCapMult:      has("storage-power")    ? 1.30 : 1,  // battery discharge power
+    battEnergyMult:   has("storage-depth")    ? 1.50 : 1,  // battery stored-energy depth
+    battRechargeMult: has("storage-recharge") ? 1.50 : 1,  // battery recharge rate
+    demandShave:     has("smart-grid") ? 0.12 : has("demand-response") ? 0.06 : 0, // fraction of demand shaved
   };
 }

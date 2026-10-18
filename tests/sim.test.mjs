@@ -4,6 +4,7 @@
 import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHazard, autoService } from "../src/live/sim.js";
 import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit } from "../src/live/actions.js";
 import { CFG, UPGRADE, upgradeCost, serviceCost, salvageValue } from "../src/live/config.js";
+import { computeResearchMods } from "../src/live/research.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -242,6 +243,35 @@ check("a battery can be decommissioned when another remains", dr.ok && S.fleet.f
 const lastBat = S.fleet.find(u => u.kind === "battery");
 dr = decommissionUnit(S, lastBat.id);
 check("the last battery can't be decommissioned", !dr.ok && S.fleet.some(u => u.kind === "battery"));
+
+// ---- B3: storage + demand-response research wired into the sim ----
+
+// 30) Demand-response research shaves live demand (the demand-side lever)
+{
+  const A = createGame(); A.t = 18; step(A, 0.01); const dBase = A.demand;
+  const B = createGame(); B.t = 18; B.research = { "demand-response": true }; B.rmods = computeResearchMods(B.research);
+  step(B, 0.01); const dShaved = B.demand;
+  check("demand-response shaves ~6% off demand", near(dShaved, dBase * 0.94, 1), `${dBase.toFixed(0)} → ${dShaved.toFixed(0)} MW`);
+}
+
+// 31) storage-power boosts a discharging battery's output
+{
+  S = createGame();
+  const bat = S.fleet.find(u => u.kind === "battery"); bat.status = "discharge"; bat.energy = 100;
+  const base = unitOutput(S, bat);
+  S.rmods = computeResearchMods({ "storage-power": true });
+  check("storage-power lifts battery discharge power +30%", near(unitOutput(S, bat), base * 1.30, 1e-6), `${base} → ${unitOutput(S, bat).toFixed(0)} MW`);
+}
+
+// 32) storage-depth lets a battery recharge beyond its base max energy
+{
+  S = createGame(); S.running = true; S.t = 3; // deep night: low demand, surplus to recharge from
+  S.research = { "storage-depth": true }; S.rmods = computeResearchMods(S.research);
+  const bat = S.fleet.find(u => u.kind === "battery"); bat.status = "off"; bat.energy = bat.maxEnergy; // full at base depth
+  const baseMax = bat.maxEnergy;
+  step(S, 0.2);
+  check("storage-depth recharges past the base max energy", bat.energy > baseMax, `${baseMax} → ${bat.energy.toFixed(1)} MWh`);
+}
 
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
