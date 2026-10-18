@@ -128,12 +128,25 @@ A2: minimal Manage-panel RP UI + wiring.
 tree's branches and a couple of capstones.
 
 **Files**
-- `src/constants.js` — add `TECH` entries and extend `THERMAL`/`ORDER`:
+- `src/constants.js` — add `TECH` entries and extend **`THERMAL` only** (see the
+  decision note below): **DONE in PR B1.**
   - `smr` (small modular reactor): firm, low `ef`, `mc` between nuclear and coal.
   - `ccs_coal` / `ccs_gas`: coal/ccgt variants, higher `mc`, much lower `ef` (beat
-    the carbon price). Add `--t-*` color tokens in `styles/live.css`.
-  - `geothermal`: firm, `ef:0`, baseload. All get `avail`, `block`, `note`.
+    the carbon price). Color tokens added in `styles/main.css` (the shared token
+    block), not `styles/live.css`.
+  - `geo` (geothermal): firm, `ef:0`, baseload. All get `avail`, `block`, `note`.
   - Because dispatch keys off `avail[tech]`, these clear automatically.
+
+  > **Decision (PR B1): do NOT add the v3 techs to `ORDER`.** `ORDER` drives the
+  > *batch* reference game's stack chart, legend, and build palette, and that game's
+  > `START.fleet` (`src/game.js`) has only the original seven tech keys — adding the
+  > new techs to `ORDER` would surface build buttons that do `G.fleet[t] += block`
+  > on an `undefined`, yielding `NaN`. The **live** game never reads `ORDER` (it has
+  > no per-tech stack chart), so the techs live in `THERMAL` (the merit-order
+  > dispatch set) and are surfaced to the player through the live **build catalogue**
+  > (`config.js` `BUILD`, Phase B below), never `ORDER`. Engine hardening shipped
+  > alongside: `dispatchHour` seeds its stack from `ORDER∪THERMAL` so every tech key
+  > is present, and `simulateDay` guards `fleet[t] || 0` against `NaN`.
 - `src/live/config.js` — `BUILD` entries (cost/mw) for the new buildables, gated so
   they only appear once their research node is owned; `BUILD_ORDER` updated.
 - `src/live/config.js` `makeUnit` — handle new techs' `kind`/`spin`/`fail`/`recover`
