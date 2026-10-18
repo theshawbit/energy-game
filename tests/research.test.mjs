@@ -97,5 +97,24 @@ step(S, 3.0);
 const wornBuffed = 100 - uB.condition;
 check("Condition Monitoring slows wear", wornBuffed < wornPlain, `${wornPlain.toFixed(2)}% → ${wornBuffed.toFixed(2)}% lost`);
 
+// ---- B3: storage + demand-response research effects ----
+
+// 13) Storage nodes buff the battery mods
+check("storage-power → +30% discharge power", computeResearchMods({ "storage-power": true }).battCapMult === 1.30);
+check("storage-depth → +50% energy depth", computeResearchMods({ "storage-depth": true }).battEnergyMult === 1.50);
+check("storage-recharge → +50% recharge rate", computeResearchMods({ "storage-recharge": true }).battRechargeMult === 1.50);
+
+// 14) Demand-response shave is tiered, smart-grid deepening it
+check("demand-response → 6% shave", computeResearchMods({ "demand-response": true }).demandShave === 0.06);
+check("smart-grid → 12% shave", computeResearchMods({ "demand-response": true, "smart-grid": true }).demandShave === 0.12);
+
+// 15) smart-grid is gated behind demand-response (the first real prereq)
+S = createGame(); S.rp = 1e6;
+check("smart-grid blocked without its prereq", !canResearch(S, "smart-grid"));
+let pr = doResearch(S, "smart-grid");
+check("doResearch refuses smart-grid until demand-response is done", !pr.ok && !S.research["smart-grid"]);
+doResearch(S, "demand-response");
+check("smart-grid researchable once demand-response is owned", canResearch(S, "smart-grid"));
+
 console.log(failed === 0 ? "\nAll research tests passed." : `\n${failed} research test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

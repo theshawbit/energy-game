@@ -85,7 +85,7 @@ export function tripHazard(u, diff){
 // ---- capacity accounting ----
 export function unitOutput(S, u){
   if (u.kind === "renew") return u.cap * interp(u.cf, S.t) * (u.id === "sol" ? S.weather.sun : S.weather.wind);
-  if (u.kind === "battery") return (u.status === "discharge" && u.energy > 0) ? u.cap : 0;
+  if (u.kind === "battery") return (u.status === "discharge" && u.energy > 0) ? u.cap * (S.rmods?.battCapMult ?? 1) : 0;
   return u.status === "online" ? u.cap : 0; // firm / peaker
 }
 export function totalCapacity(S){ return S.fleet.reduce((a, u) => a + unitOutput(S, u), 0); }
@@ -134,8 +134,9 @@ export function step(S, dt){
     }
   }
 
-  // demand (daily shape, scaled to current peak)
-  S.demand = S.peak * interp(DEMAND_SHAPE, S.t);
+  // demand (daily shape, scaled to current peak), then shaved by demand-response
+  // research — the first demand-SIDE lever (research reduces load, not just supply).
+  S.demand = S.peak * interp(DEMAND_SHAPE, S.t) * (1 - (S.rmods?.demandShave ?? 0));
   S.capacity = totalCapacity(S);
 
   // economics — clear the hour through the shared, verified merit-order engine.
@@ -175,9 +176,11 @@ export function step(S, dt){
     }
   }
   let surplusBudget = Math.max(0, S.capacity - S.demand) * dtH; // MWh of surplus to share
+  const depthMult = S.rmods?.battEnergyMult ?? 1, rechargeMult = S.rmods?.battRechargeMult ?? 1;
   for (const u of batteries){
-    if (u.status === "discharge" || u.status === "service" || u.energy >= u.maxEnergy) continue;
-    const add = Math.min(CFG.battRecharge * dtH, surplusBudget, u.maxEnergy - u.energy);
+    const emax = u.maxEnergy * depthMult; // storage-depth research deepens every battery
+    if (u.status === "discharge" || u.status === "service" || u.energy >= emax) continue;
+    const add = Math.min(CFG.battRecharge * rechargeMult * dtH, surplusBudget, emax - u.energy);
     if (add > 0){ u.energy += add; S.cash -= add * hr.price; surplusBudget -= add; }
   }
 
