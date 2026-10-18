@@ -5,7 +5,7 @@
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
 import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
-import { SKILLS, skillCost, MILESTONES } from "./meta.js";
+import { SKILLS, skillCost, MILESTONES, RESEARCH_UNLOCKS } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 
 const $ = id => document.getElementById(id);
@@ -228,10 +228,13 @@ export function clearEndGame(){
   $("vignette").style.opacity = "0";
 }
 
-// ---- skill tree (between runs: spend meta-currency on permanent passives) ----
+// ---- progression screen (between runs): two tabs — passive Skills, and the
+// Research Unlocks that open in-run research branches. Tab state is module-level
+// so buying something (which re-renders) keeps you on the current tab. ----
+let metaTab = "skills";
 export function renderMeta(profile, actions){
   const best = profile.best || {};
-  const rows = SKILLS.map(sk => {
+  const skillRows = SKILLS.map(sk => {
     const owned = profile.skills[sk.id] || 0, maxed = owned >= sk.max, cost = skillCost(sk, owned);
     const can = !maxed && profile.currency >= cost;
     const pips = Array.from({ length: sk.max }, (_, i) => `<span class="pip ${i < owned ? "on" : ""}"></span>`).join("");
@@ -239,14 +242,28 @@ export function renderMeta(profile, actions){
     return `<div class="skill-row">
       <span class="sk-nm">${sk.name} <span class="pips">${pips}</span><br><small>${sk.desc}</small></span>${btn}</div>`;
   }).join("");
+  const unlockRows = RESEARCH_UNLOCKS.map(u => {
+    const owned = !!profile.researchUnlocked?.[u.id], can = !owned && profile.currency >= u.cost;
+    const btn = owned ? `<button disabled>Unlocked ✓</button>` : `<button data-unlock="${u.id}" ${can ? "" : "disabled"}>${u.cost} ⚡</button>`;
+    return `<div class="skill-row"><span class="sk-nm">${u.name}<br><small>${u.desc}</small></span>${btn}</div>`;
+  }).join("");
+  const tab = metaTab === "research" ? "research" : "skills";
+  const tabs = `<div class="meta-tabs">
+    <button class="meta-tab ${tab === "skills" ? "on" : ""}" data-tab="skills">Skills</button>
+    <button class="meta-tab ${tab === "research" ? "on" : ""}" data-tab="research">Research Unlocks</button></div>`;
+  const body = tab === "research"
+    ? `<p>Permanently open research branches for future runs. In-run research itself still resets each run.</p><div class="skill-list">${unlockRows}</div>`
+    : `<p>Permanent passive upgrades, bought with meta-currency earned at the end of each run.</p><div class="skill-list">${skillRows}</div>`;
   $("meta").innerHTML = `
-    <h2>Skill tree</h2>
-    <p>Permanent upgrades, bought with meta-currency earned at the end of each run.</p>
+    <h2>Progression</h2>
     <div class="meta-head"><span class="bank"><b>${profile.currency}</b> ⚡ banked</span>
       <span class="best">best: ${best.score || 0} pts · ${best.days || 0} days · ${best.peak || 0} MW</span></div>
-    <div class="skill-list">${rows}</div>
+    ${tabs}
+    ${body}
     <button class="btn-primary" id="metaBack">← Back</button>`;
   $("meta").querySelectorAll("[data-skill]").forEach(b => b.onclick = () => actions.buy(b.dataset.skill));
+  $("meta").querySelectorAll("[data-unlock]").forEach(b => b.onclick = () => actions.unlock(b.dataset.unlock));
+  $("meta").querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { metaTab = b.dataset.tab; renderMeta(profile, actions); });
   $("metaBack").onclick = actions.back;
   $("metaOverlay").classList.add("on");
 }

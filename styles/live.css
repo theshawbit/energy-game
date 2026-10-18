@@ -145,6 +145,9 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .meta-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;font-family:var(--mono);font-size:.8rem;margin:6px 0 2px}
 .meta-head .bank b{color:var(--accent);font-size:1.2rem}
 .meta-head .best{color:var(--faint);font-size:.72rem}
+.meta-tabs{display:flex;gap:6px;margin:10px 0 2px}
+.meta-tab{flex:1;font-size:.8rem;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--muted);cursor:pointer}
+.meta-tab.on{border-color:var(--accent);color:var(--fg);background:transparent}
 .skill-list{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;margin-top:6px}
 .skill-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:var(--panel-2)}
 .sk-nm{font-size:.82rem;font-weight:600}
