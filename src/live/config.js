@@ -55,11 +55,13 @@ export function salvageValue(u){
 }
 
 // ---- build catalogue: spend in-run cash to add a block of capacity ----
-// cost is a live-tuned capital cost ($); mw is the block size. Battery is
-// upgrade-only (the sim tracks a single battery), so it is absent here.
+// cost is a live-tuned capital cost ($); mw is the block size. Batteries are now
+// buildable (the sim tracks any number of storage units); `hours` sets a built
+// battery's energy depth (MWh = mw × hours), matching the starting 2h battery.
 export const BUILD = {
   solar:   { label:"Solar farm", mw:60,  cost:50000 },
   wind:    { label:"Wind",       mw:50,  cost:55000 },
+  battery: { label:"Battery",    mw:60,  cost:60000, hours:2 },
   nuclear: { label:"Nuclear",    mw:100, cost:220000 },
   coal:    { label:"Coal",       mw:60,  cost:70000 },
   peaker:  { label:"Peaker",     mw:55,  cost:45000 },
@@ -99,11 +101,15 @@ export function makeFleet() {
 // unit for display; `seq` makes its id unique.
 export function makeUnit(tech, n, seq){
   const b = BUILD[tech];
-  const kind = (tech === "solar" || tech === "wind") ? "renew" : tech === "peaker" ? "peaker" : "firm";
+  const kind = (tech === "solar" || tech === "wind") ? "renew"
+             : tech === "peaker" ? "peaker"
+             : tech === "battery" ? "battery" : "firm";
   const u = { id:`${tech}-${seq}`, name:`${b.label} ${n}`, kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
-              status: kind === "peaker" ? "off" : "online", ctrl: kind === "peaker", key:null };
-  if (kind !== "renew") u.condition = 100; // mechanical plants wear and can be serviced
+              status: (kind === "peaker" || kind === "battery") ? "off" : "online",
+              ctrl: (kind === "peaker" || kind === "battery"), key:null };
+  if (kind === "firm" || kind === "peaker") u.condition = 100; // mechanical plants wear & can be serviced
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
+  if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
   if (kind === "firm"){ u.spin = tech === "nuclear" ? 2 : 4; u.fail = tech === "nuclear" ? 0.006 : 0.013; u.recover = tech === "nuclear" ? [5, 9] : [1.5, 3]; }
   if (kind === "peaker"){ u.spin = 11; u.fail = 0.009; u.recover = [1.5, 3]; u.startTime = 1.6; }
   return u;

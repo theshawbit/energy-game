@@ -288,7 +288,8 @@ export function renderMenu(S, actions){
       const inSvc = u.status === "service", sCost = Math.round(serviceCost(u) * (S.mods?.repairMult ?? 1)), canSvc = !inSvc && S.cash >= sCost;
       svc = `<button class="svc" data-svc="${u.id}" ${canSvc ? "" : "disabled"}>${inSvc ? "In service…" : `Service · ${money(sCost)}`}</button>`;
     }
-    const dec = u.kind !== "battery" ? `<button class="dec" data-dec="${u.id}">Sell · ${money(salvageValue(u))}</button>` : "";
+    const lastBattery = u.kind === "battery" && S.fleet.filter(x => x.kind === "battery").length <= 1;
+    const dec = `<button class="dec" data-dec="${u.id}" ${lastBattery ? "disabled" : ""}>Sell · ${money(salvageValue(u))}</button>`;
     const cond = u.condition != null ? ` · <b class="condtxt ${u.condition > 60 ? "ok" : u.condition > 30 ? "warn" : "bad"}">${Math.round(u.condition)}%</b>` : "";
     return `<div class="up-row"><span class="up-nm">${u.name} <i>Mk ${roman(tier)}</i><br><small>${Math.round(u.cap)} MW${cond}</small></span>` +
            `<span class="up-btns"><button data-up="${u.id}" ${canUp ? "" : "disabled"}>${upLabel}</button>${svc}${dec}</span></div>`;
