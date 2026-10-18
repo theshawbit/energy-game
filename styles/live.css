@@ -126,6 +126,8 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .rs-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto}
 .rs-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:9px;padding:6px 10px;background:var(--panel-2)}
 .rs-row.done{opacity:.6}
+.rs-row.locked{opacity:.55}
+.rs-lock{color:var(--warn);font-family:var(--mono)}
 .rs-nm{font-size:.82rem;font-weight:600}
 .rs-nm small{color:var(--faint);font-family:var(--mono);font-weight:400}
 .rs-row button{font-family:var(--mono);font-size:.74rem;white-space:nowrap}

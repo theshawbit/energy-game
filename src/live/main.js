@@ -7,7 +7,7 @@
 import { createGame, step } from "./sim.js";
 import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode } from "./actions.js";
 import { render, buildUnits, showEndGame, clearEndGame, renderMenu, hideMenu, renderMeta, renderHome } from "./render.js";
-import { scoreRun, currencyFor, buySkill } from "./meta.js";
+import { scoreRun, currencyFor, buySkill, buyUnlock } from "./meta.js";
 import { loadProfile, saveProfile } from "./persist.js";
 
 const $ = id => document.getElementById(id);
@@ -24,6 +24,7 @@ function showHowto(){ hideAll(); $("howtoOverlay").classList.add("on"); }
 const homeActions = { start: () => startRun(), skills: showSkills, howto: showHowto };
 const meta = {
   buy(id){ if (buySkill(profile, id)){ saveProfile(profile); renderMeta(profile, meta); } },
+  unlock(id){ if (buyUnlock(profile, id)){ saveProfile(profile); renderMeta(profile, meta); } },
   back: showHome,
 };
 
@@ -45,7 +46,7 @@ function openMenu(){ if (S.over) return; S.menuOpen = true; renderMenu(S, menu);
 // ---- run lifecycle ----
 function startRun(){
   hideAll(); clearEndGame();
-  S = createGame(profile.skills);
+  S = createGame(profile.skills, profile.researchUnlocked);
   buildUnits(S, act);
   ended = false; last = 0;
   S.running = true;
@@ -79,7 +80,7 @@ function frame(now){
 }
 
 // ---- wiring ----
-S = createGame(profile.skills); buildUnits(S, act); render(S); // a game to paint behind the home screen
+S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act); render(S); // a game to paint behind the home screen
 showHome();
 $("manageBtn").onclick = () => openMenu();
 $("pauseBtn").onclick = () => { if (S.running && !S.over){ S.paused = !S.paused; render(S); } };

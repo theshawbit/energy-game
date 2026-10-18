@@ -37,6 +37,27 @@ const AUTO_SERVICE_AT = [0, 40, 55, 70];
 // Cost to buy the next level given how many are already owned.
 export function skillCost(skill, owned){ return skill.baseCost * (owned + 1); }
 
+// ---- research unlocks (v3): meta-currency permanently opens a research BRANCH
+// so the in-run tree grows across runs. One-time purchases (not leveled), kept
+// in their own list/tab, distinct from the passive SKILLS above. The `id` is the
+// flag each gated research node names via its `metaGate`. ----
+export const RESEARCH_UNLOCKS = [
+  { id:"storage", name:"Grid Storage R&D",       cost:4, desc:"Unlock the storage research branch (power, depth, fast charge)" },
+  { id:"demand",  name:"Demand-Side R&D",        cost:4, desc:"Unlock demand-response research (shave the peak)" },
+  { id:"advgen",  name:"Advanced Generation R&D", cost:6, desc:"Unlock SMR, geothermal & carbon-capture research" },
+];
+
+// Buy a research-branch unlock into `profile` (mutates it). Returns true on
+// success, false if unknown / already owned / unaffordable.
+export function buyUnlock(profile, id){
+  const u = RESEARCH_UNLOCKS.find(x => x.id === id); if (!u) return false;
+  if (profile.researchUnlocked?.[id]) return false;
+  if (profile.currency < u.cost) return false;
+  profile.currency -= u.cost;
+  (profile.researchUnlocked ||= {})[id] = true;
+  return true;
+}
+
 // Buy the next level of a skill into `profile` (mutates it). Returns true on
 // success, false if unknown / maxed / unaffordable.
 export function buySkill(profile, id){

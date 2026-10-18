@@ -108,8 +108,9 @@ check("storage-recharge → +50% recharge rate", computeResearchMods({ "storage-
 check("demand-response → 6% shave", computeResearchMods({ "demand-response": true }).demandShave === 0.06);
 check("smart-grid → 12% shave", computeResearchMods({ "demand-response": true, "smart-grid": true }).demandShave === 0.12);
 
-// 15) smart-grid is gated behind demand-response (the first real prereq)
-S = createGame(); S.rp = 1e6;
+// 15) smart-grid is gated behind demand-response (the first real prereq).
+// Unlock the demand branch first so this isolates the PREREQ rule, not meta gating.
+S = createGame({}, { demand: true }); S.rp = 1e6;
 check("smart-grid blocked without its prereq", !canResearch(S, "smart-grid"));
 let pr = doResearch(S, "smart-grid");
 check("doResearch refuses smart-grid until demand-response is done", !pr.ok && !S.research["smart-grid"]);
@@ -127,6 +128,19 @@ check("fast-ramp → −20% peaker spin-up", computeResearchMods({ "fast-ramp": 
   const m = computeResearchMods({ "unlock-geo": true, "unlock-ccs": true });
   check("unlock-geo/ccs set their flags, smr stays locked", m.geoUnlocked && m.ccsUnlocked && !m.smrUnlocked);
 }
+
+// ---- C1: meta gating — a branch is unresearchable until its unlock is owned ----
+
+// 18) A gated node is blocked without the meta unlock, even with ample RP
+S = createGame(); S.rp = 1e6; // no researchUnlocked
+check("storage-power gated without the storage unlock", !canResearch(S, "storage-power"));
+let gp = doResearch(S, "storage-power");
+check("doResearch refuses a meta-locked node", !gp.ok && !S.research["storage-power"]);
+
+// 19) Once the branch is unlocked (via meta), the node is researchable in-run
+S = createGame({}, { storage: true }); S.rp = 1e6;
+check("storage-power researchable once the branch is unlocked", canResearch(S, "storage-power"));
+check("ungated transmission node is always researchable", canResearch(S, "amp-upgrades"));
 
 console.log(failed === 0 ? "\nAll research tests passed." : `\n${failed} research test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
