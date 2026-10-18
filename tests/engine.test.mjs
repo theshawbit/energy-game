@@ -2,7 +2,7 @@
 // These lock the verified merit-order dispatch behaviour so the Phase A refactor
 // can't silently break the physics or arithmetic.
 import { simulateDay, dispatchHour, marginalCost } from "../src/engine.js";
-import { ORDER, PRICE_CAP } from "../src/constants.js";
+import { ORDER, PRICE_CAP, TECH } from "../src/constants.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -85,6 +85,41 @@ check("scarcity leaves 50 MW unserved", near(h.unserved, 50, 1e-9) && near(h.ser
     return a + p * servedH;
   }, 0) * 365;
   check("simulateDay revenue = Σ price·served over hours", near(handRev, r.grossRev, 1), "$" + (handRev / 1e6).toFixed(2) + "M vs $" + (r.grossRev / 1e6).toFixed(2) + "M");
+}
+
+// ---- v3 researchable techs (constants + merit order) ----
+
+// 12) Clean-firm v3 techs clear in the right merit order (geo $6 < nuclear $10 <
+//     smr $14), and a stack sums correctly even for the new keys
+h = dispatchHour({ geo: 100, nuclear: 100, smr: 100, coal: 100 }, 250);
+check("v3 clean-firm merit order: geo → nuclear → smr", near(h.stack.geo, 100, 1e-9) && near(h.stack.nuclear, 100, 1e-9) && near(h.stack.smr, 50, 1e-9) && h.stack.coal === 0,
+  `geo ${h.stack.geo|0} / nuc ${h.stack.nuclear|0} / smr ${h.stack.smr|0} / coal ${h.stack.coal|0}`);
+check("marginal clean-firm unit sets the price (smr $14)", near(h.price, marginalCost("smr"), 1e-9), "$" + h.price);
+
+// 13) CCS emits far less than the unabated plant for the same served MWh
+const unab = dispatchHour({ coal: 100 }, 100).emissions;
+const abated = dispatchHour({ ccs_coal: 100 }, 100).emissions;
+check("CCS cuts emissions vs unabated coal", abated < unab * 0.2, `${unab.toFixed(1)} → ${abated.toFixed(1)} tCO₂/h`);
+
+// 14) CCS survives carbon switching: cheap at $0 → coal wins; heavy carbon flips
+//     ccs_coal ahead of coal (low ef shields it from the carbon price)
+const ccsNeed = { coal: 100, ccs_coal: 100 }; // ~80 MW needed — one is marginal
+const ccsLo = dispatchHour(ccsNeed, 80, 0);
+const ccsHi = dispatchHour(ccsNeed, 80, 100);
+check("carbon flips dispatch coal → coal+CCS", ccsLo.stack.coal > 0 && ccsLo.stack.ccs_coal === 0 && ccsHi.stack.ccs_coal > 0 && ccsHi.stack.coal === 0,
+  `lo: coal ${ccsLo.stack.coal|0}/ccs ${ccsLo.stack.ccs_coal|0} · hi: coal ${ccsHi.stack.coal|0}/ccs ${ccsHi.stack.ccs_coal|0}`);
+
+// 15) Gas+CCS is a gas tech: its marginal cost scales with the fuel multiplier,
+//     while the clean-firm techs (geo/smr) do not
+check("ccs_gas marginal cost scales with fuelMult", near(marginalCost("ccs_gas", 0, 2), TECH.ccs_gas.mc * 2, 1e-9));
+check("geo/smr ignore fuelMult (not gas)", marginalCost("geo", 0, 2) === TECH.geo.mc && marginalCost("smr", 0, 2) === TECH.smr.mc);
+
+// 16) Adding the v3 techs to THERMAL leaves legacy simulateDay results unchanged
+//     (a fleet that builds none of them is dispatched identically)
+{
+  const legacy = simulateDay({ solar: 0, wind: 0, battery: 0, nuclear: 0, coal: 250, ccgt: 150, peaker: 0 }, 400, { sun: 1, wind: 1 });
+  check("legacy fleet unaffected by new techs (reliability)", near(legacy.reliability * 100, 98.88, 0.1), (legacy.reliability * 100).toFixed(2) + "%");
+  check("legacy fleet unaffected by new techs (CO₂)", near(legacy.co2, 806, 2), legacy.co2.toFixed(0));
 }
 
 console.log(failed === 0 ? "\nAll engine tests passed." : `\n${failed} test(s) FAILED.`);
