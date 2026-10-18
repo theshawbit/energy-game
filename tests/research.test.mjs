@@ -116,5 +116,17 @@ check("doResearch refuses smart-grid until demand-response is done", !pr.ok && !
 doResearch(S, "demand-response");
 check("smart-grid researchable once demand-response is owned", canResearch(S, "smart-grid"));
 
+// ---- B4: transmission mods + generation unlocks ----
+
+// 16) Transmission nodes buff running costs / ramp
+check("grid-efficiency → −15% spin cost", computeResearchMods({ "grid-efficiency": true }).spinMult === 0.85);
+check("fast-ramp → −20% peaker spin-up", computeResearchMods({ "fast-ramp": true }).startTimeMult === 0.80);
+
+// 17) Generation unlock flags are independent; one CCS node covers coal & gas
+{
+  const m = computeResearchMods({ "unlock-geo": true, "unlock-ccs": true });
+  check("unlock-geo/ccs set their flags, smr stays locked", m.geoUnlocked && m.ccsUnlocked && !m.smrUnlocked);
+}
+
 console.log(failed === 0 ? "\nAll research tests passed." : `\n${failed} research test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

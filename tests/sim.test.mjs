@@ -273,5 +273,30 @@ check("the last battery can't be decommissioned", !dr.ok && S.fleet.some(u => u.
   check("storage-depth recharges past the base max energy", bat.energy > baseMax, `${baseMax} → ${bat.energy.toFixed(1)} MWh`);
 }
 
+// ---- B4: advanced-gen build gating + transmission effects ----
+
+// 33) Advanced-gen builds are gated by their research unlock
+S = createGame(); S.cash = 1e9;
+let g = buildCapacity(S, "smr");
+check("SMR build refused before research", !g.ok && !S.fleet.some(u => u.tech === "smr"));
+S.rmods = computeResearchMods({ "unlock-smr": true });
+g = buildCapacity(S, "smr");
+check("SMR buildable once unlocked", g.ok && S.fleet.some(u => u.tech === "smr"));
+const smrU = S.fleet.find(u => u.tech === "smr");
+check("built SMR is clean firm with its own params", smrU.kind === "firm" && smrU.condition === 100 && smrU.spin === 2 && smrU.fail === 0.006);
+
+// 34) One Carbon Capture unlock enables both CCS variants; geo stays gated
+S = createGame(); S.cash = 1e9; S.rmods = computeResearchMods({ "unlock-ccs": true });
+const gc = buildCapacity(S, "ccs_coal"), gg = buildCapacity(S, "ccs_gas"), gq = buildCapacity(S, "geo");
+check("Carbon Capture unlocks both coal+CCS and gas+CCS", gc.ok && gg.ok && S.fleet.some(u => u.tech === "ccs_coal") && S.fleet.some(u => u.tech === "ccs_gas"));
+check("geo stays gated under a CCS-only unlock", !gq.ok && !S.fleet.some(u => u.tech === "geo"));
+
+// 35) fast-ramp research shortens a peaker's spin-up time
+S = createGame(); S.running = true; toggleUnit(S, "pk1");
+const t1 = S.fleet.find(u => u.id === "pk1").startTimer;
+let S2 = createGame(); S2.running = true; S2.rmods = computeResearchMods({ "fast-ramp": true }); toggleUnit(S2, "pk1");
+const t2 = S2.fleet.find(u => u.id === "pk1").startTimer;
+check("fast-ramp cuts peaker spin-up 20%", near(t2, t1 * 0.80, 1e-9), `${t1.toFixed(2)}h → ${t2.toFixed(2)}h`);
+
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
