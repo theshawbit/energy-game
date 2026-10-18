@@ -1,8 +1,13 @@
 # Grid Operator v3 — Implementation Plan (Phases A–F)
 
-Companion to [ROADMAP-v3.md](ROADMAP-v3.md). This is the build plan for review:
+Companion to [ROADMAP-v3.md](ROADMAP-v3.md). This was the build plan:
 file-by-file changes, new state/config, tests, acceptance criteria, and a PR map.
-Nothing here is implemented yet.
+
+> **Status: shipped** (2026-10-18). Phases A–F are all implemented and merged
+> (PRs #14–#29). This document is kept as the historical build record; the PR
+> breakdown below is what actually landed, give or take the deviations noted inline
+> (e.g. the `ORDER` decision in Phase B, and `createGame` rolling mutators moving to
+> the run-start call site). The only unbuilt item is the optional juice pass.
 
 ## Guiding constraints (hold across every phase)
 
