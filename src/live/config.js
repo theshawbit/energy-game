@@ -33,6 +33,9 @@ export const CFG = {
   serviceTime: 4,             // game-hours a plant is offline for a full service
   repairPerMW: 90,            // $/MW of capacity to fully service a wrecked plant
   repairMin: 4000,            // minimum service charge
+  // ---- research / R&D lab (v3) ----
+  rpPerDollar: 0.0015,        // Research Points earned per $ diverted into R&D
+  rdFundingMax: 20000,        // $/game-hour cap on R&D funding (conservative; tuned in Phase F)
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and
