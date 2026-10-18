@@ -304,9 +304,10 @@ export function renderMenu(S, actions){
     const owned = !!S.research?.[n.id], can = canResearch(S, n.id);
     const locked = n.metaGate && !(S.researchUnlocked?.[n.metaGate]);
     const btn = owned ? `<button disabled>Researched</button>`
-      : locked ? `<button disabled>Locked</button>`
+      : locked ? `<button disabled title="Unlock this branch in Skills with meta-currency">🔒</button>`
       : `<button data-research="${n.id}" ${can ? "" : "disabled"}>${n.rpCost} RP</button>`;
-    return `<div class="rs-row ${owned ? "done" : ""}"><span class="rs-nm">${n.label}<br><small>${n.desc}</small></span>${btn}</div>`;
+    const sub = locked ? `${n.desc} <span class="rs-lock">· unlock in Skills</span>` : n.desc;
+    return `<div class="rs-row ${owned ? "done" : ""} ${locked ? "locked" : ""}"><span class="rs-nm">${n.label}<br><small>${sub}</small></span>${btn}</div>`;
   }).join("");
   const research = `
     <h3>Research &amp; R&amp;D <small>divert cash into Research Points</small></h3>

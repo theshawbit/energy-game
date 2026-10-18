@@ -5,7 +5,7 @@
   "description": "Grid Operator — an energy-economics grid simulation game.",
   "type": "module",
   "scripts": {
-    "test": "node tests/engine.test.mjs && node tests/sim.test.mjs && node tests/research.test.mjs",
+    "test": "node tests/engine.test.mjs && node tests/sim.test.mjs && node tests/research.test.mjs && node tests/persist.test.mjs",
     "serve": "python3 -m http.server 8000"
   }
 }

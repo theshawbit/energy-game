@@ -23,7 +23,7 @@ export function interp(arr, t){
   return arr[i] * (1 - f) + arr[(i + 1) % 24] * f;
 }
 
-export function createGame(skills = {}){
+export function createGame(skills = {}, researchUnlocked = {}){
   const mods = computeMods(skills);
   const fleet = makeFleet();
   // monotonic per-tech counter for naming built units, so numbers are never
@@ -42,6 +42,7 @@ export function createGame(skills = {}){
     cash:CFG.startCash + mods.startCashBonus, satisfaction:100, strain:0,
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
     rp:0, rdFunding:0, research:{}, rmods:computeResearchMods({}), // in-run research (v3)
+    researchUnlocked: { ...researchUnlocked },                     // meta-unlocked branches (read-only this run)
     fleet, techCount, weather:freshWeather(), buildSeq:1,
     demand:0, capacity:0, price:0, brownout:false,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,

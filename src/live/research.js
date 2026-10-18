@@ -27,24 +27,25 @@ export const RESEARCH = [
     desc:"−15% thermal standby (spin) cost" },
   { id:"fast-ramp",       branch:"transmission", label:"Fast Ramp", rpCost:55, prereq:[], metaGate:null,
     desc:"−20% peaker spin-up time" },
-  // generation — each unlocks a buildable clean/abated plant
-  { id:"unlock-smr",   branch:"generation",   label:"Small Modular Reactor", rpCost:80, prereq:[], metaGate:null,
+  // generation — each unlocks a buildable clean/abated plant (branch gated by the
+  // "advgen" meta unlock)
+  { id:"unlock-smr",   branch:"generation",   label:"Small Modular Reactor", rpCost:80, prereq:[], metaGate:"advgen",
     desc:"Unlocks building SMRs (clean firm baseload)" },
-  { id:"unlock-geo",   branch:"generation",   label:"Geothermal Drilling", rpCost:75, prereq:[], metaGate:null,
+  { id:"unlock-geo",   branch:"generation",   label:"Geothermal Drilling", rpCost:75, prereq:[], metaGate:"advgen",
     desc:"Unlocks building Geothermal (clean cheap baseload)" },
-  { id:"unlock-ccs",   branch:"generation",   label:"Carbon Capture", rpCost:95, prereq:[], metaGate:null,
+  { id:"unlock-ccs",   branch:"generation",   label:"Carbon Capture", rpCost:95, prereq:[], metaGate:"advgen",
     desc:"Unlocks Coal+CCS and Gas+CCS (beat the carbon price)" },
-  // storage — buffs every battery
-  { id:"storage-power",    branch:"storage", label:"High-Power Inverters", rpCost:55, prereq:[], metaGate:null,
+  // storage — buffs every battery (branch gated by the "storage" meta unlock)
+  { id:"storage-power",    branch:"storage", label:"High-Power Inverters", rpCost:55, prereq:[], metaGate:"storage",
     desc:"+30% discharge power on all batteries" },
-  { id:"storage-depth",    branch:"storage", label:"Deep-Cycle Cells", rpCost:70, prereq:[], metaGate:null,
+  { id:"storage-depth",    branch:"storage", label:"Deep-Cycle Cells", rpCost:70, prereq:[], metaGate:"storage",
     desc:"+50% stored-energy depth on all batteries" },
-  { id:"storage-recharge", branch:"storage", label:"Fast Charging", rpCost:55, prereq:[], metaGate:null,
+  { id:"storage-recharge", branch:"storage", label:"Fast Charging", rpCost:55, prereq:[], metaGate:"storage",
     desc:"+50% battery recharge rate" },
-  // demand response — shaves the peak itself (demand-side lever)
-  { id:"demand-response",  branch:"demand", label:"Demand Response", rpCost:65, prereq:[], metaGate:null,
+  // demand response — shaves the peak itself (branch gated by the "demand" meta unlock)
+  { id:"demand-response",  branch:"demand", label:"Demand Response", rpCost:65, prereq:[], metaGate:"demand",
     desc:"Shave 6% off demand (curtail flexible load)" },
-  { id:"smart-grid",       branch:"demand", label:"Smart Grid", rpCost:90, prereq:["demand-response"], metaGate:null,
+  { id:"smart-grid",       branch:"demand", label:"Smart Grid", rpCost:90, prereq:["demand-response"], metaGate:"demand",
     desc:"Deepen the shave to 12% of demand" },
 ];
 

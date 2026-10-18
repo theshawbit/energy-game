@@ -298,5 +298,24 @@ let S2 = createGame(); S2.running = true; S2.rmods = computeResearchMods({ "fast
 const t2 = S2.fleet.find(u => u.id === "pk1").startTimer;
 check("fast-ramp cuts peaker spin-up 20%", near(t2, t1 * 0.80, 1e-9), `${t1.toFixed(2)}h → ${t2.toFixed(2)}h`);
 
+// ---- C1: research-branch meta unlocks + gating carried onto the game ----
+
+// 36) buyUnlock spends currency, records the unlock, and refuses repeat/broke buys
+{
+  const prof = { currency: 10, skills: {}, researchUnlocked: {}, best: {} };
+  const u = meta.RESEARCH_UNLOCKS.find(x => x.id === "storage");
+  check("buyUnlock opens a branch and charges its cost", meta.buyUnlock(prof, "storage") && prof.researchUnlocked.storage === true && prof.currency === 10 - u.cost);
+  check("buyUnlock refuses an already-owned unlock", !meta.buyUnlock(prof, "storage"));
+  prof.currency = 0;
+  check("buyUnlock refused when broke", !meta.buyUnlock(prof, "advgen") && !prof.researchUnlocked.advgen);
+}
+
+// 37) createGame carries the profile's unlocks onto the run (copied, not shared)
+{
+  const unlocks = { storage: true };
+  const g = createGame({}, unlocks);
+  check("createGame copies researchUnlocked onto state", g.researchUnlocked.storage === true && g.researchUnlocked !== unlocks);
+}
+
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
