@@ -18,11 +18,21 @@ export const TECH = {
   coal:   {name:"Coal",       capex:3.0e6, fixedOM:60000, mc:35, ef:.95, block:50, color:"--t-coal",    note:"dirty · 0.95 tCO₂/MWh", avail:.90},
   ccgt:   {name:"Gas CCGT",   capex:1.0e6, fixedOM:25000, mc:55, ef:.37, block:50, color:"--t-ccgt",    note:"flexible · 0.37 tCO₂/MWh", avail:.90},
   peaker: {name:"Gas Peaker", capex:0.8e6, fixedOM:20000, mc:120,ef:.55, block:25, color:"--t-peaker",  note:"last resort · pricey", avail:.90},
+  // ---- v3 researchable techs (surfaced in the LIVE game via the build catalogue;
+  //      intentionally NOT added to ORDER so the batch reference game is unchanged) ----
+  geo:    {name:"Geothermal",  capex:3.5e6, fixedOM:90000, mc:6,  ef:0,   block:50, color:"--t-geo",     note:"clean firm baseload", avail:.90},
+  smr:    {name:"SMR",         capex:4.0e6, fixedOM:90000, mc:14, ef:0,   block:50, color:"--t-smr",     note:"modular nuclear · clean firm", avail:.93},
+  ccs_coal:{name:"Coal + CCS", capex:4.5e6, fixedOM:90000, mc:70, ef:.12, block:50, color:"--t-ccs-coal",note:"captured coal · 0.12 tCO₂/MWh", avail:.88},
+  ccs_gas: {name:"Gas + CCS",  capex:1.8e6, fixedOM:40000, mc:75, ef:.05, block:50, color:"--t-ccs-gas", note:"captured gas · 0.05 tCO₂/MWh", avail:.88},
 };
 
-// Display / dispatch ordering
+// Display / dispatch ordering. ORDER drives the BATCH game's stack chart/legend
+// and is deliberately left as the original seven. THERMAL is the dispatch set the
+// merit-order engine sorts by cost — the v3 techs join here so the live game
+// prices and ranks them; they carry zero availability for any fleet that hasn't
+// built them, so existing results are unchanged.
 export const ORDER = ["solar","wind","battery","nuclear","coal","ccgt","peaker"];
-export const THERMAL = ["nuclear","coal","ccgt","peaker"];
+export const THERMAL = ["nuclear","smr","geo","coal","ccs_coal","ccgt","ccs_gas","peaker"];
 
 export const VOLL = 4000;      // $/MWh value of lost load (blackout penalty only)
 export const PRICE_CAP = 300;  // $/MWh market offer cap (scarcity price ceiling)

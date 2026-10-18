@@ -12,12 +12,15 @@
 //                    building each hour's availability (renewable profiles +
 //                    a day-level battery heuristic) and summing dispatchHour().
 // ============================================================
-import { HOURS, DAYS, DEMAND_SHAPE, SOLAR_CF, WIND_CF, TECH, THERMAL, VOLL, PRICE_CAP } from "./constants.js";
+import { HOURS, DAYS, DEMAND_SHAPE, SOLAR_CF, WIND_CF, TECH, ORDER, THERMAL, VOLL, PRICE_CAP } from "./constants.js";
+
+// Gas-burning techs whose marginal cost scales with the fuel-price multiplier.
+const GAS_FUEL = new Set(["ccgt", "peaker", "ccs_gas"]);
 
 // Effective marginal cost of a thermal tech, including carbon price and (for
 // gas) a fuel-price multiplier. Exported so callers can rank/preview costs.
 export function marginalCost(t, carbonPrice = 0, fuelMult = 1) {
-  return TECH[t].mc * ((t === "ccgt" || t === "peaker") ? fuelMult : 1) + TECH[t].ef * carbonPrice;
+  return TECH[t].mc * (GAS_FUEL.has(t) ? fuelMult : 1) + TECH[t].ef * carbonPrice;
 }
 
 // Clear a single hour. `avail` is the MW available right now from each resource
@@ -31,7 +34,11 @@ export function dispatchHour(avail, demandMW, carbonPrice = 0, fuelMult = 1) {
   const order = [...THERMAL].sort((a, b) => mcOf(a) - mcOf(b));
 
   let rem = demandMW, price = 0, varCost = 0, emissions = 0;
-  const S = { solar: 0, wind: 0, battery: 0, nuclear: 0, coal: 0, ccgt: 0, peaker: 0, unserved: 0 };
+  // Every dispatchable key present as 0 so callers can sum any tech off the stack
+  // (ORDER + the merit-order dispatch set, which includes the v3 THERMAL techs).
+  const S = { unserved: 0 };
+  for (const t of ORDER) S[t] = 0;
+  for (const t of THERMAL) S[t] = 0;
 
   const su = Math.min(avail.solar || 0, rem); rem -= su; S.solar = su;
   const wu = Math.min(avail.wind || 0, rem); rem -= wu; S.wind = wu;
@@ -78,7 +85,7 @@ export function simulateDay(fleet, peakMW, weather, carbonPrice = 0, fuelMult = 
 
   // thermal available capacity is constant across the representative day
   const thermalAvail = {};
-  for (const t of THERMAL) thermalAvail[t] = fleet[t] * (TECH[t].avail || 1);
+  for (const t of THERMAL) thermalAvail[t] = (fleet[t] || 0) * (TECH[t].avail || 1);
 
   let served = 0, unserved = 0, revenue = 0, varCost = 0, emissions = 0, demandTot = 0;
   const stackSeries = [], priceSeries = [];
