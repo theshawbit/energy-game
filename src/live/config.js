@@ -34,8 +34,10 @@ export const CFG = {
   repairPerMW: 90,            // $/MW of capacity to fully service a wrecked plant
   repairMin: 4000,            // minimum service charge
   // ---- research / R&D lab (v3) ----
-  rpPerDollar: 0.0015,        // Research Points earned per $ diverted into R&D
-  rdFundingMax: 20000,        // $/game-hour cap on R&D funding (conservative; tuned in Phase F)
+  rpPerDollar: 0.0006,        // RP per $ diverted into R&D. Tuned (F2) so a typical run
+                              //   researches ~5–8 of 12 nodes — forcing a path choice —
+                              //   instead of finishing the whole tree with RP to spare.
+  rdFundingMax: 20000,        // $/game-hour cap on R&D funding
   // ---- per-run mutators (v3) — magnitudes live here so balance is central ----
   mut: {
     minRoll: 1,               // fewest mutators a run rolls
@@ -44,7 +46,8 @@ export const CFG = {
     heatwave: 1.18,           // demand multiplier (air-con all day)
     coldSnap: 1.12,           // demand multiplier (heating load)
     drought: 0.6,             // wind capacity-factor multiplier
-    lull: 0.55,               // solar AND wind capacity-factor multiplier
+    lull: 0.68,               // solar AND wind cf multiplier (F2: 0.55→0.68, it was the
+                              //   deadliest mutator by a wide margin — evened toward the rest)
   },
 };
 
