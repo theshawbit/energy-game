@@ -8,6 +8,7 @@ import { createGame, step } from "./sim.js";
 import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode } from "./actions.js";
 import { render, buildUnits, showEndGame, clearEndGame, renderMenu, hideMenu, renderMeta, renderHome } from "./render.js";
 import { scoreRun, currencyFor, buySkill, buyUnlock } from "./meta.js";
+import { rollMutators } from "./mutators.js";
 import { loadProfile, saveProfile } from "./persist.js";
 
 const $ = id => document.getElementById(id);
@@ -46,7 +47,7 @@ function openMenu(){ if (S.over) return; S.menuOpen = true; renderMenu(S, menu);
 // ---- run lifecycle ----
 function startRun(){
   hideAll(); clearEndGame();
-  S = createGame(profile.skills, profile.researchUnlocked);
+  S = createGame(profile.skills, profile.researchUnlocked, rollMutators()); // roll this run's mutators
   buildUnits(S, act);
   ended = false; last = 0;
   S.running = true;
