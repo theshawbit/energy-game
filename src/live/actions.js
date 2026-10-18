@@ -5,6 +5,7 @@
 // ============================================================
 import { setTicker } from "./sim.js";
 import { CFG, BUILD, UPGRADE, upgradeCost, serviceCost, salvageValue, makeUnit } from "./config.js";
+import { doResearch, researchById } from "./research.js";
 
 export function toggleUnit(S, id){
   if (!S.running || S.paused || S.over) return;
@@ -43,8 +44,10 @@ export function upgradeUnit(S, id){
   if (S.cash < cost) return { ok:false, msg:"Not enough cash to upgrade that." };
   S.cash -= cost;
   u.tier = (u.tier || 1) + 1;
-  u.cap = Math.round(u.cap * UPGRADE.capMult);
-  if (u.kind === "battery") u.maxEnergy = Math.round(u.maxEnergy * UPGRADE.capMult);
+  // Research "Modular Upgrades" amplifies the capacity gain of every Mk tier.
+  const capMult = UPGRADE.capMult + (S.rmods?.upgradeCapBonus || 0);
+  u.cap = Math.round(u.cap * capMult);
+  if (u.kind === "battery") u.maxEnergy = Math.round(u.maxEnergy * capMult);
   if (u.fail != null) u.fail *= UPGRADE.failMult;
   if (u.spin != null) u.spin *= UPGRADE.spinMult;
   setTicker(S, `✓ ${u.name} upgraded to Mk ${u.tier}.`);
@@ -80,4 +83,26 @@ export function decommissionUnit(S, id){
   S.fleet.splice(idx, 1);
   setTicker(S, `${u.name} decommissioned — ${u.cap} MW retired for salvage.`);
   return { ok:true };
+}
+
+// ---- research / R&D lab (v3) ----
+
+// Set the R&D funding rate ($/game-hour diverted into Research Points). Clamped
+// to [0, CFG.rdFundingMax]. Like build/upgrade, usable while the manage/research
+// panel is open (paused); only blocked once the run is over.
+export function setRdFunding(S, perHour){
+  if (S.over) return { ok:false };
+  const v = Number(perHour);
+  if (!Number.isFinite(v)) return { ok:false, msg:"Invalid funding rate." };
+  S.rdFunding = Math.max(0, Math.min(CFG.rdFundingMax, v));
+  return { ok:true };
+}
+
+// Research a tech node, spending in-run Research Points. Delegates gating/cost
+// to research.js; returns its {ok,msg}.
+export function researchNode(S, id){
+  if (S.over) return { ok:false };
+  const res = doResearch(S, id);
+  if (res.ok) setTicker(S, `🔬 Research complete — ${researchById(id)?.label || id}.`);
+  return res;
 }

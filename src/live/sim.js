@@ -11,6 +11,7 @@ import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, serviceCost } from "./config.js";
 import { computeMods, effPeakGrowth, newMilestones } from "./meta.js";
+import { computeResearchMods } from "./research.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -40,6 +41,7 @@ export function createGame(skills = {}){
     t:CFG.startHour, day:1, peak:CFG.startPeak, peakGrowth:effPeakGrowth(mods),
     cash:CFG.startCash + mods.startCashBonus, satisfaction:100, strain:0,
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
+    rp:0, rdFunding:0, research:{}, rmods:computeResearchMods({}), // in-run research (v3)
     fleet, techCount, weather:freshWeather(), buildSeq:1,
     demand:0, capacity:0, price:0, brownout:false,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
@@ -128,7 +130,7 @@ export function step(S, dt){
     // wear: thermal plants (the only units with condition) degrade while online;
     // worn plants trip more, via tripHazard. Batteries and renewables don't wear.
     if (u.condition != null && u.status === "online"){
-      u.condition = Math.max(0, u.condition - CFG.wearRate * S.mods.wearMult * dtH);
+      u.condition = Math.max(0, u.condition - CFG.wearRate * S.mods.wearMult * (S.rmods?.wearMult ?? 1) * dtH);
     }
   }
 
@@ -167,6 +169,14 @@ export function step(S, dt){
     const surplus = Math.max(0, S.capacity - S.demand);
     const add = Math.min(CFG.battRecharge * dtH, surplus * dtH, bat.maxEnergy - bat.energy);
     if (add > 0){ bat.energy += add; S.cash -= add * hr.price; }
+  }
+
+  // R&D lab (v3): divert funded cash into Research Points. Can't fund more than
+  // the cash on hand, so a near-broke grid can't research its way out of trouble.
+  if (S.rdFunding > 0 && S.cash > 0){
+    const spend = Math.min(S.rdFunding * dtH, S.cash);
+    S.cash -= spend;
+    S.rp += spend * CFG.rpPerDollar;
   }
 
   autoService(S, dtH); // Service Manager skill (no-op unless owned)

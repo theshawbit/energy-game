@@ -195,5 +195,17 @@ S.capacity = 600; S.demand = 590; S.autoSvcAcc = 5; // only 10 MW margin, nuclea
 autoService(S, 1);
 check("Service Manager won't pull an online plant into a shortfall", nucS.status === "online", nucS.status);
 
+// 25) Fresh game carries neutral research state (v3)
+S = createGame();
+check("fresh game: 0 RP, no funding, no research, neutral rmods",
+  S.rp === 0 && S.rdFunding === 0 && Object.keys(S.research).length === 0 && S.rmods.wearMult === 1);
+
+// 26) R&D funding accrues RP in step() (net cash also carries revenue, so we
+// assert the deterministic RP side — the conversion debits cash by construction)
+S = createGame(); S.running = true;
+S.rdFunding = 8000; const rpBefore = S.rp;
+step(S, 1.0);
+check("step accrues RP from R&D funding", S.rp > rpBefore, `+${(S.rp - rpBefore).toFixed(1)} RP`);
+
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
