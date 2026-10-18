@@ -6,7 +6,7 @@
 // ============================================================
 import { createGame, step } from "./sim.js";
 import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode } from "./actions.js";
-import { render, buildUnits, showEndGame, clearEndGame, renderMenu, hideMenu, renderMeta, renderHome } from "./render.js";
+import { render, buildUnits, showEndGame, clearEndGame, renderMenu, hideMenu, renderMeta, renderHome, renderMutatorBanner } from "./render.js";
 import { scoreRun, currencyFor, buySkill, buyUnlock } from "./meta.js";
 import { rollMutators } from "./mutators.js";
 import { loadProfile, saveProfile } from "./persist.js";
@@ -49,6 +49,7 @@ function startRun(){
   hideAll(); clearEndGame();
   S = createGame(profile.skills, profile.researchUnlocked, rollMutators()); // roll this run's mutators
   buildUnits(S, act);
+  renderMutatorBanner(S);
   ended = false; last = 0;
   S.running = true;
   render(S);
@@ -81,7 +82,7 @@ function frame(now){
 }
 
 // ---- wiring ----
-S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act); render(S); // a game to paint behind the home screen
+S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act); render(S); renderMutatorBanner(S); // a game to paint behind the home screen
 showHome();
 $("manageBtn").onclick = () => openMenu();
 $("pauseBtn").onclick = () => { if (S.running && !S.over){ S.paused = !S.paused; render(S); } };

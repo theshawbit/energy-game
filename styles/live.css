@@ -118,6 +118,11 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .up-row button.dec{border-color:#4a2a22;color:#e8926b}
 .up-row button.dec:hover:not(:disabled){border-color:#e8926b;color:#fff}
 .svc-note{font-family:var(--mono);font-size:.74rem;color:#7fb8ff;margin:0 0 6px}
+/* per-run mutator banner (v3) */
+.mut-banner{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 12px;padding:8px 12px;border:1px solid var(--warn);border-radius:10px;background:rgba(244,192,78,.1)}
+.mut-lead{font-family:var(--mono);font-size:.72rem;font-weight:600;letter-spacing:.04em;color:var(--warn);text-transform:uppercase}
+.mut-chip{font-size:.8rem;color:var(--muted)}
+.mut-chip b{color:var(--fg)}
 /* research & R&D (v3) */
 .rd-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-family:var(--mono);font-size:.8rem;color:var(--muted);margin-top:4px}
 .rd-head .rd-bank b{color:var(--accent);font-size:1.1rem}

@@ -7,6 +7,7 @@ import { unitOutput, clamp } from "./sim.js";
 import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
 import { SKILLS, skillCost, MILESTONES, RESEARCH_UNLOCKS } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
+import { mutatorById } from "./mutators.js";
 
 const $ = id => document.getElementById(id);
 // Theme tokens are static (single committed dark theme), so read each once and
@@ -358,3 +359,16 @@ export function renderMenu(S, actions){
   $("menuOverlay").classList.add("on");
 }
 export function hideMenu(){ $("menuOverlay").classList.remove("on"); }
+
+// ---- mutator banner: the per-run conditions, painted once at run start (they
+// don't change mid-run). Hidden when a run has no mutators. ----
+export function renderMutatorBanner(S){
+  const host = $("mutBanner"); if (!host) return;
+  const ids = S.mutators || [];
+  if (!ids.length){ host.style.display = "none"; host.innerHTML = ""; return; }
+  host.style.display = "";
+  host.innerHTML = `<span class="mut-lead">⚠ This run</span>` + ids.map(id => {
+    const m = mutatorById(id); if (!m) return "";
+    return `<span class="mut-chip"><b>${m.label}</b> — ${m.blurb}</span>`;
+  }).join("");
+}
