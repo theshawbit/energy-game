@@ -211,7 +211,15 @@ table.fleet .st{display:inline-block;font-family:var(--mono);font-size:.58rem;le
 .fin-btn:hover:not(:disabled){border-color:var(--accent);color:#fff}
 .fin-btn:disabled{opacity:.4;cursor:not-allowed}
 .fin-default{color:var(--warn);font-size:.78rem;margin:4px 0 8px}
-@media (max-width:620px){.hub-nav{grid-template-columns:1fr}.fin-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* hub → scored tracks (Phase D) */
+.rec-head{margin:14px 0 6px;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.rec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.rec-tile{border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:1px;background:var(--panel)}
+.rec-tile small{font-size:.62rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.rec-tile b{font-family:var(--mono);font-size:1.05rem}
+.rec-tile .faint{font-size:.64rem}
+@media (max-width:620px){.hub-nav{grid-template-columns:1fr}.fin-grid{grid-template-columns:repeat(2,1fr)}.rec-grid{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:620px){.hub-nav{grid-template-columns:1fr}}
 
 /* end-of-run score + currency */
