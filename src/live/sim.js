@@ -116,7 +116,7 @@ export function unitOutput(S, u){
     return u.cap * interp(u.cf, S.t) * wx * mut;
   }
   if (u.kind === "battery") return (u.status === "discharge" && u.energy > 0) ? u.cap * (S.rmods?.battCapMult ?? 1) : 0;
-  return u.status === "online" ? u.cap : 0; // firm / peaker
+  return (u.status === "online" || u.status === "strained") ? u.cap : 0; // firm / peaker (a strained plant still generates until it trips)
 }
 export function totalCapacity(S){ return S.fleet.reduce((a, u) => a + unitOutput(S, u), 0); }
 
@@ -167,18 +167,32 @@ export function step(S, dt){
     if (u.status === "starting"){ u.startTimer -= dtH; if (u.startTimer <= 0) u.status = "online"; }
     else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
     else if (u.status === "tripped"){ u.tripTimer -= dtH; if (u.tripTimer <= 0) u.status = u.ctrl ? "off" : "online"; }
-    else if ((u.kind === "firm" || u.kind === "peaker") && u.status === "online"){
-      // per-real-second hazard turned into an exact probability for this frame's dt
-      // (1 - e^{-rate·dt}): frame-rate independent and never exceeds 1 on slow frames
-      if (Math.random() < 1 - Math.exp(-tripHazard(u, diff) * dt)){ // trip!
-        u.status = "tripped"; u.tripTimer = rand(u.recover[0], u.recover[1]);
+    // v4.1 telegraphed trip: a strained plant is still generating but on borrowed
+    // time — it drops when the warning window runs out. The window is your cue to
+    // arm reserves / shed load (and for a peaker, to stand it down on your terms).
+    else if (u.status === "strained"){
+      u.strainTimer -= dtH;
+      if (u.strainTimer <= 0){
+        u.status = "tripped"; u.tripTimer = rand(u.recover[0], u.recover[1]); u.strainTimer = 0;
         setTicker(S, `⚠ ${u.name} tripped offline — ${Math.round(u.cap)} MW lost!`);
       }
     }
-    // wear: thermal plants (the only units with condition) degrade while online;
-    // worn plants trip more, via tripHazard. Batteries and renewables don't wear.
-    if (u.condition != null && u.status === "online"){
-      u.condition = Math.max(0, u.condition - CFG.wearRate * S.mods.wearMult * (S.rmods?.wearMult ?? 1) * dtH);
+    else if ((u.kind === "firm" || u.kind === "peaker") && u.status === "online"){
+      // per-real-second hazard turned into an exact probability for this frame's dt
+      // (1 - e^{-rate·dt}): frame-rate independent and never exceeds 1 on slow frames.
+      // v4.1: base rates are low and WEAR dominates (tripHazard), so a maintained
+      // plant rarely strains; when it does, it enters a telegraphed warning first.
+      if (Math.random() < 1 - Math.exp(-tripHazard(u, diff) * dt)){
+        u.status = "strained"; u.strainTimer = CFG.strainWarn;
+        setTicker(S, `⚠ ${u.name} straining — ${Math.round(u.cap)} MW at risk; stabilize or fire reserves!`);
+      }
+    }
+    // wear: thermal plants (the only units with condition) degrade while generating —
+    // online OR straining (a strained plant is still running). Worn plants strain more,
+    // via tripHazard. Batteries and renewables don't wear.
+    if (u.condition != null && (u.status === "online" || u.status === "strained")){
+      const wmult = u.status === "strained" ? 1.5 : 1; // a straining plant wears a touch faster
+      u.condition = Math.max(0, u.condition - CFG.wearRate * wmult * S.mods.wearMult * (S.rmods?.wearMult ?? 1) * dtH);
     }
   }
 
@@ -196,12 +210,19 @@ export function step(S, dt){
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
   S.co2Total += hr.emissions * dtH;                           // run total, tCO₂ (emissions is tCO₂/h)
 
-  // spin: cost of keeping thermal plants synced even when not fully dispatched
-  const spin = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "peaker") && u.status === "online") ? u.cap * (u.spin ?? CFG.spinCost) : 0), 0) * (S.rmods?.spinMult ?? 1);
-  // fixed O&M: owning dispatchable capacity costs money whether or not it runs
-  // (punishes overbuilding). Renewables are exempt — they're cheap to own and
-  // earn nothing at midday when they set a $0 price, so taxing them just bleeds.
-  const fixedOM = S.fleet.reduce((a, u) => a + (u.kind === "renew" ? 0 : u.cap), 0) * CFG.fixedOM;
+  // spin: cost of keeping a thermal plant synced while it's generating (online or
+  // straining — a strained plant is still running until it trips).
+  const generating = u => (u.kind === "firm" || u.kind === "peaker") && (u.status === "online" || u.status === "strained");
+  const spin = S.fleet.reduce((a, u) => a + (generating(u) ? u.cap * (u.spin ?? CFG.spinCost) : 0), 0) * (S.rmods?.spinMult ?? 1);
+  // fixed O&M (v4.1): you pay the FULL rate only for dispatchable capacity you're
+  // actually running; an off/tripped reserve (and the battery — storage is cheap to
+  // own) costs just CFG.fixedOMIdle of it. Still punishes overbuilding you keep hot,
+  // but idle reserves no longer bleed the cold start dry. Renewables stay exempt.
+  const fixedOM = S.fleet.reduce((a, u) => {
+    if (u.kind === "renew") return a;
+    const rate = generating(u) ? CFG.fixedOM : CFG.fixedOM * CFG.fixedOMIdle;
+    return a + u.cap * rate;
+  }, 0);
   // Revenue (v4 "The Book"): contracted blocks settle FIRST at their locked price,
   // the residual served load clears at the live spot price. Spot = baseline + a
   // scarcity premium driven by the player's OWN reserve margin (mutators compound

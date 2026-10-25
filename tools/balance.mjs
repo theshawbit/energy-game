@@ -42,6 +42,11 @@ const RESEARCH_PRIORITY = [
 // term contracts, and how it treats offers. Spread across the batch measures
 // whether hedging is neither pointless nor mandatory (each best under some run).
 const PERSONAS = {
+  // naive = a first-timer who ignores the Desk entirely (no hedge, no offers, no
+  // borrowing, no capacity market) and just runs the grid + basic maintenance. The
+  // key fairness bar: a naive player should survive several days, not go insolvent
+  // on day 1–2 from fixed costs alone (the v4.1 cold-start fix).
+  naive:             { hedge: () => 0,    takeOffers: false, minimal: true, label: "naive (no Desk)" },
   hedger:            { hedge: () => 0.85, takeOffers: true,  label: "hedger ~85%" },
   balanced:          { hedge: () => 0.50, takeOffers: true,  label: "balanced ~50%" },
   naked:             { hedge: () => 0.10, takeOffers: false, label: "naked ~10%" },
@@ -95,6 +100,7 @@ function manage(S){
 // a capacity obligation when the grid is comfortably long.
 function desk(S, persona){
   const p = PERSONAS[persona];
+  if (p.minimal){ if (S.pendingOffer) declineOffer(S); return; } // a naive player ignores the Desk entirely
   setHedge(S, p.hedge(S));
   hedgeContract(S, 4);                       // replace-model: one standing dial hedge
   // special offer (populated by the day roll): take it if the persona hedges and

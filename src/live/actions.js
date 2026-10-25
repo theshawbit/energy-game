@@ -18,7 +18,9 @@ export function toggleUnit(S, id){
     else setTicker(S, "Battery depleted — needs surplus capacity to recharge.");
   } else { // peaker
     if (u.status === "off"){ u.status = "starting"; u.startTimer = u.startTime * (S.mods?.startTimeMult ?? 1) * (S.rmods?.startTimeMult ?? 1); }
-    else if (u.status === "online" || u.status === "starting") u.status = "off";
+    // online / starting / strained → stand down (standing a STRAINED peaker down on
+    // your terms clears the strain, so the warning window buys you real agency)
+    else if (u.status === "online" || u.status === "starting" || u.status === "strained"){ u.status = "off"; u.strainTimer = 0; }
   }
 }
 

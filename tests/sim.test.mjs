@@ -284,7 +284,7 @@ S.rmods = computeResearchMods({ "unlock-smr": true });
 g = buildCapacity(S, "smr");
 check("SMR buildable once unlocked", g.ok && S.fleet.some(u => u.tech === "smr"));
 const smrU = S.fleet.find(u => u.tech === "smr");
-check("built SMR is clean firm with its own params", smrU.kind === "firm" && smrU.condition === 100 && smrU.spin === 2 && smrU.fail === 0.006);
+check("built SMR is clean firm with its own params", smrU.kind === "firm" && smrU.condition === 100 && smrU.spin === 2 && smrU.fail === 0.0020);
 
 // 34) One Carbon Capture unlock enables both CCS variants; geo stays gated
 S = createGame(); S.cash = 1e9; S.rmods = computeResearchMods({ "unlock-ccs": true });
@@ -592,6 +592,36 @@ function insolvent(debt){
   const shortfall = (firm + 300) - firm; // = 300 MW short
   check("a short capacity call fines but never ends the run", !S.over && S.capacityObligation.calledToday === true && S.cash < before,
     `cash ${before.toFixed(0)} → ${S.cash.toFixed(0)}, short ${shortfall} MW`);
+}
+
+// 59) v4.1 telegraphed trip: a hazard roll strains (not an instant trip); a strained
+// plant still generates through its warning window, then trips when it runs out.
+{
+  const S = createGame(); S.running = true;
+  const u = S.fleet.find(x => x.id === "colA");
+  u.status = "strained"; u.strainTimer = CFG.strainWarn;
+  check("a straining plant still generates its full output", unitOutput(S, u) === u.cap);
+  step(S, 0.1); // less than the warning window
+  check("strain holds through its warning window", u.status === "strained" && u.strainTimer > 0);
+  u.strainTimer = 0.001; step(S, 0.5); // exhaust the window
+  check("strain trips the plant when the window runs out", u.status === "tripped" && u.tripTimer > 0);
+}
+
+// 60) v4.1 agency: standing a strained PEAKER down clears the strain (your terms)
+{
+  const S = createGame(); S.running = true;
+  const pk = S.fleet.find(x => x.id === "pk1");
+  pk.status = "strained"; pk.strainTimer = CFG.strainWarn;
+  toggleUnit(S, pk.id);
+  check("standing a strained peaker down clears the strain", pk.status === "off" && pk.strainTimer === 0);
+}
+
+// 61) v4.1 fixed O&M: an idle reserve costs only CFG.fixedOMIdle of the full rate
+// (so cold-start grids aren't bled dry by capacity they aren't even running)
+{
+  const S = createGame();
+  const pk = S.fleet.find(x => x.id === "pk1"); // a peaker starts OFF (reserve)
+  check("an off reserve is billed fixed O&M at the idle fraction", CFG.fixedOMIdle < 1 && pk.status === "off");
 }
 
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);

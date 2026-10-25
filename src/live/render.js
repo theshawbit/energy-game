@@ -118,12 +118,14 @@ function updateUnits(S){
     const out = Math.round(unitOutput(S, u));
     let stClass, stText;
     if (u.status === "service"){ stClass = "st-service"; stText = "SERVICE"; }
+    else if (u.status === "strained"){ stClass = "st-strained"; stText = "⚠ STRAINING"; }
     else if (u.status === "online" || u.status === "discharge"){ stClass = "st-online"; stText = u.kind === "battery" ? "DISCHARGE" : "ONLINE"; }
     else if (u.status === "starting"){ stClass = "st-starting"; stText = "STARTING"; }
     else if (u.status === "tripped"){ stClass = "st-tripped"; stText = "TRIPPED"; }
     else { stClass = "st-off"; stText = u.kind === "renew" ? "IDLE" : "RESERVE"; }
     let hint = "";
-    if (u.status === "service") hint = "under maintenance";
+    if (u.status === "strained") hint = u.ctrl ? "about to trip — stand it down or back it up" : "about to trip — fire reserves to cover it";
+    else if (u.status === "service") hint = "under maintenance";
     else if (u.kind === "battery") hint = `charge ${Math.round(u.energy)}/${Math.round(u.maxEnergy * (S.rmods?.battEnergyMult ?? 1))} MWh`;
     else if (u.kind === "renew") hint = `output ${out} MW now`;
     else if (u.ctrl) hint = `$${u.mc}/MWh · tap ${u.key} to ${u.status === "off" ? "start" : "stop"}`;
