@@ -68,6 +68,9 @@ export const CFG = {
   hedgePriceCap: 1.35,        // a long lock can't beat baseline by more than this
   contractTermMin: 2,         // shortest term the dial offers (game-days)
   contractTermMax: 6,         // longest term the dial offers (game-days)
+  // credit STANDING that carries across runs (Phase C sets the rate/ceiling curves
+  // off it; defined here so the v3 profile migration has its opening value).
+  creditStart: 70,            // starting credit standing ∈ [0,100] (≈ grade A — a clean operator)
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and
