@@ -72,6 +72,8 @@ canvas{width:100%;height:auto;display:block;border-radius:10px;background:#0a0e1
 .st-starting{color:var(--starting);border-color:#4a3f1f;background:#241f0d;animation:pulse 1s ease-in-out infinite}
 .st-tripped{color:var(--tripped);border-color:#4a2222;background:#2a1212;animation:pulse .6s ease-in-out infinite}
 .st-service{color:#7fb8ff;border-color:#24415e;background:#10202f;animation:pulse 1.2s ease-in-out infinite}
+.st-strained{color:var(--warn,#e0a92b);border-color:#5e4a1c;background:#2a2109;animation:pulse .5s ease-in-out infinite}
+.unit:has(.st-strained){border-color:#5e4a1c}
 @keyframes pulse{50%{opacity:.5}}
 .condbar{height:3px;border-radius:3px;background:#0a0e14;margin-top:5px;overflow:hidden}
 .condbar i{display:block;height:100%;width:100%;border-radius:3px;transition:width .2s,background .2s}

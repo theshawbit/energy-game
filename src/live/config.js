@@ -12,7 +12,10 @@ export const CFG = {
   startCash: 120000,          // $ on hand day 1, so the manage panel has an opening move
   peakGrowth: 1.06,           // demand growth per day survived
   spinCost: 11,               // $/MW/h default to keep a thermal plant synced (per-unit `spin` overrides)
-  fixedOM: 10,                // $/MW/h fixed operating cost on dispatchable capacity (renewables exempt; owning it costs money)
+  fixedOM: 10,                // $/MW/h fixed O&M on ONLINE dispatchable capacity (renewables exempt)
+  fixedOMIdle: 0.3,           // v4.1: an off/reserve plant costs only this FRACTION of fixedOM to own
+                              //   (idle peakers + the battery shouldn't bleed you dry — fixes the
+                              //   cold-start insolvency; you only pay the full rate for what you run)
   unservedPenalty: 120,       // $/MWh extra penalty on unserved load (emergency purchases / fines)
   strainRate: 52,             // strain gained per second at 100% shortfall
   strainRecover: 45,          // strain shed per second when covered
@@ -26,7 +29,13 @@ export const CFG = {
   carbonStartDay: 3,          // carbon pricing kicks in after the opening days
   carbonPerDay: 3.5,          // $/t added each day thereafter (~day 13 flips coal→gas)
   wearRate: 0.7,              // condition %/game-hour lost while a plant generates
-  wearTripK: 3,               // worn plants trip up to (1+K)× as often at 0% condition
+  wearTripK: 5,               // v4.1: worn plants trip up to (1+K)× as often at 0% condition
+                              //   (raised 3→5 — base rates are now low, so WEAR is the real trip
+                              //   driver: a maintained plant almost never trips, a neglected one does)
+  // v4.1 telegraphed trips: a hazard roll no longer drops a plant instantly — it enters a
+  // STRAINED warning state for this many game-hours (still generating), giving you time to
+  // fire reserves / shed load / stand a peaker down before it actually trips offline.
+  strainWarn: 1.6,            // game-hours a plant strains before it trips (~3 real-seconds of warning)
   serviceTime: 4,             // game-hours a plant is offline for a full service
   repairPerMW: 90,            // $/MW of capacity to fully service a wrecked plant
   repairMin: 4000,            // minimum service charge
@@ -172,12 +181,12 @@ export const BUILD_GATE = {
 // Per-tech firm-plant operating params for units built mid-run (spin $/MW/h,
 // per-second trip rate, and the [min,max] game-hours to recover from a trip).
 const FIRM_PARAMS = {
-  nuclear:  { spin:2, fail:0.006, recover:[5, 9] },
-  smr:      { spin:2, fail:0.006, recover:[5, 9] },
-  geo:      { spin:3, fail:0.007, recover:[3, 6] },
-  coal:     { spin:4, fail:0.013, recover:[1.5, 3] },
-  ccs_coal: { spin:4, fail:0.013, recover:[1.5, 3] },
-  ccs_gas:  { spin:4, fail:0.011, recover:[1.5, 3] },
+  nuclear:  { spin:2, fail:0.0020, recover:[5, 9] },
+  smr:      { spin:2, fail:0.0020, recover:[5, 9] },
+  geo:      { spin:3, fail:0.0025, recover:[3, 6] },
+  coal:     { spin:4, fail:0.0045, recover:[1.5, 3] },
+  ccs_coal: { spin:4, fail:0.0045, recover:[1.5, 3] },
+  ccs_gas:  { spin:4, fail:0.0040, recover:[1.5, 3] },
 };
 
 // ---- upgrade tiers (Mk I→II→III): capacity up, trips down, standby cost down ----
@@ -197,14 +206,14 @@ export function upgradeCost(tier){ return Math.round(UPGRADE.cost * Math.pow(UPG
 // and the dispatchHour() clearing agree on one set of economics.
 export function makeFleet() {
   return [
-    { id:"nuc",  name:"Nuclear",   kind:"firm",   tech:"nuclear", cap:250, mc:TECH.nuclear.mc, spin:2,  tier:1, condition:100, status:"online", ctrl:false, fail:0.006, recover:[5,9],  key:null },
-    { id:"colA", name:"Coal A",    kind:"firm",   tech:"coal",    cap:180, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.013, recover:[1.5,3], key:null },
-    { id:"colB", name:"Coal B",    kind:"firm",   tech:"coal",    cap:140, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.013, recover:[1.5,3], key:null },
+    { id:"nuc",  name:"Nuclear",   kind:"firm",   tech:"nuclear", cap:250, mc:TECH.nuclear.mc, spin:2,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0020, recover:[5,9],  key:null },
+    { id:"colA", name:"Coal A",    kind:"firm",   tech:"coal",    cap:180, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0045, recover:[1.5,3], key:null },
+    { id:"colB", name:"Coal B",    kind:"firm",   tech:"coal",    cap:140, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0045, recover:[1.5,3], key:null },
     { id:"sol",  name:"Solar farm",kind:"renew",  tech:"solar",   cap:220, mc:TECH.solar.mc,   tier:1, status:"online", ctrl:false, cf:SOLAR_CF, key:null },
     { id:"wnd",  name:"Wind",      kind:"renew",  tech:"wind",    cap:160, mc:TECH.wind.mc,    tier:1, status:"online", ctrl:false, cf:WIND_CF,  key:null },
-    { id:"pk1",  name:"Peaker 1",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.009, recover:[1.5,3], startTime:1.6, key:"1" },
-    { id:"pk2",  name:"Peaker 2",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.009, recover:[1.5,3], startTime:1.6, key:"2" },
-    { id:"pk3",  name:"Peaker 3",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.009, recover:[1.5,3], startTime:1.6, key:"3" },
+    { id:"pk1",  name:"Peaker 1",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"1" },
+    { id:"pk2",  name:"Peaker 2",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"2" },
+    { id:"pk3",  name:"Peaker 3",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"3" },
     { id:"bat",  name:"Battery",   kind:"battery",tech:"battery", cap:120, mc:TECH.battery.mc, tier:1, status:"off",    ctrl:true,  energy:240, maxEnergy:240, key:"B" },
   ];
 }
@@ -223,6 +232,6 @@ export function makeUnit(tech, n, seq){
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
   if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
   if (kind === "firm"){ const p = FIRM_PARAMS[tech] || FIRM_PARAMS.coal; u.spin = p.spin; u.fail = p.fail; u.recover = [...p.recover]; }
-  if (kind === "peaker"){ u.spin = 11; u.fail = 0.009; u.recover = [1.5, 3]; u.startTime = 1.6; }
+  if (kind === "peaker"){ u.spin = 11; u.fail = 0.0030; u.recover = [1.5, 3]; u.startTime = 1.6; }
   return u;
 }
