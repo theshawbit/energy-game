@@ -53,3 +53,81 @@ export function expireContracts(S){
   for (const c of S.contracts) c.remaining -= 1;
   S.contracts = S.contracts.filter(c => c.remaining > 0);
 }
+
+// ============================================================
+// FINANCE — credit, debt, interest, bankruptcy (Phase C). Still pure: every
+// function is of state + dt/dtH, no DOM, no RNG, no engine import. A credit
+// STANDING ∈ [0,100] sets the interest rate and borrowing ceiling; default
+// craters both for the run; sustained insolvency is a fail-state.
+// ============================================================
+
+// Letter grade for a credit standing — display only, never drives economics.
+export function gradeFor(credit){
+  if (credit >= 90) return "AAA";
+  if (credit >= 78) return "AA";
+  if (credit >= 66) return "A";
+  if (credit >= 52) return "BBB";
+  if (credit >= 38) return "BB";
+  if (credit >= 24) return "B";
+  if (credit >= 10) return "CCC";
+  return "D";
+}
+
+// Rate (per game-day), borrowing ceiling ($), and grade for a credit standing.
+// Better credit → lower rate, higher ceiling. Both are linear in credit/100.
+export function creditRating(credit){
+  const c = Math.max(0, Math.min(100, credit)) / 100;
+  return {
+    grade: gradeFor(credit),
+    rate: CFG.rateMin + (CFG.rateMax - CFG.rateMin) * (1 - c),
+    ceiling: Math.round(CFG.ceilingMin + (CFG.ceilingMax - CFG.ceilingMin) * c),
+  };
+}
+
+// Interest accrued on `debt` over a slice of `dtH` game-hours at a per-game-day
+// `rate`. Returned as a $ amount (already scaled by dtH — the caller subtracts it
+// from cash directly, NOT through the ×dtH energy line, to avoid a ×dtH² term).
+export function interestFor(debt, rate, dtH){
+  return Math.max(0, debt) * rate * (dtH / 24);
+}
+
+// How much more the player could borrow right now: the credit ceiling minus
+// current debt, never negative. (S.credit is already held ≤ S.creditCap by
+// creditTick / triggerDefault, so a post-default run already borrows against the
+// capped standing.)
+export function debtCapacity(S){
+  return Math.max(0, creditRating(S.credit).ceiling - (S.debt || 0));
+}
+
+// Cash below the insolvency floor = insolvent (starts the bankruptcy clock).
+export function isInsolvent(S){ return S.cash < CFG.insolvencyFloor; }
+
+// A solvent day rebuilds credit toward the current cap (defaultCeil after a
+// default, else 100). Called once per day from surviveDay.
+export function creditTick(S){
+  if (isInsolvent(S)) return;             // only solvent days rebuild trust
+  const cap = S.creditCap ?? 100;
+  S.credit = Math.min(cap, (S.credit ?? CFG.creditStart) + CFG.creditRecoverPerDay);
+}
+
+// Default: once per run, the moment you're insolvent WITH outstanding debt. Craters
+// the in-run standing and caps the ceiling for the rest of the run; scars the ledger.
+export function triggerDefault(S){
+  S.defaulted = true;
+  S.creditCap = CFG.defaultCeil;
+  S.credit = Math.min(S.credit ?? CFG.creditStart, CFG.defaultCredit);
+  (S.debtLedger = S.debtLedger || []).push({ type:"default", day:S.day, debt:Math.round(S.debt || 0) });
+}
+
+// Write the run's credit standing back to the carried profile (the ONLY writer of
+// the cross-run credit thread). A default caps the written standing at defaultFloor.
+export function commitCreditStanding(profile, S){
+  const c = profile.credit || (profile.credit = { standing:CFG.creditStart, best:CFG.creditStart, everDefaulted:false, defaults:0, history:[] });
+  const standing = S.defaulted ? Math.min(S.credit ?? CFG.creditStart, CFG.defaultFloor) : (S.credit ?? CFG.creditStart);
+  c.standing = Math.round(standing);
+  c.best = Math.max(c.best ?? CFG.creditStart, Math.round(S.credit ?? CFG.creditStart));
+  if (S.defaulted){ c.everDefaulted = true; c.defaults = (c.defaults || 0) + 1; }
+  (c.history = c.history || []).push(c.standing);
+  if (c.history.length > 50) c.history = c.history.slice(-50); // keep the record bounded
+  return c.standing;
+}

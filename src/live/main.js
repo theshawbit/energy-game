@@ -5,8 +5,9 @@
 // opening it never disturbs a run.
 // ============================================================
 import { createGame, step } from "./sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, acceptOffer, declineOffer } from "./actions.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, acceptOffer, declineOffer, borrow, repay } from "./actions.js";
 import { makeRng } from "./rng.js";
+import { commitCreditStanding } from "./finance.js";
 import { render, buildUnits, showEndGame, clearEndGame, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner } from "./render.js";
 import { scoreRun, currencyFor, buySkill, buyUnlock } from "./meta.js";
 import { rollMutators } from "./mutators.js";
@@ -48,6 +49,8 @@ const menu = {
   hedge(term){ hedgeContract(S, term); refreshPage(); render(S); },
   accept(){ acceptOffer(S); refreshPage(); render(S); },
   decline(){ declineOffer(S); refreshPage(); render(S); },
+  borrow(amt){ borrow(S, amt); refreshPage(); render(S); },
+  repay(amt){ repay(S, amt); refreshPage(); render(S); },
   go(p){ page = p; refreshPage(); },
   close(){ S.menuOpen = false; page = null; hideManage(); last = 0; render(S); },
 };
@@ -56,7 +59,7 @@ function openManage(){ if (S.over) return; S.menuOpen = true; page = "hub"; refr
 // ---- run lifecycle ----
 function startRun(){
   hideAll(); clearEndGame();
-  S = createGame(profile.skills, profile.researchUnlocked, rollMutators()); // roll this run's mutators
+  S = createGame(profile.skills, profile.researchUnlocked, rollMutators(), profile.credit?.standing); // roll mutators; carry credit standing
   const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG, replayable from the seed
   buildUnits(S, act);
   renderMutatorBanner(S);
@@ -74,6 +77,7 @@ function endRun(){
     score: Math.max(prevBest.score || 0, res.score),
     peak: Math.max(prevBest.peak || 0, S.peak),
   };
+  commitCreditStanding(profile, S); // v4 (C): write the run's credit standing back (the only credit writer)
   saveProfile(profile);
   showEndGame(S, { score: res.score, earned, best: prevBest }, { replay: () => startRun(), home: showHome });
 }

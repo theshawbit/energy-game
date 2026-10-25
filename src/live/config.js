@@ -68,9 +68,22 @@ export const CFG = {
   hedgePriceCap: 1.35,        // a long lock can't beat baseline by more than this
   contractTermMin: 2,         // shortest term the dial offers (game-days)
   contractTermMax: 6,         // longest term the dial offers (game-days)
-  // credit STANDING that carries across runs (Phase C sets the rate/ceiling curves
-  // off it; defined here so the v3 profile migration has its opening value).
+  // ---- v4 "The Book": financing — debt, credit, bankruptcy (Phase C) ----
+  // A credit STANDING ∈ [0,100] carries across runs and sets both the interest
+  // rate and the borrowing ceiling. Default craters it for the run and scars the
+  // persistent record; sustained insolvency is a bankruptcy fail-state.
   creditStart: 70,            // starting credit standing ∈ [0,100] (≈ grade A — a clean operator)
+  rateMin: 0.012,            // interest rate per GAME-DAY at perfect credit (100)
+  rateMax: 0.085,            // interest rate per game-day at zero credit
+  ceilingMin: 0,             // borrowing ceiling ($) at zero credit
+  ceilingMax: 400000,        // borrowing ceiling ($) at perfect credit
+  defaultCredit: 20,         // credit is slammed to ≤ this the moment you default
+  defaultCeil: 55,           // and your credit ceiling is capped here for the rest of the run
+  defaultFloor: 40,          // cross-run standing can't be written back above this after a default
+  creditRecoverPerDay: 3,    // solvent days rebuild credit toward the (possibly capped) ceiling
+  insolvencyFloor: 0,        // cash below this counts as insolvent
+  hardInsolvency: -150000,   // cash this deep in the red = instant wind-up (assets seized)
+  bankruptcyGrace: 6,        // real-seconds insolvent before bankruptcy (mirrors the strain window)
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and
