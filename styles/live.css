@@ -200,6 +200,18 @@ table.fleet .st{display:inline-block;font-family:var(--mono);font-size:.58rem;le
 .tiny{font-size:.72rem;margin:2px 0 0}
 .ct-h{font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:16px 0 6px}
 .ct-table{width:100%}
+
+/* desk → financing (Phase C) */
+.fin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.fin-cell{border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:1px;background:var(--panel)}
+.fin-cell small{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.fin-cell b{font-family:var(--mono);font-size:1.1rem}
+.fin-cell .faint{font-size:.66rem}
+.fin-btn{font-family:var(--mono);font-size:.78rem;padding:5px 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--fg);cursor:pointer}
+.fin-btn:hover:not(:disabled){border-color:var(--accent);color:#fff}
+.fin-btn:disabled{opacity:.4;cursor:not-allowed}
+.fin-default{color:var(--warn);font-size:.78rem;margin:4px 0 8px}
+@media (max-width:620px){.hub-nav{grid-template-columns:1fr}.fin-grid{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:620px){.hub-nav{grid-template-columns:1fr}}
 
 /* end-of-run score + currency */

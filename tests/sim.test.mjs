@@ -424,5 +424,94 @@ function controlled(peak){
     `×${spiked.scarcityMult}`);
 }
 
+// ---- Phase C: financing — debt, credit, interest, bankruptcy ----
+const { borrow, repay } = await import("../src/live/actions.js");
+const { creditRating, interestFor } = await import("../src/live/finance.js");
+
+// 48) Fresh game carries neutral financing state; credit starts at the carried standing
+{
+  S = createGame();
+  check("fresh game: no debt, default credit standing, not defaulted",
+    S.debt === 0 && S.credit === CFG.creditStart && S.creditCap === 100 && S.defaulted === false && S.insolventT === 0 && S.interestPaid === 0);
+  const carried = createGame({}, {}, [], 42);
+  check("createGame carries a passed-in credit standing", carried.credit === 42);
+}
+
+// 49) borrow adds cash + debt, refused past the ceiling; repay clamps to debt & cash
+{
+  S = createGame();
+  const ceiling = creditRating(S.credit).ceiling, cash0 = S.cash;
+  let r = borrow(S, 50000);
+  check("borrow adds cash and debt", r.ok && S.debt === 50000 && S.cash === cash0 + 50000);
+  r = borrow(S, ceiling); // would exceed the ceiling
+  check("borrow refused past the credit ceiling", !r.ok && S.debt === 50000);
+  const cashB = S.cash;
+  r = repay(S, 20000);
+  check("repay lowers debt and cash", r.ok && S.debt === 30000 && S.cash === cashB - 20000);
+  r = repay(S, 999999); // clamp to remaining debt
+  check("repay clamps to the debt owed", S.debt === 0 && S.cash >= 0);
+  S.cash = 100; S.debt = 50000;
+  r = repay(S, 40000); // can't repay into the red — clamp to cash on hand
+  check("repay clamped to cash on hand (no repay into the red)", near(S.debt, 50000 - 100, 1e-9) && S.cash === 0, `debt ${S.debt}`);
+}
+
+// 50) Interest accrues on debt into the cash line, exactly, and into interestPaid
+{
+  S = controlled(400); S.debt = 100000; S.credit = 100; // rateMin
+  const rate = creditRating(100).rate, before = S.cash, ip0 = S.interestPaid;
+  const dt = 0.5, dtH = dt * (24 / CFG.secondsPerDay);
+  // isolate interest: snapshot the non-interest cash move by running an identical debt-free run
+  const B = controlled(400);
+  step(S, dt); step(B, dt);
+  const expectedInterest = interestFor(100000, rate, dtH);
+  check("interest accrues into interestPaid", near(S.interestPaid - ip0, expectedInterest, 1e-6), "$" + (S.interestPaid - ip0).toFixed(2));
+  check("interest is exactly the extra cash drain vs a debt-free run", near((B.cash) - (S.cash), expectedInterest, 1e-6),
+    `Δ $${((B.cash) - (S.cash)).toFixed(2)} vs $${expectedInterest.toFixed(2)}`);
+}
+
+// An insolvent state with NO demand (peak 0) so neither revenue can rescue the
+// red cash nor a shortfall can trigger a blackout — isolating the credit paths.
+function insolvent(debt){
+  const g = createGame(); g.running = true; g.peak = 0; g.rdFunding = 0; g.cash = -10; g.debt = debt;
+  return g;
+}
+
+// 51) Default fires once when insolvent with debt: credit cratered, ceiling capped
+{
+  S = insolvent(50000);
+  step(S, 0.05);
+  check("insolvent-with-debt triggers a default (credit cratered, capped)", S.defaulted && S.credit <= CFG.defaultCredit && S.creditCap === CFG.defaultCeil);
+  const creditAfter = S.credit;
+  step(S, 0.05); // still insolvent — must NOT default again
+  check("default scars only once", S.credit === creditAfter && S.debtLedger.filter(e => e.type === "default").length === 1);
+}
+
+// 52) Bankruptcy: sustained insolvency ends the run after the grace window; recovering resets the clock
+{
+  S = insolvent(1000);
+  step(S, CFG.bankruptcyGrace - 0.5); // insolvent but within grace
+  check("within the grace window the run survives", !S.over && S.insolventT > 0, `insolventT ${S.insolventT.toFixed(1)}`);
+  S.cash = 5000; // recover to solvent
+  step(S, 0.1);
+  check("recovering to solvent resets the insolvency clock", S.insolventT < CFG.bankruptcyGrace - 0.5);
+  S.cash = -10; // back under
+  step(S, CFG.bankruptcyGrace + 0.5);
+  check("sustained insolvency past the grace window files bankruptcy", S.over && /bankrupt/i.test(S.reason), S.reason);
+}
+
+// 53) Hard insolvency is instant (a catastrophic hole, no grace)
+{
+  S = insolvent(1000); S.cash = CFG.hardInsolvency - 1;
+  step(S, 0.02);
+  check("a catastrophic cash hole winds the utility up instantly", S.over && /seized|wound/i.test(S.reason), S.reason);
+}
+
+// 54) A cash-only over-build can go bankrupt with NO debt (and never defaults)
+{
+  S = insolvent(0);
+  step(S, CFG.bankruptcyGrace + 0.5);
+  check("no-debt insolvency still bankrupts after grace, without a default event", S.over && !S.defaulted && /bankrupt/i.test(S.reason), S.reason);
+}
+
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

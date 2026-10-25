@@ -10,7 +10,7 @@ import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
 import { makeFleetComparator } from "./fleetsort.js";
 import { dailyBaseline } from "./market.js";
-import { contractPrice, expectedOutput } from "./finance.js";
+import { contractPrice, expectedOutput, creditRating, gradeFor, debtCapacity } from "./finance.js";
 
 const $ = id => document.getElementById(id);
 // Theme tokens are static (single committed dark theme), so read each once and
@@ -386,10 +386,13 @@ function hubBody(S){
     ["research", "Research", "Tech tree & R&D lab"],
     ["desk", "Desk", "Contracts & financing"],
   ].map(([id, label, sub], i) => `<button data-go="${id}"><span class="nav-nm">${i + 1}. ${label}</span><span class="sub">${sub}</span></button>`).join("");
+  const netWorth = S.cash - (S.debt || 0); // v4 (§1.5): cash − debt
+  const grade = gradeFor(S.credit ?? 70);
   const tiles = [
     ["Day", S.day, false], ["Peak", S.peak + " MW", false], ["Cash", money(S.cash), false],
+    ["Net worth", money(netWorth), false], ["Debt", (S.debt || 0) > 0 ? money(S.debt) : "—", false],
+    ["Credit", `${grade} · ${Math.round(S.credit ?? 70)}`, false],
     ["Satisfaction", Math.round(S.satisfaction) + "%", false], ["RP banked", Math.floor(S.rp || 0), false],
-    ["Net worth", "—", true], ["Debt", "—", true], ["Credit", "—", true],
   ].map(([k, v, ph]) => `<div class="hub-tile${ph ? " placeholder" : ""}"><b>${v}</b><small>${k}</small></div>`).join("");
   return `<div class="hub-nav">${nav}</div><div class="hub-stats">${tiles}</div>`;
 }
@@ -502,6 +505,9 @@ function wireDesk(S, actions){
   };
   // term buttons sign (and replace) the standing hedge, then re-render the list
   m.querySelectorAll("[data-term]").forEach(b => b.onclick = () => actions.hedge(Number(b.dataset.term)));
+  // financing: borrow / repay preset amounts
+  m.querySelectorAll("[data-borrow]").forEach(b => b.onclick = () => actions.borrow(Number(b.dataset.borrow)));
+  m.querySelectorAll("[data-repay]").forEach(b => b.onclick = () => actions.repay(Number(b.dataset.repay)));
 }
 
 // --- desk: the economy route. Contracts filled by Phase B; Financing by Phase C. ---
@@ -509,8 +515,35 @@ function deskBody(S){
   const tabs = `<div class="meta-tabs">
     <button class="meta-tab ${deskTab === "contracts" ? "on" : ""}" data-desk="contracts">Contracts</button>
     <button class="meta-tab ${deskTab === "financing" ? "on" : ""}" data-desk="financing">Financing</button></div>`;
-  if (deskTab === "financing") return tabs + `<p class="desk-stub">Borrow to expand, mind your credit rating — arriving in Phase C.</p>`;
+  if (deskTab === "financing") return tabs + financingBody(S);
   return tabs + contractsBody(S);
+}
+
+// Financing tab: credit rating (grade/rate/ceiling), debt, and borrow/repay. The
+// interest rate is per game-day; borrowing is capped at the credit ceiling.
+function financingBody(S){
+  const credit = S.credit ?? CFG.creditStart;
+  const { grade, rate, ceiling } = creditRating(credit);
+  const headroom = debtCapacity(S);
+  const netWorth = S.cash - (S.debt || 0);
+  const amounts = [20000, 50000, 100000];
+  const borrowBtns = amounts.map(a =>
+    `<button class="fin-btn" data-borrow="${a}" ${headroom >= a ? "" : "disabled"}>+${money(a)}</button>`).join("");
+  const repayBtns = amounts.map(a =>
+    `<button class="fin-btn" data-repay="${a}" ${(S.debt || 0) > 0 && S.cash >= Math.min(a, S.debt) ? "" : "disabled"}>−${money(a)}</button>`).join("");
+  const defaultNote = S.defaulted
+    ? `<p class="fin-default">⚠ In default this run — ceiling capped, rates elevated. Stay solvent to rebuild.</p>` : "";
+  return `
+    <div class="fin-grid">
+      <div class="fin-cell"><small>Credit</small><b>${grade}</b><span class="faint">${Math.round(credit)}/100</span></div>
+      <div class="fin-cell"><small>Interest</small><b>${(rate * 100).toFixed(1)}%</b><span class="faint">/day on debt</span></div>
+      <div class="fin-cell"><small>Debt</small><b>${money(S.debt || 0)}</b><span class="faint">of ${money(ceiling)}</span></div>
+      <div class="fin-cell"><small>Net worth</small><b style="color:${netWorth < 0 ? "var(--bad)" : "var(--fg)"}">${money(netWorth)}</b><span class="faint">cash − debt</span></div>
+    </div>
+    ${defaultNote}
+    <div class="term-row"><span class="k">Borrow</span>${borrowBtns}<span class="faint tiny">headroom ${money(headroom)}</span></div>
+    <div class="term-row"><span class="k">Repay</span>${repayBtns}</div>
+    <p class="faint tiny">Debt is cash now for interest forever — the fixed cost your contract floor must beat. Go insolvent with debt and you default; stay under too long and the utility goes bankrupt.</p>`;
 }
 
 // Contracts tab: the hedge dial (commit a slice of expected output), term choice,

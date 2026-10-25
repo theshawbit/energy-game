@@ -7,7 +7,7 @@ import { setTicker } from "./sim.js";
 import { CFG, BUILD, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue, makeUnit } from "./config.js";
 import { doResearch, researchById } from "./research.js";
 import { dailyBaseline } from "./market.js";
-import { contractPrice, expectedOutput, makeContract } from "./finance.js";
+import { contractPrice, expectedOutput, makeContract, creditRating } from "./finance.js";
 
 export function toggleUnit(S, id){
   if (!S.running || S.paused || S.over) return;
@@ -162,5 +162,32 @@ export function acceptOffer(S){
 export function declineOffer(S){
   if (S.over) return { ok:false };
   S.pendingOffer = null;
+  return { ok:true };
+}
+
+// ---- v4 "The Book": the Desk — financing (Phase C) ----
+
+// Draw down debt (cash now, interest forever). Refused past the credit ceiling.
+export function borrow(S, amount){
+  if (S.over) return { ok:false };
+  const a = Math.round(Number(amount) || 0);
+  if (a <= 0) return { ok:false, msg:"Enter an amount to borrow." };
+  const ceiling = creditRating(S.credit).ceiling;
+  if ((S.debt || 0) + a > ceiling) return { ok:false, msg:`Over your $${ceiling.toLocaleString()} credit ceiling.` };
+  S.debt = (S.debt || 0) + a; S.cash += a;
+  (S.debtLedger = S.debtLedger || []).push({ type:"borrow", day:S.day, amount:a });
+  setTicker(S, `＄ Borrowed $${a.toLocaleString()} — debt now $${Math.round(S.debt).toLocaleString()}.`);
+  return { ok:true };
+}
+
+// Repay debt from cash. Clamped to what's owed and what's on hand (can't repay
+// into the red). Lower debt → less interest and a faster credit rebuild.
+export function repay(S, amount){
+  if (S.over) return { ok:false };
+  const a = Math.min(Math.round(Number(amount) || 0), S.debt || 0, Math.max(0, S.cash));
+  if (a <= 0) return { ok:false, msg:"Nothing to repay (or no spare cash)." };
+  S.debt -= a; S.cash -= a;
+  (S.debtLedger = S.debtLedger || []).push({ type:"repay", day:S.day, amount:a });
+  setTicker(S, `＄ Repaid $${a.toLocaleString()} — debt now $${Math.round(S.debt).toLocaleString()}.`);
   return { ok:true };
 }

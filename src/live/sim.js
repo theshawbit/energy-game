@@ -14,7 +14,7 @@ import { computeMods, effPeakGrowth, newMilestones } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
 import { exogenousBaseline, reserveMargin, spotPrice } from "./market.js";
-import { settleContracts, expireContracts } from "./finance.js";
+import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -28,7 +28,7 @@ export function interp(arr, t){
 
 // `mutators` is the rolled per-run mutator id list — supplied by the caller
 // (main.js rolls it at run start) so createGame itself stays deterministic.
-export function createGame(skills = {}, researchUnlocked = {}, mutators = []){
+export function createGame(skills = {}, researchUnlocked = {}, mutators = [], creditStanding = CFG.creditStart){
   const mods = computeMods(skills);
   const fleet = makeFleet();
   // monotonic per-tech counter for naming built units, so numbers are never
@@ -55,6 +55,10 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = []){
     // so a bare createGame() stays reproducible (spotNoise is always 0 in B). ----
     spot:0, spotBaseline:0, spotNoise:0, hedge:CFG.hedgeDefault,
     contracts:[], pendingOffer:null, contractSeq:1, contractedMW:0,
+    // ---- v4 financing (Phase C): start clean, borrow by choice. Credit is the
+    // carried STANDING (not a flat constant); creditCap drops after a default. ----
+    debt:0, credit:creditStanding, creditCap:100, defaulted:false,
+    insolventT:0, interestPaid:0, dayInterest0:0, debtLedger:[],
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
@@ -112,6 +116,11 @@ export function surviveDay(S){
   S.day++; S.peak = Math.round(S.peak * S.peakGrowth); S.weather = freshWeather();
   S.strain = Math.max(0, S.strain - 30);
   expireContracts(S); // v4: age term contracts one day, drop the expired ones
+  creditTick(S);      // v4 (C): a solvent day rebuilds credit toward the cap
+  // roll the day's accrued interest into a single ledger entry (not per-tick)
+  const dayInterest = S.interestPaid - (S.dayInterest0 || 0);
+  if (dayInterest > 0.5){ (S.debtLedger = S.debtLedger || []).push({ type:"interest", day:S.day - 1, amount:Math.round(dayInterest) }); }
+  S.dayInterest0 = S.interestPaid;
   const firstCarbon = S.carbon === 0 && S.day >= CFG.carbonStartDay;
   if (S.day >= CFG.carbonStartDay) S.carbon += CFG.carbonPerDay; // policy tightens as the run climbs
   setTicker(S, firstCarbon
@@ -187,6 +196,14 @@ export function step(S, dt){
   const revenue = contractRevenue + residualMW * spot;
   S.cash += (revenue - hr.varCost - spin - fixedOM) * dtH;  // unserved load earns nothing
 
+  // financing (v4, Phase C): interest on outstanding debt is the fixed obligation
+  // that makes the hedge floor matter. Rate comes off the live credit standing;
+  // interestFor already bakes in dtH, so it's subtracted directly (not ×dtH again).
+  if (S.debt > 0){
+    const interest = interestFor(S.debt, creditRating(S.credit).rate, dtH);
+    S.cash -= interest; S.interestPaid += interest;
+  }
+
   // storage (one or more batteries): the engine aggregates all battery MW into
   // hr.stack.battery, so drain that total across the discharging units — split in
   // proportion to each unit's stored energy, which keeps every unit ≥ 0 whenever
@@ -236,6 +253,19 @@ export function step(S, dt){
     S.brownout = false; S.upAcc += dt;
     S.strain = Math.max(0, S.strain - CFG.strainRecover * dt);
     if (S.satisfaction < 100) S.satisfaction = Math.min(100, S.satisfaction + CFG.satRecover * dt);
+  }
+
+  // insolvency (v4, Phase C): a second fail-path beside the blackout. Being in the
+  // red with debt triggers a one-time default (credit cratered for the run); a
+  // catastrophic hole winds you up instantly; otherwise a grace window (like the
+  // strain meter) runs before bankruptcy — so a financial death feels earned too.
+  if (isInsolvent(S)){
+    if (S.debt > 0 && !S.defaulted){ triggerDefault(S); setTicker(S, `⚠ DEFAULT — credit cratered to ${Math.round(S.credit)}. Rates and ceiling slashed.`); }
+    if (S.cash < CFG.hardInsolvency){ gameOver(S, "Creditors wound up the utility — assets seized."); return true; }
+    S.insolventT += dt;
+    if (S.insolventT >= CFG.bankruptcyGrace){ gameOver(S, "Insolvent too long — the utility filed for bankruptcy."); return true; }
+  } else {
+    S.insolventT = Math.max(0, S.insolventT - dt);
   }
 
   // milestones reached this tick (near-term goals; scored at end of run)
