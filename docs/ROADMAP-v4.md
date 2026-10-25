@@ -1,9 +1,10 @@
 # Grid Operator v4 — "The Book" — Design & Roadmap
 
-> **Status: planned** (2026-10-25). This is the *what* and *why*, scoped from a
-> planning interview. The phase-by-phase implementation is in
-> [PLAN-v4.md](PLAN-v4.md). v3 (the research tech tree) is shipped; see
-> [ROADMAP-v3.md](ROADMAP-v3.md).
+> **Status: SHIPPED** (Phases A–G, 2026-10-25). This is the *what* and *why*,
+> scoped from a planning interview; the phase-by-phase implementation is in
+> [PLAN-v4.md](PLAN-v4.md). All seven phases merged to `main`; the economy was
+> tuned with data in Phase G (`tools/balance.mjs`). v3 (the research tech tree)
+> shipped earlier; see [ROADMAP-v3.md](ROADMAP-v3.md).
 
 **Theme:** The real-time dispatch roguelike grows a *balance sheet*. v3 gave the
 grid a brain (research); v4 gives it a **book**. You stop being only the operator
@@ -226,12 +227,15 @@ pure modifier-object modules) holds. v4 extends it.
   conditional blur under volatility.
 - **Phase F — Meta blooms.** Economy unlocks, run-length growth, the capacity market
   (advanced tier), and the special-offer system.
-- **Phase G — Balance pass.** Extend `tools/balance.mjs` across the economy; tune
-  hedge rates, spot volatility, interest and credit curves, bankruptcy thresholds,
-  and the unlock/run-length pace. Protects the verified core.
+- **Phase G — Balance pass.** Extend `tools/balance.mjs` across the economy (seeded
+  runs × hedge personas); add the cross-cutting guard tests (shortfall-never-windfall,
+  determinism, cash/book conservation); tune the spot magnitude with data (scarcityMax
+  240→100, spotCap 320→165, crashMax 42→54, hedgeBaseFactor 0.90→1.06 — the windfall
+  compressed, hedging made fair). Protects the verified core.
 
 **The spine is A–C (D closes the loop).** E–G are depth that can slip to a point
 release without breaking v4 — the same cut-line discipline that kept v3 honest.
+*(Shipped: all of A–G landed in this release.)*
 
 ---
 
