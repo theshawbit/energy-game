@@ -126,19 +126,34 @@ export function setHedge(S, frac){
   return { ok:true };
 }
 
-// Sign the standing hedge contract off the dial: commit hedge×expectedOutput MW
-// at a term-priced rate. One standing dial contract at a time — signing again
-// REPLACES it (locked decision 6), so the dial is a single always-on hedge.
+// Sign a hedge contract off the dial: commit hedge×expectedOutput MW at a
+// term-priced rate. v4.1: ADDITIVE — each sign LAYERS a new contract onto the book
+// (a ladder of terms/prices/sizes), up to CFG.hedgeMaxContracts standing hedges, so
+// you can build and roll a real hedge position instead of a single all-or-nothing
+// dial. Cancel individual legs with cancelContract.
 export function hedgeContract(S, term){
   if (S.over) return { ok:false };
   const t = Math.max(CFG.contractTermMin, Math.min(CFG.contractTermMax, Math.round(Number(term) || CFG.contractTermMin)));
   const mw = Math.round(S.hedge * expectedOutput(S.peak));
-  S.contracts = (S.contracts || []).filter(c => c.origin !== "dial"); // replace the standing dial hedge
-  if (mw <= 0){ setTicker(S, "Hedge dial at 0 — standing contract cleared."); return { ok:true, cleared:true }; }
+  if (mw <= 0){ setTicker(S, "Hedge dial at 0 — nothing to sign."); return { ok:false, msg:"Raise the hedge dial above 0 first." }; }
+  const dialCount = (S.contracts || []).filter(c => c.origin === "dial").length;
+  if (dialCount >= CFG.hedgeMaxContracts) return { ok:false, msg:`Hedge book full (${CFG.hedgeMaxContracts} standing legs) — cancel one first.` };
   const price = contractPrice(dailyBaseline(S.day), t);
+  S.contracts = S.contracts || [];
   S.contracts.push(makeContract({ mw, price, term:t, origin:"dial", buyer:null, seq:S.contractSeq++ }));
-  setTicker(S, `✍ Hedged ${mw} MW at $${price}/MWh for ${t} days.`);
+  setTicker(S, `✍ Hedged ${mw} MW at $${price}/MWh for ${t} days — ${dialCount + 1} leg${dialCount ? "s" : ""} on the book.`);
   return { ok:true, mw, price, term:t };
+}
+
+// Cancel one standing contract by id (a hedge leg or an accepted offer). Lets the
+// player manage the ladder — trim an over-hedge, drop a leg that's no longer wanted.
+export function cancelContract(S, id){
+  if (S.over) return { ok:false };
+  const before = (S.contracts || []).length;
+  S.contracts = (S.contracts || []).filter(c => c.id !== id);
+  if (S.contracts.length === before) return { ok:false, msg:"No such contract." };
+  setTicker(S, "Contract cancelled — that block clears at spot again.");
+  return { ok:true };
 }
 
 // Sign an explicit one-off contract (used by Phase F special offers; also the

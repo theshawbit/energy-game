@@ -2,7 +2,7 @@
 // These pin the real-time loop's state machine and economics so the Phase B+
 // feature work can't silently break pacing or the dispatch wiring.
 import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHazard, autoService } from "../src/live/sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit } from "../src/live/actions.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
 import { CFG, UPGRADE, upgradeCost, serviceCost, salvageValue } from "../src/live/config.js";
 import { computeResearchMods } from "../src/live/research.js";
 import { computeMutatorMods } from "../src/live/mutators.js";
@@ -622,6 +622,27 @@ function insolvent(debt){
   const S = createGame();
   const pk = S.fleet.find(x => x.id === "pk1"); // a peaker starts OFF (reserve)
   check("an off reserve is billed fixed O&M at the idle fraction", CFG.fixedOMIdle < 1 && pk.status === "off");
+}
+
+// 62) v4.1 contract ladder: hedge signs ADD legs (not replace), up to the cap, and
+// cancelContract trims the book. (Was replace-model in v4; now a ladder.)
+{
+  const S = createGame(); S.running = true;
+  setHedge(S, 0.5);
+  hedgeContract(S, 2); hedgeContract(S, 4); hedgeContract(S, 6);
+  check("each hedge sign adds a leg (not replace)", S.contracts.length === 3, S.contracts.length + " legs");
+  check("legs keep their own distinct terms", S.contracts.map(c => c.term).sort((a, b) => a - b).join() === "2,4,6");
+  // cap: can't exceed CFG.hedgeMaxContracts standing legs
+  for (let i = 0; i < 10; i++) hedgeContract(S, 3);
+  check("hedge book is capped at CFG.hedgeMaxContracts", S.contracts.filter(c => c.origin === "dial").length === CFG.hedgeMaxContracts, S.contracts.length + "");
+  // cancel one leg by id
+  const id = S.contracts[0].id, n0 = S.contracts.length;
+  check("cancelContract drops exactly that leg", cancelContract(S, id).ok && S.contracts.length === n0 - 1 && !S.contracts.some(c => c.id === id));
+  check("cancelling an unknown id is a safe no-op", !cancelContract(S, "nope").ok);
+  // dial at 0 signs nothing
+  setHedge(S, 0);
+  const n1 = S.contracts.length;
+  check("hedge dial at 0 signs nothing", !hedgeContract(S, 3).ok && S.contracts.length === n1);
 }
 
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);

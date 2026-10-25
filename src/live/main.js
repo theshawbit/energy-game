@@ -5,7 +5,7 @@
 // opening it never disturbs a run.
 // ============================================================
 import { createGame, step, setTicker } from "./sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
 import { makeRng } from "./rng.js";
 import { commitCreditStanding } from "./finance.js";
 import { rollSpecialOffer } from "./offers.js";
@@ -57,6 +57,7 @@ const menu = {
   setFunding(v){ setRdFunding(S, v); }, // readout updates in-place; no re-render (keeps slider drag)
   setHedge(v){ setHedge(S, v); },       // hedge dial drag; readout in-place, no re-render
   hedge(term){ hedgeContract(S, term); refreshPage(); render(S); },
+  cancelContract(id){ cancelContract(S, id); refreshPage(); render(S); },
   accept(){ acceptOffer(S); refreshPage(); render(S); },
   decline(){ declineOffer(S); refreshPage(); render(S); },
   borrow(amt){ borrow(S, amt); refreshPage(); render(S); },

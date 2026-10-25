@@ -202,6 +202,9 @@ table.fleet .st{display:inline-block;font-family:var(--mono);font-size:.58rem;le
 .tiny{font-size:.72rem;margin:2px 0 0}
 .ct-h{font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:16px 0 6px}
 .ct-table{width:100%}
+.ct-cancel{font-family:var(--mono);font-size:.74rem;line-height:1;padding:3px 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--muted);cursor:pointer}
+.ct-cancel:hover{border-color:var(--bad);color:var(--bad)}
+.ct-table tr.ct-total td{border-top:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:.8rem;padding-top:6px}
 
 /* desk → financing (Phase C) */
 .fin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
