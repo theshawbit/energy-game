@@ -77,5 +77,27 @@ check("unknown mutator id ignored", computeMutatorMods(["no-such"]).demandMult =
   check("chaotic-market leaves demand/fuel/cf neutral", chaos.demandMult === 1 && chaos.fuelMult === 1 && chaos.scarcityMult === 1 && chaos.cfMult.sun === 1 && chaos.cfMult.wind === 1);
 }
 
+// 9) FAIRNESS, financial sibling (Phase G): no single mutator makes day-1 an
+// unavoidable BANKRUPTCY. The mutator deck only touches dispatch/price inputs —
+// never a direct cash deduction — and its one economic lever (scarcityMult) can
+// only make spot bite HARDER, which is revenue UP for a seller, never a forced
+// loss. So no mutator can manufacture an unpayable day-1 bill. (The demand-side
+// sibling — that peak stays coverable — is #7 above; fuelMult is a merit-order
+// cost the engine already clears, bounded by the plant you choose to run.)
+{
+  let fair = true, worst = "";
+  for (const m of MUTATORS){
+    const mm = computeMutatorMods([m.id]);
+    // scarcity premium never turns against the operator; fog never costs cash
+    if (mm.scarcityMult < 1){ fair = false; worst = `${m.id} scarcityMult ${mm.scarcityMult}<1`; }
+    if (mm.volatility < 0){ fair = false; worst = `${m.id} volatility ${mm.volatility}<0`; }
+    // no mutator exposes a field that is itself a cash drain (structure guard)
+    for (const k of Object.keys(mm)){
+      if (!["demandMult", "fuelMult", "scarcityMult", "volatility", "cfMult"].includes(k)){ fair = false; worst = `${m.id} unexpected lever ${k}`; }
+    }
+  }
+  check("no single mutator is a day-1 financial death sentence (no cash-drain lever)", fair, worst || "scarcity ≥ 1, fog ≥ 0, no cash lever");
+}
+
 console.log(failed === 0 ? "\nAll mutator tests passed." : `\n${failed} mutator test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
