@@ -1,5 +1,7 @@
 # Grid Operator
 
+### ▶ [Play it live](https://theshawbit.github.io/energy-game/)
+
 A browser game about **energy economics**. The main game (`index.html`) is **Grid Operator — Live**: you keep a growing city powered in real time, dispatching reserves and riding the evening peak while a live wholesale market prices your plants through merit-order dispatch. Dip below demand and the grid browns out; let it run deep and it's a blackout. Survive each day and demand climbs, a rising carbon price makes dirty plants cost more, and each run throws a different set of conditions at you. Between runs you grow permanently stronger.
 
 The original turn-based sim (build a fleet year by year to 2050) is preserved as a reference build at [`batch/index.html`](batch/index.html).
@@ -11,6 +13,14 @@ python3 -m http.server 8000   # or any static file server; then open http://loca
 ```
 
 (Opening `index.html` as a `file://` URL won't work — browsers block module loading over `file://`.)
+
+### Hosting
+
+The live build is served by **GitHub Pages** straight from `main` at the repo root
+(https://theshawbit.github.io/energy-game/) — every merge to `main` redeploys
+automatically, no build step and no CI. A `.nojekyll` marker keeps Pages from running
+the content through Jekyll. All asset and module paths are **relative**, so the game
+runs correctly from the `/energy-game/` subpath (or any other host).
 
 ## How to play (Live)
 
