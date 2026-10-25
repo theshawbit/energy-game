@@ -79,6 +79,30 @@ export function render(S){
       `<span class="econ-cell"><span class="k">Hedge dial</span><b>${Math.round((S.hedge || 0) * 100)}%</b></span>`;
   }
 
+  // v4.1 live Desk panel (right aside) — the economy at a glance without pausing.
+  const dlSpot = $("dl-spot");
+  if (dlSpot){
+    const spot = Math.round(S.spot || 0);
+    dlSpot.textContent = "$" + spot;
+    dlSpot.style.color = spot > CFG.spotBase * 1.5 ? css("--bad") : spot < CFG.spotBase * 0.7 ? css("--warn") : css("--good");
+    const skill = S.rmods?.forecastSkill ?? 0;
+    $("dl-fc").textContent = skill > 0 ? `next-hr ~$${Math.round(S.spotForecast || 0)} ±${Math.round((S.spotForecastFog || 0) * 100)}%` : "/MWh";
+    // contract book: total MW locked across all legs, and how much of served load that covers
+    const legs = (S.contracts || []); const bookMW = Math.round(legs.reduce((a, c) => a + (c.mw || 0), 0));
+    const share = S.demand > 0 ? Math.round(Math.min(1, (S.contractedMW || 0) / S.demand) * 100) : 0;
+    $("dl-book").textContent = bookMW > 0 ? `${bookMW} MW` : "spot only";
+    $("dl-booksub").textContent = bookMW > 0 ? `${legs.length} leg${legs.length === 1 ? "" : "s"} · ~${share}% of load` : "all load at spot";
+    // financing: debt + live credit grade, or debt-free
+    const debt = Math.round(S.debt || 0);
+    const fin = $("dl-fin"), finSub = $("dl-finsub");
+    if (debt > 0){ fin.textContent = money(debt); fin.style.color = css("--warn"); finSub.textContent = `debt · ${gradeFor(S.credit)} @ ${(creditRating(S.credit).rate * 100).toFixed(1)}%/day`; }
+    else { fin.textContent = "Debt-free"; fin.style.color = css("--good"); finSub.textContent = `credit ${gradeFor(S.credit)}`; }
+    // capacity pledge (only under an obligation)
+    const capRow = $("dl-caprow"), ob = S.capacityObligation;
+    if (ob){ capRow.style.display = ""; $("dl-cap").textContent = `${Math.round(ob.reserveMW)} MW`; $("dl-capsub").textContent = `${ob.daysLeft}d left${ob.calledToday ? " · called" : ""}`; }
+    else capRow.style.display = "none";
+  }
+
   $("ticker").textContent = S.ticker;
   $("ticker").style.color = S.ticker.startsWith("✓") ? css("--good") : css("--warn");
 
@@ -345,17 +369,32 @@ export function hideMeta(){ $("metaOverlay").classList.remove("on"); }
 // ---- home screen (the front door: start a run, open skills, how-to) ----
 export function renderHome(profile, actions){
   const best = profile.best || {};
+  const rec = profile.records || {};
+  const standing = Math.round(profile.credit?.standing ?? 70);
+  const firstRun = !(best.days > 0);
+  // career stats from the four score tracks + the carried credit standing
+  const stat = (b, s) => `<div class="hs"><b>${b}</b><small>${s}</small></div>`;
+  const stats = [
+    stat(`${profile.currency || 0} ⚡`, "banked"),
+    stat(best.days || 0, "best days"),
+    stat(money(rec.netWorth?.value || 0), "best net worth"),
+    stat(`${Math.round((rec.cleanShare?.value || 0) * 100)}%`, "best clean share"),
+    stat(`${gradeFor(standing)}`, "credit standing"),
+  ].join("");
   $("home").innerHTML = `
-    <h1 class="home-title">Grid Operator</h1>
-    <p class="home-tag">Keep a growing city powered in real time. Ride the evening peak. Don't go dark.</p>
-    <div class="home-stats">
-      <div><b>${profile.currency || 0}</b><small>⚡ banked</small></div>
-      <div><b>${best.score || 0}</b><small>best score</small></div>
-      <div><b>${best.days || 0}</b><small>best days</small></div>
+    <div class="home-hero">
+      <div class="home-kicker">The Book</div>
+      <h1 class="home-title">Grid Operator</h1>
+      <p class="home-tag">Run a city's grid in real time — ride the evening peak, keep the lights on,
+        and run the utility as a business: hedge your output on a live market, borrow to grow,
+        and live or die by both the grid <em>and</em> the ledger.</p>
     </div>
-    <button class="btn-primary" id="homeStart">Start run ▸</button>
+    <button class="btn-primary home-start" id="homeStart">${firstRun ? "Start your first shift ▸" : "Start run ▸"}</button>
+    <div class="home-stats">${stats}</div>
+    <p class="home-foot">Each run is a finite contract. Survive it to win; earn ⚡ across four tracks —
+      longevity, net worth, clean share, spot trading — to grow permanently stronger.</p>
     <div class="home-btns">
-      <button id="homeSkills">Skills ⚡</button>
+      <button id="homeSkills">Skills &amp; unlocks ⚡</button>
       <button id="homeHowto">How to play</button>
     </div>`;
   $("homeStart").onclick = actions.start;

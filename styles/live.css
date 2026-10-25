@@ -75,6 +75,12 @@ canvas{width:100%;height:auto;display:block;border-radius:10px;background:#0a0e1
 .st-strained{color:var(--warn,#e0a92b);border-color:#5e4a1c;background:#2a2109;animation:pulse .5s ease-in-out infinite}
 .unit:has(.st-strained){border-color:#5e4a1c}
 @keyframes pulse{50%{opacity:.5}}
+/* v4.1 live Desk panel (right aside) */
+.desk-live{display:flex;flex-direction:column;gap:9px}
+.dl-row{display:flex;align-items:baseline;gap:8px}
+.dl-row .k{font-family:var(--mono);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);min-width:102px}
+.dl-row b{font-family:var(--mono);font-size:.98rem;color:var(--fg)}
+.dl-row .dl-sub{font-family:var(--mono);font-size:.64rem;color:var(--faint);margin-left:auto;text-align:right}
 .condbar{height:3px;border-radius:3px;background:#0a0e14;margin-top:5px;overflow:hidden}
 .condbar i{display:block;height:100%;width:100%;border-radius:3px;transition:width .2s,background .2s}
 
@@ -261,16 +267,21 @@ table.fleet .st{display:inline-block;font-family:var(--mono);font-size:.58rem;le
 .modal.menu #metaBack{width:100%;margin-top:16px}
 
 /* home screen */
-.modal.home{max-width:460px;text-align:center}
-.home-title{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:2rem;margin:0}
-.home-tag{color:var(--muted);font-size:.9rem;margin:8px 0 18px}
-.home-stats{display:flex;justify-content:center;gap:18px;margin-bottom:20px}
-.home-stats div{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;padding:10px 16px;background:var(--panel-2);min-width:78px}
-.home-stats b{font-family:var(--mono);font-size:1.5rem;color:var(--accent)}
-.home-stats small{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-top:2px}
-.modal.home #homeStart{width:100%;font-size:1rem;padding:12px}
-.home-btns{display:flex;gap:8px;margin-top:10px}
+.modal.home{max-width:640px;text-align:center}
+.home-hero{padding:6px 0 4px}
+.home-kicker{font-family:var(--mono);font-size:.7rem;letter-spacing:.34em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.home-title{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:2.6rem;margin:0;line-height:1}
+.home-tag{color:var(--muted);font-size:.92rem;line-height:1.5;margin:12px auto 22px;max-width:52ch}
+.home-tag em{color:var(--fg);font-style:normal;font-weight:600}
+.modal.home .home-start{width:100%;font-size:1.05rem;padding:14px}
+.home-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:18px 0}
+.home-stats .hs{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;padding:10px 6px;background:var(--panel-2)}
+.home-stats b{font-family:var(--mono);font-size:1.12rem;color:var(--accent);white-space:nowrap}
+.home-stats small{font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-top:4px}
+.home-foot{color:var(--faint);font-size:.76rem;line-height:1.5;margin:0 auto 16px;max-width:54ch}
+.home-btns{display:flex;gap:8px}
 .home-btns button{flex:1}
+@media (max-width:560px){.home-stats{grid-template-columns:repeat(2,1fr)}.home-title{font-size:2rem}}
 
 /* how-to / FAQ */
 .modal.howto{max-width:560px;text-align:left;max-height:82vh;overflow-y:auto}
