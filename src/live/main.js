@@ -61,6 +61,7 @@ function startRun(){
   hideAll(); clearEndGame();
   S = createGame(profile.skills, profile.researchUnlocked, rollMutators(), profile.credit?.standing); // roll mutators; carry credit standing
   const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG, replayable from the seed
+  S.rngForecast = makeRng((seed ^ 0xF0) >>> 0); // v4 (E): separate stream so sharpening the forecast never desyncs realized spot
   S.bestRecords = profile.records; // v4 (D): read-only mirror for the hub scorecard (render never mutates it)
   buildUnits(S, act);
   renderMutatorBanner(S);

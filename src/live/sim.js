@@ -15,6 +15,7 @@ import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
 import { exogenousBaseline, reserveMargin, spotPrice } from "./market.js";
 import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
+import { forecastFog, forecastInputs } from "./forecast.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -61,6 +62,8 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     insolventT:0, interestPaid:0, dayInterest0:0, debtLedger:[],
     // ---- v4 scoring accumulators (Phase D): the four tracks build over the run ----
     cleanMWh:0, servedMWh:0, peakNetWorth:CFG.startCash + mods.startCashBonus, bestSpotKill:0,
+    // ---- v4 earned forecast (Phase E): next-hour spot outlook + its fog width ----
+    marketVolatility:0, spotForecast:0, spotForecastFog:CFG.forecast.baseFog, fcHour:-1,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
@@ -192,6 +195,23 @@ export function step(S, dt){
   const rm = reserveMargin(S.capacity, S.demand);
   const spot = spotPrice({ baseline, reserveMargin: rm, scarcityMult: S.mmods?.scarcityMult ?? 1, noise: S.spotNoise });
   S.spotBaseline = baseline; S.spot = spot;
+
+  // v4 earned forecast (Phase E): once per game-hour, publish a next-hour spot
+  // outlook. The band WIDTH (fog) narrows with forecasting research and widens
+  // with volatility; the central estimate persists the current scarcity premium
+  // onto the next hour's baseline, biased by up to ±fog via a SEPARATE RNG stream
+  // (seed ^ 0xF0 in main.js) so sharpening the forecast never desyncs realized spot.
+  const hourNow = Math.floor(S.t);
+  if (S.fcHour !== hourNow){
+    S.fcHour = hourNow;
+    const fog = forecastFog(forecastInputs(S));
+    const predBaseline = exogenousBaseline(S.day, S.t + 1);
+    const predCentral = clamp(predBaseline + (spot - baseline), CFG.spotFloor, CFG.spotCap);
+    const bias = S.rngForecast ? (S.rngForecast() * 2 - 1) * fog * predCentral : 0; // foggier → further off
+    S.spotForecast = clamp(predCentral + bias, CFG.spotFloor, CFG.spotCap);
+    S.spotForecastFog = fog;
+  }
+
   const { contractedMW, contractRevenue } = settleContracts(S.contracts, hr.served);
   S.contractedMW = contractedMW;                            // exposed for D's spot-kill track
   const residualMW = Math.max(0, hr.served - contractedMW); // never negative, never unserved
