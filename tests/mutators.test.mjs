@@ -68,5 +68,14 @@ check("unknown mutator id ignored", computeMutatorMods(["no-such"]).demandMult =
   check("every mutator is day-1 survivable on controllable capacity", fair, worst || `≤ ${controllable} MW controllable`);
 }
 
+// 8) v4 (E): chaotic-market lifts the forecast-fog volatility axis, and only that
+// axis — it touches no demand/fuel/cf term, so the day-1 fairness invariant holds.
+{
+  const base = computeMutatorMods([]);
+  const chaos = computeMutatorMods(["chaotic-market"]);
+  check("chaotic-market adds to mmods.volatility", base.volatility === 0 && chaos.volatility === CFG.mut.chaosVol, `${chaos.volatility}`);
+  check("chaotic-market leaves demand/fuel/cf neutral", chaos.demandMult === 1 && chaos.fuelMult === 1 && chaos.scarcityMult === 1 && chaos.cfMult.sun === 1 && chaos.cfMult.wind === 1);
+}
+
 console.log(failed === 0 ? "\nAll mutator tests passed." : `\n${failed} mutator test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

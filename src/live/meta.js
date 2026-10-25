@@ -45,6 +45,7 @@ export const RESEARCH_UNLOCKS = [
   { id:"storage", name:"Grid Storage R&D",       cost:4, desc:"Unlock the storage research branch (power, depth, fast charge)" },
   { id:"demand",  name:"Demand-Side R&D",        cost:4, desc:"Unlock demand-response research (shave the peak)" },
   { id:"advgen",  name:"Advanced Generation R&D", cost:6, desc:"Unlock SMR, geothermal & carbon-capture research" },
+  { id:"forecasting", name:"Forecasting Desk R&D", cost:5, desc:"Unlock the spot-price forecasting branch (sharpen the band)" },
 ];
 
 // Buy a research-branch unlock into `profile` (mutates it). Returns true on

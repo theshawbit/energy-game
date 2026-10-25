@@ -46,6 +46,7 @@ export const CFG = {
     lull: 0.68,               // solar AND wind cf multiplier (F2: 0.55→0.68, it was the
                               //   deadliest mutator by a wide margin — evened toward the rest)
     fuelScarcity: 1.4,        // v4: fuel-spike also compounds the spot scarcity premium (b4)
+    chaosVol: 0.6,            // v4 (E): chaotic-market adds this to the forecast-fog volatility axis
   },
   // ---- v4 "The Book": spot market + term contracts (Phase B) ----
   // Revenue = contracted blocks at a locked price + residual served load at spot.
@@ -92,6 +93,17 @@ export const CFG = {
     netWorthPerCoin: 60000,  // $ of peak net worth per ⚡
     cleanPerPct: 0.4,        // ⚡ per percentage-point of clean-energy share
     spotKillPerCoin: 4000,   // $ of biggest single spot-spike capture per ⚡
+  },
+  // ---- v4 "The Book": earned forecast (Phase E) — the spot forecast starts
+  // foggy, research sharpens it, volatility blurs it. fog = band half-width as a
+  // fraction of price. ----
+  forecast: {
+    maxSkill: 3,             // forecasting research tops out at skill 3
+    baseFog: 0.30,           // ±30% band with no forecasting skill, calm market
+    skillGain: 0.28,         // each skill level narrows the base fog by this fraction
+    volK: 1.2,               // how hard volatility widens the fog
+    fogMin: 0.04,            // sharpest possible band (±4%)
+    fogMax: 0.60,            // blurriest band (±60%)
   },
 };
 

@@ -47,6 +47,14 @@ export const RESEARCH = [
     desc:"Shave 6% off demand (curtail flexible load)" },
   { id:"smart-grid",       branch:"demand", label:"Smart Grid", rpCost:90, prereq:["demand-response"], metaGate:"demand",
     desc:"Deepen the shave to 12% of demand" },
+  // forecasting — sharpens the spot-price forecast band (v4 E; branch gated by the
+  // "forecasting" meta unlock). A linear ladder: each node narrows the fog further.
+  { id:"fc-desk",    branch:"forecast", label:"Forecasting Desk", rpCost:50, prereq:[],            metaGate:"forecasting",
+    desc:"Open a forecasting desk — a first, rough spot-price outlook" },
+  { id:"fc-models",  branch:"forecast", label:"Market Models",    rpCost:70, prereq:["fc-desk"],   metaGate:"forecasting",
+    desc:"Sharpen the forecast band with market models" },
+  { id:"fc-nowcast", branch:"forecast", label:"Live Nowcasting",  rpCost:95, prereq:["fc-models"], metaGate:"forecasting",
+    desc:"Tightest forecast — a live nowcast of the next hour's spot" },
 ];
 
 export function researchById(id){ return RESEARCH.find(n => n.id === id); }
@@ -93,5 +101,6 @@ export function computeResearchMods(research = {}){
     battEnergyMult:   has("storage-depth")    ? 1.50 : 1,  // battery stored-energy depth
     battRechargeMult: has("storage-recharge") ? 1.50 : 1,  // battery recharge rate
     demandShave:     has("smart-grid") ? 0.12 : has("demand-response") ? 0.06 : 0, // fraction of demand shaved
+    forecastSkill:   has("fc-nowcast") ? 3 : has("fc-models") ? 2 : has("fc-desk") ? 1 : 0, // v4 (E): spot-forecast sharpness
   };
 }

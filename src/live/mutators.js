@@ -30,6 +30,9 @@ export const MUTATORS = [
   { id:"renewable-lull", label:"Renewable Lull", weight:1,
     blurb:"Overcast and calm — solar and wind both sag. Shift energy or shave the peak.",
     apply:(m) => { m.cfMult.sun *= CFG.mut.lull; m.cfMult.wind *= CFG.mut.lull; } },
+  { id:"chaotic-market", label:"Chaotic Market", weight:1,
+    blurb:"Prices lurch unpredictably — the spot forecast turns foggy. Earn forecasting research or hedge with contracts.",
+    apply:(m) => { m.volatility += CFG.mut.chaosVol; } },
 ];
 
 export function mutatorById(id){ return MUTATORS.find(x => x.id === id); }
@@ -37,7 +40,7 @@ export function mutatorById(id){ return MUTATORS.find(x => x.id === id); }
 // Neutral (identity) modifiers — the no-mutator baseline.
 // `scarcityMult` (v4, B) scales the spot scarcity premium's magnitude — fuel-spike
 // compounds it. (`volatility` — the forecast-fog axis — arrives with E's chaotic-market.)
-function freshMods(){ return { demandMult:1, fuelMult:1, scarcityMult:1, cfMult:{ sun:1, wind:1 } }; }
+function freshMods(){ return { demandMult:1, fuelMult:1, scarcityMult:1, volatility:0, cfMult:{ sun:1, wind:1 } }; }
 
 // Fold the given mutator ids into one mods object. Unknown ids are ignored.
 export function computeMutatorMods(ids = []){

@@ -64,8 +64,17 @@ export function render(S){
     const contracted = Math.round(S.contractedMW || 0);
     const spotCol = spot > CFG.spotBase * 1.5 ? css("--bad") : spot < CFG.spotBase * 0.7 ? css("--warn") : css("--good");
     econ.style.display = "";
+    // v4 (E): next-hour spot forecast ± its fog band (earned/conditional). Only
+    // shown once a forecasting desk is researched; a wider band = less certain.
+    const skill = S.rmods?.forecastSkill ?? 0;
+    let fcCell = "";
+    if (skill > 0){
+      const fc = Math.round(S.spotForecast || 0), fog = Math.round((S.spotForecastFog || 0) * 100);
+      fcCell = `<span class="econ-cell"><span class="k">Next-hr</span><b>~$${fc}</b><small>±${fog}%</small></span>`;
+    }
     econ.innerHTML =
       `<span class="econ-cell"><span class="k">Spot</span><b style="color:${spotCol}">$${spot}</b><small>/MWh</small></span>` +
+      fcCell +
       `<span class="econ-cell"><span class="k">Contracted</span><b>${contracted}</b><small>MW locked</small></span>` +
       `<span class="econ-cell"><span class="k">Hedge dial</span><b>${Math.round((S.hedge || 0) * 100)}%</b></span>`;
   }

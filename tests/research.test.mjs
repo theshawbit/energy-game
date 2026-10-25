@@ -142,5 +142,23 @@ S = createGame({}, { storage: true }); S.rp = 1e6;
 check("storage-power researchable once the branch is unlocked", canResearch(S, "storage-power"));
 check("ungated transmission node is always researchable", canResearch(S, "amp-upgrades"));
 
+// ---- E2: the forecasting branch (gated by the "forecasting" meta unlock) ----
+
+// 20) The forecast branch is locked without the unlock, even with ample RP
+S = createGame(); S.rp = 1e6;
+check("fc-desk gated without the forecasting unlock", !canResearch(S, "fc-desk"));
+
+// 21) Once unlocked, the ladder researches in order and forecastSkill climbs 0→3
+S = createGame({}, { forecasting: true }); S.rp = 1e6;
+check("fc-desk researchable once unlocked; fc-models gated behind it",
+  canResearch(S, "fc-desk") && !canResearch(S, "fc-models"));
+check("forecastSkill is 0 before any forecasting research", computeResearchMods(S.research).forecastSkill === 0);
+doResearch(S, "fc-desk");
+check("fc-desk → forecastSkill 1", computeResearchMods(S.research).forecastSkill === 1 && canResearch(S, "fc-models"));
+doResearch(S, "fc-models");
+check("fc-models → forecastSkill 2", computeResearchMods(S.research).forecastSkill === 2 && canResearch(S, "fc-nowcast"));
+doResearch(S, "fc-nowcast");
+check("fc-nowcast → forecastSkill 3 (max)", computeResearchMods(S.research).forecastSkill === 3);
+
 console.log(failed === 0 ? "\nAll research tests passed." : `\n${failed} research test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
