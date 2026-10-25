@@ -43,8 +43,8 @@ check("spot = baseline at rmRef", near(spotPrice({ baseline: 100, reserveMargin:
   const p1 = spotPrice({ baseline: base, reserveMargin: rmTight }) - base;
   const p2 = spotPrice({ baseline: base, reserveMargin: rmTight, scarcityMult: 2 }) - base;
   check("scarcityMult=2 doubles the positive premium", near(p2, p1 * 2), `${p1.toFixed(1)} → ${p2.toFixed(1)}`);
-  const n1 = spotPrice({ baseline: 200, reserveMargin: rmFlush }) - 200;
-  const n2 = spotPrice({ baseline: 200, reserveMargin: rmFlush, scarcityMult: 2 }) - 200;
+  const n1 = spotPrice({ baseline: 130, reserveMargin: rmFlush }) - 130; // 130 (<spotCap) keeps base−2×crash off the floor
+  const n2 = spotPrice({ baseline: 130, reserveMargin: rmFlush, scarcityMult: 2 }) - 130;
   check("scarcityMult=2 doubles the negative premium", near(n2, n1 * 2) && n1 < 0, `${n1.toFixed(1)} → ${n2.toFixed(1)}`);
 }
 

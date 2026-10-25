@@ -53,18 +53,21 @@ export const CFG = {
   // Spot = a flat-ish baseline + a scarcity premium driven by the player's OWN
   // reserve margin (thin → spike, flush → crash); mutators compound it. Baseline
   // is deliberately small vs scarcityMax so the player's dispatch moves the price.
+  // (g3 balance pass: scarcityMax 240→100 + spotCap 320→165 compress the old
+  // spot WINDFALL — a tight unhedged grid used to ride spot to ~$1M; now the
+  // net-worth p90 tail is ~$1–2M and the realized-spot CoV drops from ~1.0 to ~0.7.)
   spotBase: 50,               // $/MWh flat baseline the spot price sits around
   spotDaily: 0.25,            // how much the daily demand shape lifts/drops the baseline hour to hour
   spotDrift: 0.015,           // slow per-day upward drift of the baseline (a gentle cost-of-living climb)
   spotFloor: 8,               // $/MWh hard floor (a flush grid still clears above zero)
-  spotCap: 320,               // $/MWh hard ceiling on spot (scarcity can't run away)
-  scarcityMax: 240,           // $/MWh premium at a tight/short grid (PLATEAUS — no deeper-shortfall windfall)
-  crashMax: 42,               // $/MWh discount a flush grid suffers (plateaus at rmCrash)
+  spotCap: 165,               // $/MWh hard ceiling on spot (g3: 320→165 — scarcity can't run away)
+  scarcityMax: 100,           // $/MWh premium at a tight/short grid (g3: 240→100; PLATEAUS — no deeper-shortfall windfall)
+  crashMax: 54,               // $/MWh discount a flush grid suffers (g3: 42→54 — overbuild/flush bleeds; plateaus at rmCrash)
   rmRef: 0.25,                // reserve margin where the premium hits zero (healthy headroom)
   rmCrash: 0.80,              // reserve margin where the crash discount plateaus (hugely overbuilt)
   // term contracts (the hedge): lock load at a fixed price for a run of days
   hedgeDefault: 0.5,          // default hedge dial — commit ~half of expected output
-  hedgeBaseFactor: 0.90,      // a 1-day lock earns ~90% of baseline (you pay for certainty)
+  hedgeBaseFactor: 1.06,      // base lock ≈ baseline (g3: 0.90→1.06 — a 4-day lock prices ≈ the ~$60 average spot, so hedging is fair insurance, not a structural loss)
   hedgeTermBonus: 0.035,      // each extra day of term lifts the locked rate this much
   hedgePriceCap: 1.35,        // a long lock can't beat baseline by more than this
   contractTermMin: 2,         // shortest term the dial offers (game-days)
