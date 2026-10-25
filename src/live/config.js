@@ -11,9 +11,6 @@ export const CFG = {
   startPeak: 780,             // MW peak demand, day 1
   startCash: 120000,          // $ on hand day 1, so the manage panel has an opening move
   peakGrowth: 1.06,           // demand growth per day survived
-  retailPrice: 62,            // $/MWh the city pays for SERVED energy. Revenue is retail×served,
-                              //   NOT the volatile wholesale clearing price — so a shortfall can
-                              //   never be a scarcity jackpot. Wholesale/carbon still drive costs.
   spinCost: 11,               // $/MW/h default to keep a thermal plant synced (per-unit `spin` overrides)
   fixedOM: 10,                // $/MW/h fixed operating cost on dispatchable capacity (renewables exempt; owning it costs money)
   unservedPenalty: 120,       // $/MWh extra penalty on unserved load (emergency purchases / fines)
@@ -48,7 +45,29 @@ export const CFG = {
     drought: 0.6,             // wind capacity-factor multiplier
     lull: 0.68,               // solar AND wind cf multiplier (F2: 0.55→0.68, it was the
                               //   deadliest mutator by a wide margin — evened toward the rest)
+    fuelScarcity: 1.4,        // v4: fuel-spike also compounds the spot scarcity premium (b4)
   },
+  // ---- v4 "The Book": spot market + term contracts (Phase B) ----
+  // Revenue = contracted blocks at a locked price + residual served load at spot.
+  // Spot = a flat-ish baseline + a scarcity premium driven by the player's OWN
+  // reserve margin (thin → spike, flush → crash); mutators compound it. Baseline
+  // is deliberately small vs scarcityMax so the player's dispatch moves the price.
+  spotBase: 50,               // $/MWh flat baseline the spot price sits around
+  spotDaily: 0.25,            // how much the daily demand shape lifts/drops the baseline hour to hour
+  spotDrift: 0.015,           // slow per-day upward drift of the baseline (a gentle cost-of-living climb)
+  spotFloor: 8,               // $/MWh hard floor (a flush grid still clears above zero)
+  spotCap: 320,               // $/MWh hard ceiling on spot (scarcity can't run away)
+  scarcityMax: 240,           // $/MWh premium at a tight/short grid (PLATEAUS — no deeper-shortfall windfall)
+  crashMax: 42,               // $/MWh discount a flush grid suffers (plateaus at rmCrash)
+  rmRef: 0.25,                // reserve margin where the premium hits zero (healthy headroom)
+  rmCrash: 0.80,              // reserve margin where the crash discount plateaus (hugely overbuilt)
+  // term contracts (the hedge): lock load at a fixed price for a run of days
+  hedgeDefault: 0.5,          // default hedge dial — commit ~half of expected output
+  hedgeBaseFactor: 0.90,      // a 1-day lock earns ~90% of baseline (you pay for certainty)
+  hedgeTermBonus: 0.035,      // each extra day of term lifts the locked rate this much
+  hedgePriceCap: 1.35,        // a long lock can't beat baseline by more than this
+  contractTermMin: 2,         // shortest term the dial offers (game-days)
+  contractTermMax: 6,         // longest term the dial offers (game-days)
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and

@@ -41,7 +41,7 @@ Both games clear the market through the same verified **merit-order dispatch eng
 
 - **Dispatch order (cheapest first):** free wind & solar → stored battery energy → thermal plants ranked by marginal cost (nuclear, SMR, geothermal, coal, gas, CCS variants, peakers).
 - **Price** each hour is the marginal cost of the *last* plant dispatched (uniform-price auction).
-- **Revenue** in the live game is a stable **retail price** on *served* load, so a shortfall is never a scarcity windfall — the wholesale clearing price shown up top is a signal of what your plants cost to run right now. (The batch reference game earns the wholesale clearing price directly.)
+- **Revenue** in the live game (v4 "The Book") is **contracted blocks at a locked price + residual served load at a live spot price**. Spot rises when your grid is tight and crashes when you're flush, driven by your *own* reserve margin — so thin-but-covered is lucrative while a shortfall is never a windfall (both paths read *served* load only; unserved earns nothing). Hedge the swings with term contracts at the Desk. The wholesale clearing price shown up top is a signal of what your plants cost to run right now. (The batch reference game earns the wholesale clearing price directly.)
 - **Carbon price** adds `$/t × tCO₂/MWh` to every fossil plant's running cost. Enough of it re-sorts the merit order — flipping coal behind gas, then behind clean energy. **Carbon capture** plants have a high base cost but very low emissions, so they overtake unabated plants once carbon climbs.
 - **Blackouts** (unserved load) are penalized and never earn revenue — you can't profit by letting the lights go out.
 

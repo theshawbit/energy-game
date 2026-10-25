@@ -16,8 +16,8 @@ import { CFG } from "./config.js";
 // CFG.mut so tuning is central (Phase F). `apply(m)` mutates a mods accumulator.
 export const MUTATORS = [
   { id:"fuel-spike", label:"Fuel Price Spike", weight:1,
-    blurb:"Gas marginal costs surge — the merit order re-sorts. Lean on clean generation.",
-    apply:(m) => { m.fuelMult *= CFG.mut.fuelSpike; } },
+    blurb:"Gas marginal costs surge — the merit order re-sorts, and spot scarcity bites harder. Lean on clean generation.",
+    apply:(m) => { m.fuelMult *= CFG.mut.fuelSpike; m.scarcityMult *= CFG.mut.fuelScarcity; } },
   { id:"heatwave", label:"Heat Wave", weight:1,
     blurb:"Air-conditioning drives demand up all day. You need firm headroom.",
     apply:(m) => { m.demandMult *= CFG.mut.heatwave; } },
@@ -35,7 +35,9 @@ export const MUTATORS = [
 export function mutatorById(id){ return MUTATORS.find(x => x.id === id); }
 
 // Neutral (identity) modifiers — the no-mutator baseline.
-function freshMods(){ return { demandMult:1, fuelMult:1, cfMult:{ sun:1, wind:1 } }; }
+// `scarcityMult` (v4, B) scales the spot scarcity premium's magnitude — fuel-spike
+// compounds it. (`volatility` — the forecast-fog axis — arrives with E's chaotic-market.)
+function freshMods(){ return { demandMult:1, fuelMult:1, scarcityMult:1, cfMult:{ sun:1, wind:1 } }; }
 
 // Fold the given mutator ids into one mods object. Unknown ids are ignored.
 export function computeMutatorMods(ids = []){

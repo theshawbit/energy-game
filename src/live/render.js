@@ -9,6 +9,8 @@ import { SKILLS, skillCost, MILESTONES, RESEARCH_UNLOCKS } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
 import { makeFleetComparator } from "./fleetsort.js";
+import { dailyBaseline } from "./market.js";
+import { contractPrice, expectedOutput } from "./finance.js";
 
 const $ = id => document.getElementById(id);
 // Theme tokens are static (single committed dark theme), so read each once and
@@ -53,6 +55,20 @@ export function render(S){
   // reserve-margin urgency on the whole frame
   $("vignette").style.opacity = S.over ? "1" : (S.brownout ? clamp(0.25 + S.strain / 100 * 0.7, 0, 0.95).toFixed(2) : "0");
   $("shakeTarget").classList.toggle("shake", S.brownout && !S.over && S.strain > 35);
+
+  // v4 "The Book": live spot price + how much of served load is locked into
+  // contracts (the rest clears at spot). Shown in the reserved econ-HUD slot.
+  const econ = $("hud-econ");
+  if (econ){
+    const spot = Math.round(S.spot || 0);
+    const contracted = Math.round(S.contractedMW || 0);
+    const spotCol = spot > CFG.spotBase * 1.5 ? css("--bad") : spot < CFG.spotBase * 0.7 ? css("--warn") : css("--good");
+    econ.style.display = "";
+    econ.innerHTML =
+      `<span class="econ-cell"><span class="k">Spot</span><b style="color:${spotCol}">$${spot}</b><small>/MWh</small></span>` +
+      `<span class="econ-cell"><span class="k">Contracted</span><b>${contracted}</b><small>MW locked</small></span>` +
+      `<span class="econ-cell"><span class="k">Hedge dial</span><b>${Math.round((S.hedge || 0) * 100)}%</b></span>`;
+  }
 
   $("ticker").textContent = S.ticker;
   $("ticker").style.color = S.ticker.startsWith("✓") ? css("--good") : css("--warn");
@@ -355,7 +371,7 @@ export function renderManage(S, page, actions){
   if (page === "fleet") wireFleet(S, actions);
   else if (page === "build") $("menu").querySelectorAll("[data-build]").forEach(b => b.onclick = () => actions.build(b.dataset.build));
   else if (page === "research") wireResearch(S, actions);
-  else if (page === "desk") $("menu").querySelectorAll("[data-desk]").forEach(b => b.onclick = () => { deskTab = b.dataset.desk; renderManage(S, "desk", actions); });
+  else if (page === "desk") wireDesk(S, actions);
   else $("menu").querySelectorAll("[data-go]").forEach(b => b.onclick = () => actions.go(b.dataset.go)); // hub
   $("menuOverlay").classList.add("on");
 }
@@ -472,16 +488,60 @@ function wireResearch(S, actions){
   };
 }
 
-// --- desk: the economy route. Stub in Phase A; filled by Phase B (Contracts) and
-//     Phase C (Financing). ---
+function wireDesk(S, actions){
+  const m = $("menu");
+  // tab switch
+  m.querySelectorAll("[data-desk]").forEach(b => b.onclick = () => { deskTab = b.dataset.desk; renderManage(S, "desk", actions); });
+  // hedge dial: update state + MW readout in-place (so the drag survives, like R&D)
+  const hr = $("hedgeRange");
+  if (hr) hr.oninput = () => {
+    const frac = Number(hr.value) / 100;
+    actions.setHedge(frac);
+    const dialMW = Math.round(frac * expectedOutput(S.peak));
+    const ro = $("hedgeReadout"); if (ro) ro.textContent = `${dialMW} MW`;
+  };
+  // term buttons sign (and replace) the standing hedge, then re-render the list
+  m.querySelectorAll("[data-term]").forEach(b => b.onclick = () => actions.hedge(Number(b.dataset.term)));
+}
+
+// --- desk: the economy route. Contracts filled by Phase B; Financing by Phase C. ---
 function deskBody(S){
   const tabs = `<div class="meta-tabs">
     <button class="meta-tab ${deskTab === "contracts" ? "on" : ""}" data-desk="contracts">Contracts</button>
     <button class="meta-tab ${deskTab === "financing" ? "on" : ""}" data-desk="financing">Financing</button></div>`;
-  const msg = deskTab === "financing"
-    ? "Borrow to expand, mind your credit rating — arriving in Phase C."
-    : "Hedge your output with forward contracts against a live market — arriving in Phase B.";
-  return tabs + `<p class="desk-stub">${msg}</p>`;
+  if (deskTab === "financing") return tabs + `<p class="desk-stub">Borrow to expand, mind your credit rating — arriving in Phase C.</p>`;
+  return tabs + contractsBody(S);
+}
+
+// Contracts tab: the hedge dial (commit a slice of expected output), term choice,
+// a live price/volume preview, and the list of standing contracts.
+function contractsBody(S){
+  const hedge = S.hedge ?? CFG.hedgeDefault;
+  const expMW = expectedOutput(S.peak);
+  const dialMW = Math.round(hedge * expMW);
+  const baseline = dailyBaseline(S.day);
+  const terms = [];
+  for (let t = CFG.contractTermMin; t <= CFG.contractTermMax; t++) terms.push(t);
+  const termBtns = terms.map(t =>
+    `<button class="term-btn" data-term="${t}">${t}d · $${contractPrice(baseline, t)}</button>`).join("");
+
+  const rows = (S.contracts || []).length
+    ? `<table class="fleet ct-table"><thead><tr><th>Source</th><th>MW</th><th>$/MWh</th><th>Days left</th></tr></thead><tbody>` +
+      S.contracts.map(c => `<tr><td>${c.origin === "dial" ? "Hedge dial" : (c.buyer || "Offer")}</td><td>${Math.round(c.mw)}</td><td>$${c.price}</td><td>${c.remaining}</td></tr>`).join("") +
+      `</tbody></table>`
+    : `<p class="faint">No contracts — all served load clears at spot ($${Math.round(S.spot || 0)}/MWh now).</p>`;
+
+  return `
+    <p class="desk-lead">Lock a block of your output at a fixed price to hedge the live spot market.
+      The rest of your served load clears at <b>spot</b> ($${Math.round(S.spot || 0)}/MWh now, baseline $${Math.round(baseline)}).</p>
+    <div class="hedge-dial">
+      <label>Hedge dial — commit <b id="hedgeReadout">${dialMW} MW</b> (${Math.round(hedge * 100)}% of ~${expMW} MW expected)</label>
+      <input type="range" id="hedgeRange" min="0" max="100" step="5" value="${Math.round(hedge * 100)}" />
+    </div>
+    <div class="term-row"><span class="k">Sign standing hedge for:</span>${termBtns}</div>
+    <p class="faint tiny">Signing replaces your current hedge-dial contract. Longer terms lock a better rate.</p>
+    <h3 class="ct-h">Standing contracts</h3>
+    ${rows}`;
 }
 
 // ---- mutator banner: the per-run conditions, painted once at run start (they

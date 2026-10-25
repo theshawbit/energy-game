@@ -5,7 +5,8 @@
 // opening it never disturbs a run.
 // ============================================================
 import { createGame, step } from "./sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode } from "./actions.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, acceptOffer, declineOffer } from "./actions.js";
+import { makeRng } from "./rng.js";
 import { render, buildUnits, showEndGame, clearEndGame, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner } from "./render.js";
 import { scoreRun, currencyFor, buySkill, buyUnlock } from "./meta.js";
 import { rollMutators } from "./mutators.js";
@@ -43,6 +44,10 @@ const menu = {
   decommission(id){ decommissionUnit(S, id); buildUnits(S, act); refreshPage(); render(S); },
   research(id){ researchNode(S, id); refreshPage(); render(S); },
   setFunding(v){ setRdFunding(S, v); }, // readout updates in-place; no re-render (keeps slider drag)
+  setHedge(v){ setHedge(S, v); },       // hedge dial drag; readout in-place, no re-render
+  hedge(term){ hedgeContract(S, term); refreshPage(); render(S); },
+  accept(){ acceptOffer(S); refreshPage(); render(S); },
+  decline(){ declineOffer(S); refreshPage(); render(S); },
   go(p){ page = p; refreshPage(); },
   close(){ S.menuOpen = false; page = null; hideManage(); last = 0; render(S); },
 };
@@ -52,6 +57,7 @@ function openManage(){ if (S.over) return; S.menuOpen = true; page = "hub"; refr
 function startRun(){
   hideAll(); clearEndGame();
   S = createGame(profile.skills, profile.researchUnlocked, rollMutators()); // roll this run's mutators
+  const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG, replayable from the seed
   buildUnits(S, act);
   renderMutatorBanner(S);
   ended = false; last = 0;

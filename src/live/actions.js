@@ -6,6 +6,8 @@
 import { setTicker } from "./sim.js";
 import { CFG, BUILD, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue, makeUnit } from "./config.js";
 import { doResearch, researchById } from "./research.js";
+import { dailyBaseline } from "./market.js";
+import { contractPrice, expectedOutput, makeContract } from "./finance.js";
 
 export function toggleUnit(S, id){
   if (!S.running || S.paused || S.over) return;
@@ -108,4 +110,57 @@ export function researchNode(S, id){
   const res = doResearch(S, id);
   if (res.ok) setTicker(S, `🔬 Research complete — ${researchById(id)?.label || id}.`);
   return res;
+}
+
+// ---- v4 "The Book": the Desk — term contracts (Phase B) ----
+
+// Set the hedge dial (fraction of expected output to commit). Clamped to [0,1].
+// Only sizes the NEXT hedge contract; existing contracts are untouched.
+export function setHedge(S, frac){
+  if (S.over) return { ok:false };
+  const v = Number(frac);
+  if (!Number.isFinite(v)) return { ok:false, msg:"Invalid hedge." };
+  S.hedge = Math.max(0, Math.min(1, v));
+  return { ok:true };
+}
+
+// Sign the standing hedge contract off the dial: commit hedge×expectedOutput MW
+// at a term-priced rate. One standing dial contract at a time — signing again
+// REPLACES it (locked decision 6), so the dial is a single always-on hedge.
+export function hedgeContract(S, term){
+  if (S.over) return { ok:false };
+  const t = Math.max(CFG.contractTermMin, Math.min(CFG.contractTermMax, Math.round(Number(term) || CFG.contractTermMin)));
+  const mw = Math.round(S.hedge * expectedOutput(S.peak));
+  S.contracts = (S.contracts || []).filter(c => c.origin !== "dial"); // replace the standing dial hedge
+  if (mw <= 0){ setTicker(S, "Hedge dial at 0 — standing contract cleared."); return { ok:true, cleared:true }; }
+  const price = contractPrice(dailyBaseline(S.day), t);
+  S.contracts.push(makeContract({ mw, price, term:t, origin:"dial", buyer:null, seq:S.contractSeq++ }));
+  setTicker(S, `✍ Hedged ${mw} MW at $${price}/MWh for ${t} days.`);
+  return { ok:true, mw, price, term:t };
+}
+
+// Sign an explicit one-off contract (used by Phase F special offers; also the
+// generic signer). `spec` = {mw, price, term, origin, buyer}. Adds, never replaces.
+export function signContract(S, spec){
+  if (S.over) return { ok:false };
+  const { mw, price, term } = spec || {};
+  if (!(mw > 0) || !(price >= 0) || !(term > 0)) return { ok:false, msg:"Invalid contract." };
+  S.contracts = S.contracts || [];
+  S.contracts.push(makeContract({ mw, price, term, origin:spec.origin || "offer", buyer:spec.buyer ?? null, seq:S.contractSeq++ }));
+  setTicker(S, `✍ Signed ${Math.round(mw)} MW at $${price}/MWh for ${term} days.`);
+  return { ok:true };
+}
+
+// Accept / decline the pending special offer (populated by Phase F's offers.js;
+// null until then, so these are safe no-ops in B).
+export function acceptOffer(S){
+  if (S.over || !S.pendingOffer) return { ok:false };
+  const res = signContract(S, S.pendingOffer);
+  if (res.ok) S.pendingOffer = null;
+  return res;
+}
+export function declineOffer(S){
+  if (S.over) return { ok:false };
+  S.pendingOffer = null;
+  return { ok:true };
 }
