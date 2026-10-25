@@ -13,6 +13,8 @@ import { CFG, makeFleet, serviceCost } from "./config.js";
 import { computeMods, effPeakGrowth, newMilestones } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
+import { exogenousBaseline, reserveMargin, spotPrice } from "./market.js";
+import { settleContracts, expireContracts } from "./finance.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -49,6 +51,10 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = []){
     mutators: [...mutators], mmods:computeMutatorMods(mutators),   // per-run mutators (v3)
     fleet, techCount, weather:freshWeather(), buildSeq:1,
     demand:0, capacity:0, price:0, brownout:false,
+    // ---- v4 "The Book": spot + contracts (Phase B) — all deterministic defaults
+    // so a bare createGame() stays reproducible (spotNoise is always 0 in B). ----
+    spot:0, spotBaseline:0, spotNoise:0, hedge:CFG.hedgeDefault,
+    contracts:[], pendingOffer:null, contractSeq:1, contractedMW:0,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
@@ -105,6 +111,7 @@ function gameOver(S, reason){ S.over = true; S.running = false; S.reason = reaso
 export function surviveDay(S){
   S.day++; S.peak = Math.round(S.peak * S.peakGrowth); S.weather = freshWeather();
   S.strain = Math.max(0, S.strain - 30);
+  expireContracts(S); // v4: age term contracts one day, drop the expired ones
   const firstCarbon = S.carbon === 0 && S.day >= CFG.carbonStartDay;
   if (S.day >= CFG.carbonStartDay) S.carbon += CFG.carbonPerDay; // policy tightens as the run climbs
   setTicker(S, firstCarbon
@@ -164,11 +171,21 @@ export function step(S, dt){
   // (punishes overbuilding). Renewables are exempt — they're cheap to own and
   // earn nothing at midday when they set a $0 price, so taxing them just bleeds.
   const fixedOM = S.fleet.reduce((a, u) => a + (u.kind === "renew" ? 0 : u.cap), 0) * CFG.fixedOM;
-  // Revenue is the retail price on SERVED load — decoupled from the volatile
-  // wholesale clearing price so a shortfall is never a scarcity windfall. The
-  // merit-order clearing price (hr.price) and carbon still drive costs (varCost).
-  const revenue = CFG.retailPrice * hr.served;
-  S.cash += (revenue - hr.varCost - spin - fixedOM) * dtH; // unserved load earns nothing
+  // Revenue (v4 "The Book"): contracted blocks settle FIRST at their locked price,
+  // the residual served load clears at the live spot price. Spot = baseline + a
+  // scarcity premium driven by the player's OWN reserve margin (mutators compound
+  // it). Both revenue paths read ONLY hr.served — identical decoupling to the old
+  // retail model, so a shortfall is never a scarcity windfall. hr.price (the
+  // merit-order clearing price) and carbon still drive the COST side (varCost).
+  const baseline = exogenousBaseline(S.day, S.t);
+  const rm = reserveMargin(S.capacity, S.demand);
+  const spot = spotPrice({ baseline, reserveMargin: rm, scarcityMult: S.mmods?.scarcityMult ?? 1, noise: S.spotNoise });
+  S.spotBaseline = baseline; S.spot = spot;
+  const { contractedMW, contractRevenue } = settleContracts(S.contracts, hr.served);
+  S.contractedMW = contractedMW;                            // exposed for D's spot-kill track
+  const residualMW = Math.max(0, hr.served - contractedMW); // never negative, never unserved
+  const revenue = contractRevenue + residualMW * spot;
+  S.cash += (revenue - hr.varCost - spin - fixedOM) * dtH;  // unserved load earns nothing
 
   // storage (one or more batteries): the engine aggregates all battery MW into
   // hr.stack.battery, so drain that total across the discharging units — split in

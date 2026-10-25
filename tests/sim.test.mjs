@@ -352,5 +352,77 @@ check("fast-ramp cuts peaker spin-up 20%", near(t2, t1 * 0.80, 1e-9), `${t1.toFi
   check("a built solar farm follows sun weather, not wind", unitOutput(S, builtSolar) > 0, `${unitOutput(S, builtSolar).toFixed(0)} MW at sun=1,wind=0`);
 }
 
+// ---- Phase B: spot market + term contracts wired into the sim ----
+
+// 42) Fresh game carries neutral v4 economy state; flat retailPrice is retired
+{
+  S = createGame();
+  check("fresh game: neutral spot/contract state",
+    S.spot === 0 && S.spotBaseline === 0 && S.spotNoise === 0 && S.hedge === CFG.hedgeDefault &&
+    S.contracts.length === 0 && S.contractedMW === 0 && S.contractSeq === 1 && S.pendingOffer === null);
+  check("CFG.retailPrice is retired (spot replaces it)", CFG.retailPrice === undefined);
+}
+
+// 43) A live step sets a clamped spot price and a positive baseline (no contracts → 0 locked)
+{
+  S = createGame(); S.running = true;
+  step(S, 0.1);
+  check("step sets spot within [floor, cap] and a positive baseline",
+    S.spot >= CFG.spotFloor && S.spot <= CFG.spotCap && S.spotBaseline > 0, `$${S.spot.toFixed(1)} (base $${S.spotBaseline.toFixed(1)})`);
+  check("no contracts → contractedMW stays 0 (pure spot)", S.contractedMW === 0);
+}
+
+// Controlled single-source grid (only nuclear, no trips, no renewables/batteries,
+// no R&D) so the cash line is deterministic and driven purely by the revenue model.
+function controlled(peak){
+  const g = createGame(); g.peak = peak; g.t = 3; g.running = true; g.rdFunding = 0;
+  for (const u of g.fleet){
+    if (u.id === "nuc"){ u.status = "online"; u.fail = 0; }
+    else if (u.kind === "renew"){ u.cap = 0; }
+    else u.status = "off";
+  }
+  return g;
+}
+
+// 44) A high-priced contract settles at its locked price, distinct from spot: on
+//     the SAME grid, a contracted run out-earns a contract-free (pure-spot) run.
+{
+  const A = controlled(400), B = controlled(400);
+  A.contracts = [{ id: "ct-1", mw: 300, price: 200, term: 3, remaining: 3, origin: "dial", buyer: null }];
+  const a0 = A.cash, b0 = B.cash;
+  step(A, 0.5); step(B, 0.5);
+  check("a locked contract covers served load at its price (contractedMW = committed)", A.contractedMW === 300, A.contractedMW + " MW");
+  check("contract-free run prices served at spot (contractedMW = 0)", B.contractedMW === 0);
+  check("the high-priced contract out-earns the pure-spot grid", (A.cash - a0) > (B.cash - b0),
+    `Δ $${(A.cash - a0).toFixed(0)} vs $${(B.cash - b0).toFixed(0)}`);
+}
+
+// 45) A shortfall settles on SERVED load, never unserved: with a contract larger
+//     than served, residual stays ≥ 0 and cash stays finite (no windfall/NaN).
+{
+  S = controlled(1200); // peak 1200 at t=3 ≫ nuclear 250 → a deep shortfall
+  S.contracts = [{ id: "ct-1", mw: 999, price: 200, term: 3, remaining: 3, origin: "dial", buyer: null }];
+  const before = S.cash;
+  step(S, 0.05);
+  check("shortfall: committed volume recorded, residual never negative", S.contractedMW === 999 && Number.isFinite(S.cash),
+    `cash ${before.toFixed(0)} → ${S.cash.toFixed(0)}`);
+}
+
+// 46) Contracts age out on day rollover (expireContracts in surviveDay)
+{
+  S = createGame();
+  S.contracts = [{ id: "ct-1", mw: 50, price: 60, term: 1, remaining: 1, origin: "dial", buyer: null }];
+  surviveDay(S);
+  check("surviveDay expires a 1-day contract", S.contracts.length === 0);
+}
+
+// 47) fuel-spike compounds the spot scarcity premium (mmods.scarcityMult)
+{
+  const base = computeMutatorMods([]);
+  const spiked = computeMutatorMods(["fuel-spike"]);
+  check("fuel-spike raises scarcityMult above neutral", base.scarcityMult === 1 && spiked.scarcityMult === CFG.mut.fuelScarcity,
+    `×${spiked.scarcityMult}`);
+}
+
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
