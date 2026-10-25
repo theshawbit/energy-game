@@ -4,12 +4,13 @@
 // Home → Run → end screen → Home. Skills is reachable only from Home, so
 // opening it never disturbs a run.
 // ============================================================
-import { createGame, step } from "./sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, acceptOffer, declineOffer, borrow, repay } from "./actions.js";
+import { createGame, step, setTicker } from "./sim.js";
+import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
 import { makeRng } from "./rng.js";
 import { commitCreditStanding } from "./finance.js";
+import { rollSpecialOffer } from "./offers.js";
 import { render, buildUnits, showEndGame, clearEndGame, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner } from "./render.js";
-import { scoreRun, currencyFor, buySkill, buyUnlock, currencyForRun, awardCurrency, scoreTracks, updateRecords } from "./meta.js";
+import { scoreRun, currencyFor, buySkill, buyUnlock, buyEconomyUnlock, runLengthFor, currencyForRun, awardCurrency, scoreTracks, updateRecords } from "./meta.js";
 import { rollMutators } from "./mutators.js";
 import { loadProfile, saveProfile } from "./persist.js";
 
@@ -28,6 +29,7 @@ const homeActions = { start: () => startRun(), skills: showSkills, howto: showHo
 const meta = {
   buy(id){ if (buySkill(profile, id)){ saveProfile(profile); renderMeta(profile, meta); } },
   unlock(id){ if (buyUnlock(profile, id)){ saveProfile(profile); renderMeta(profile, meta); } },
+  economy(id){ if (buyEconomyUnlock(profile, id)){ saveProfile(profile); renderMeta(profile, meta); } },
   back: showHome,
 };
 
@@ -36,6 +38,14 @@ function act(id){ toggleUnit(S, id); render(S); }
 
 // re-paint the currently open manage page (after an action or a nav)
 function refreshPage(){ if (page) renderManage(S, page, menu); }
+
+// v4 (F): at each new day, expire a stale offer then roll a fresh one (null
+// unless the Rolodex economy unlock is owned). Uses the run's seeded RNG.
+function rollDailyOffer(){
+  if (S.pendingOffer && S.day >= S.pendingOffer.expiresDay) S.pendingOffer = null;
+  const offer = rollSpecialOffer(S, S.rng || Math.random);
+  if (offer){ S.pendingOffer = offer; setTicker(S, `☎ ${offer.buyerName} is offering ${offer.mw} MW for ${offer.termDays} days — see the Desk.`); }
+}
 
 // manage mode (opens paused): hub-and-spoke navigation + per-page actions
 const menu = {
@@ -51,6 +61,8 @@ const menu = {
   decline(){ declineOffer(S); refreshPage(); render(S); },
   borrow(amt){ borrow(S, amt); refreshPage(); render(S); },
   repay(amt){ repay(S, amt); refreshPage(); render(S); },
+  takeCapacity(){ takeCapacityObligation(S); refreshPage(); render(S); },
+  dropCapacity(){ dropCapacityObligation(S); refreshPage(); render(S); },
   go(p){ page = p; refreshPage(); },
   close(){ S.menuOpen = false; page = null; hideManage(); last = 0; render(S); },
 };
@@ -59,7 +71,7 @@ function openManage(){ if (S.over) return; S.menuOpen = true; page = "hub"; refr
 // ---- run lifecycle ----
 function startRun(){
   hideAll(); clearEndGame();
-  S = createGame(profile.skills, profile.researchUnlocked, rollMutators(), profile.credit?.standing); // roll mutators; carry credit standing
+  S = createGame(profile.skills, profile.researchUnlocked, rollMutators(), profile.credit?.standing, profile.economyUnlocked, runLengthFor(profile)); // roll mutators; carry credit + economy unlocks + run length
   const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG, replayable from the seed
   S.rngForecast = makeRng((seed ^ 0xF0) >>> 0); // v4 (E): separate stream so sharpening the forecast never desyncs realized spot
   S.bestRecords = profile.records; // v4 (D): read-only mirror for the hub scorecard (render never mutates it)
@@ -92,7 +104,9 @@ function frame(now){
   let dt = (now - last) / 1000; last = now;
   dt = Math.min(dt, 0.1);
   if (S.running && !S.paused && !S.menuOpen && !S.over){
+    const dayBefore = S.day;
     const justEnded = step(S, dt);
+    if (S.day !== dayBefore && !S.over) rollDailyOffer(); // v4 (F): a buyer may call at each new day
     if (justEnded && !ended){ ended = true; render(S); endRun(); }
     else render(S);
   }

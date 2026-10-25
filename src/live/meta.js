@@ -48,6 +48,37 @@ export const RESEARCH_UNLOCKS = [
   { id:"forecasting", name:"Forecasting Desk R&D", cost:5, desc:"Unlock the spot-price forecasting branch (sharpen the band)" },
 ];
 
+// ---- economy unlocks (v4, Phase F): one-time buys in their own meta tab that
+// bloom the Book's complexity across runs. Spend ONLY meta-currency (⚡), written
+// to profile.economyUnlocked (from the p0 migration). `forecasting` is NOT here —
+// it ships as a research-branch unlock (see RESEARCH_UNLOCKS) to keep one buy path. ----
+export const ECONOMY_UNLOCKS = [
+  { id:"capacity-market", name:"Capacity Market", cost:8, desc:"Get paid for available reserve MW — and fined if you can't deliver when called" },
+  { id:"special-offers",  name:"Rolodex",         cost:4, desc:"Named buyers bring occasional standout contracts to the Desk" },
+  { id:"runlen-1", name:"Longer Shifts I",   cost:4, desc:"+2 max run days (longer contracts to operate)" },
+  { id:"runlen-2", name:"Longer Shifts II",  cost:6, desc:"+2 more max run days", prereq:"runlen-1" },
+  { id:"runlen-3", name:"Longer Shifts III", cost:8, desc:"+3 more max run days", prereq:"runlen-2" },
+];
+
+// Buy an economy unlock into `profile` (mutates it). Spends currency only; respects
+// a named prereq; idempotent. Returns true on success.
+export function buyEconomyUnlock(profile, id){
+  const u = ECONOMY_UNLOCKS.find(x => x.id === id); if (!u) return false;
+  if (profile.economyUnlocked?.[id]) return false;
+  if (u.prereq && !(profile.economyUnlocked?.[u.prereq])) return false;
+  if ((profile.currency || 0) < u.cost) return false;
+  profile.currency -= u.cost;
+  (profile.economyUnlocked ||= {})[id] = true;
+  return true;
+}
+
+// Max run length (game-days) for a profile: base plus each owned "Longer Shifts"
+// tier. 5 → 7 → 9 → 12.
+export function runLengthFor(profile){
+  const o = profile.economyUnlocked || {};
+  return CFG.run.baseDays + (o["runlen-1"] ? CFG.run.tier1 : 0) + (o["runlen-2"] ? CFG.run.tier2 : 0) + (o["runlen-3"] ? CFG.run.tier3 : 0);
+}
+
 // Buy a research-branch unlock into `profile` (mutates it). Returns true on
 // success, false if unknown / already owned / unaffordable.
 export function buyUnlock(profile, id){

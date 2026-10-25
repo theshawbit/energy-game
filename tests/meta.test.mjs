@@ -2,7 +2,7 @@
 // Pins the four score tracks, their ⚡ conversion, record-keeping, and the hard
 // isolation between the two cross-run writers (currency vs credit standing).
 import { CFG } from "../src/live/config.js";
-import { CLEAN_TECHS, SCORE_TRACKS, scoreTracks, currencyForRun, awardCurrency, updateRecords } from "../src/live/meta.js";
+import { CLEAN_TECHS, SCORE_TRACKS, scoreTracks, currencyForRun, awardCurrency, updateRecords, ECONOMY_UNLOCKS, buyEconomyUnlock, runLengthFor } from "../src/live/meta.js";
 import { commitCreditStanding } from "../src/live/finance.js";
 
 let failed = 0;
@@ -63,6 +63,28 @@ check("CLEAN_TECHS includes CCS + nuclear, excludes raw coal/peaker",
   check("awardCurrency leaves the credit thread untouched", p.currency === 28 && p.credit.standing === 70 && p.credit.history.length === 0);
   commitCreditStanding(p, { credit: 82, defaulted: false });
   check("commitCreditStanding leaves currency untouched", p.currency === 28 && p.credit.standing === 82);
+}
+
+// ---- Phase F: economy unlocks + run-length growth ----
+
+// 7) buyEconomyUnlock spends only currency, is idempotent, respects prereq
+{
+  const p = { currency: 10, economyUnlocked: {}, credit: { standing: 70, history: [] } };
+  check("buyEconomyUnlock buys an affordable unlock + charges currency", buyEconomyUnlock(p, "special-offers") && p.economyUnlocked["special-offers"] === true && p.currency === 6);
+  check("buyEconomyUnlock refuses an already-owned unlock", !buyEconomyUnlock(p, "special-offers"));
+  check("buyEconomyUnlock leaves the credit thread untouched", p.credit.standing === 70 && p.credit.history.length === 0);
+  const pr = { currency: 100, economyUnlocked: {} };
+  check("buyEconomyUnlock refuses a tier whose prereq isn't owned", !buyEconomyUnlock(pr, "runlen-2") && !pr.economyUnlocked["runlen-2"]);
+  check("buyEconomyUnlock allows the tier once its prereq is owned", buyEconomyUnlock(pr, "runlen-1") && buyEconomyUnlock(pr, "runlen-2"));
+  const broke = { currency: 0, economyUnlocked: {} };
+  check("buyEconomyUnlock refused when broke", !buyEconomyUnlock(broke, "capacity-market"));
+}
+
+// 8) runLengthFor: base 5, growing with the Longer Shifts tiers up to 12
+{
+  check("runLengthFor base = 5", runLengthFor({ economyUnlocked: {} }) === 5);
+  check("runLengthFor with tier 1 = 7", runLengthFor({ economyUnlocked: { "runlen-1": true } }) === 7);
+  check("runLengthFor all tiers = 12", runLengthFor({ economyUnlocked: { "runlen-1": true, "runlen-2": true, "runlen-3": true } }) === 12);
 }
 
 console.log(failed === 0 ? "\nAll meta tests passed." : `\n${failed} meta test(s) FAILED.`);

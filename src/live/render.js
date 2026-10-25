@@ -5,7 +5,7 @@
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
 import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
-import { SKILLS, skillCost, MILESTONES, RESEARCH_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
+import { SKILLS, skillCost, MILESTONES, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
 import { makeFleetComparator } from "./fleetsort.js";
@@ -305,12 +305,24 @@ export function renderMeta(profile, actions){
     const btn = owned ? `<button disabled>Unlocked ✓</button>` : `<button data-unlock="${u.id}" ${can ? "" : "disabled"}>${u.cost} ⚡</button>`;
     return `<div class="skill-row"><span class="sk-nm">${u.name}<br><small>${u.desc}</small></span>${btn}</div>`;
   }).join("");
-  const tab = metaTab === "research" ? "research" : "skills";
+  const economyRows = ECONOMY_UNLOCKS.map(u => {
+    const owned = !!profile.economyUnlocked?.[u.id];
+    const prereqMet = !u.prereq || !!profile.economyUnlocked?.[u.prereq];
+    const can = !owned && prereqMet && profile.currency >= u.cost;
+    const btn = owned ? `<button disabled>Unlocked ✓</button>`
+      : !prereqMet ? `<button disabled>🔒 needs prior tier</button>`
+      : `<button data-economy="${u.id}" ${can ? "" : "disabled"}>${u.cost} ⚡</button>`;
+    return `<div class="skill-row"><span class="sk-nm">${u.name}<br><small>${u.desc}</small></span>${btn}</div>`;
+  }).join("");
+  const tab = metaTab === "research" ? "research" : metaTab === "economy" ? "economy" : "skills";
   const tabs = `<div class="meta-tabs">
     <button class="meta-tab ${tab === "skills" ? "on" : ""}" data-tab="skills">Skills</button>
-    <button class="meta-tab ${tab === "research" ? "on" : ""}" data-tab="research">Research Unlocks</button></div>`;
+    <button class="meta-tab ${tab === "research" ? "on" : ""}" data-tab="research">Research Unlocks</button>
+    <button class="meta-tab ${tab === "economy" ? "on" : ""}" data-tab="economy">Economy</button></div>`;
   const body = tab === "research"
     ? `<p>Permanently open research branches for future runs. In-run research itself still resets each run.</p><div class="skill-list">${unlockRows}</div>`
+    : tab === "economy"
+    ? `<p>Bloom the Book's economy across runs — longer contracts, the capacity market, and named buyers.</p><div class="skill-list">${economyRows}</div>`
     : `<p>Permanent passive upgrades, bought with meta-currency earned at the end of each run.</p><div class="skill-list">${skillRows}</div>`;
   $("meta").innerHTML = `
     <h2>Progression</h2>
@@ -321,6 +333,7 @@ export function renderMeta(profile, actions){
     <button class="btn-primary" id="metaBack">← Back</button>`;
   $("meta").querySelectorAll("[data-skill]").forEach(b => b.onclick = () => actions.buy(b.dataset.skill));
   $("meta").querySelectorAll("[data-unlock]").forEach(b => b.onclick = () => actions.unlock(b.dataset.unlock));
+  $("meta").querySelectorAll("[data-economy]").forEach(b => b.onclick = () => actions.economy(b.dataset.economy));
   $("meta").querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { metaTab = b.dataset.tab; renderMeta(profile, actions); });
   $("metaBack").onclick = actions.back;
   $("metaOverlay").classList.add("on");
@@ -531,6 +544,10 @@ function wireDesk(S, actions){
   // financing: borrow / repay preset amounts
   m.querySelectorAll("[data-borrow]").forEach(b => b.onclick = () => actions.borrow(Number(b.dataset.borrow)));
   m.querySelectorAll("[data-repay]").forEach(b => b.onclick = () => actions.repay(Number(b.dataset.repay)));
+  // capacity market: take / drop an obligation
+  m.querySelectorAll("[data-cap]").forEach(b => b.onclick = () => b.dataset.cap === "take" ? actions.takeCapacity() : actions.dropCapacity());
+  // special offer: accept / decline
+  m.querySelectorAll("[data-offer]").forEach(b => b.onclick = () => b.dataset.offer === "accept" ? actions.accept() : actions.decline());
 }
 
 // --- desk: the economy route. Contracts filled by Phase B; Financing by Phase C. ---
@@ -566,7 +583,28 @@ function financingBody(S){
     ${defaultNote}
     <div class="term-row"><span class="k">Borrow</span>${borrowBtns}<span class="faint tiny">headroom ${money(headroom)}</span></div>
     <div class="term-row"><span class="k">Repay</span>${repayBtns}</div>
-    <p class="faint tiny">Debt is cash now for interest forever — the fixed cost your contract floor must beat. Go insolvent with debt and you default; stay under too long and the utility goes bankrupt.</p>`;
+    <p class="faint tiny">Debt is cash now for interest forever — the fixed cost your contract floor must beat. Go insolvent with debt and you default; stay under too long and the utility goes bankrupt.</p>
+    ${capacityBlock(S)}`;
+}
+
+// Capacity market (Phase F) — only when the economy unlock is owned. Shows the
+// active obligation (or an offer to take one) with its availability pay + breach risk.
+function capacityBlock(S){
+  if (!(S.economyUnlocked && S.economyUnlocked["capacity-market"])) return "";
+  const o = S.capacityObligation;
+  if (o){
+    return `<h3 class="ct-h">Capacity obligation</h3>
+      <div class="fin-grid">
+        <div class="fin-cell"><small>Reserve</small><b>${o.reserveMW} MW</b><span class="faint">pledged</span></div>
+        <div class="fin-cell"><small>Pays</small><b>$${o.pricePerMW}</b><span class="faint">/MW/day</span></div>
+        <div class="fin-cell"><small>Term left</small><b>${o.daysLeft}d</b><span class="faint">${o.calledToday ? "called today" : "no call yet"}</span></div>
+        <div class="fin-cell"><small>Breach fine</small><b>$${CFG.capacity.penaltyPerMw}</b><span class="faint">/MW short</span></div>
+      </div>
+      <div class="term-row"><button class="fin-btn" data-cap="drop">End obligation</button><span class="faint tiny">keep ${o.reserveMW} MW firm & deliverable or risk the fine</span></div>`;
+  }
+  return `<h3 class="ct-h">Capacity market</h3>
+    <p class="faint tiny">Pledge firm reserve for a daily availability payment — but a call that finds you short draws a recoverable fine.</p>
+    <div class="term-row"><button class="fin-btn" data-cap="take">Take a capacity obligation (~40% of firm, 4d)</button></div>`;
 }
 
 // Contracts tab: the hedge dial (commit a slice of expected output), term choice,
@@ -587,7 +625,18 @@ function contractsBody(S){
       `</tbody></table>`
     : `<p class="faint">No contracts — all served load clears at spot ($${Math.round(S.spot || 0)}/MWh now).</p>`;
 
+  // Phase F: a named-buyer special offer, if one is on the table (Rolodex unlock).
+  let offerCard = "";
+  if (S.pendingOffer){
+    const o = S.pendingOffer, price = Math.round(contractPrice(baseline, o.termDays) * (o.priceMult ?? 1));
+    offerCard = `<div class="offer-card">
+      <div class="offer-lead">☎ <b>${o.buyerName}</b> offers <b>${o.mw} MW</b> at <b>$${price}/MWh</b> for <b>${o.termDays} days</b>
+        <span class="faint">(${o.priceMult >= 1 ? "+" : ""}${Math.round((o.priceMult - 1) * 100)}% vs standard · expires day ${o.expiresDay})</span></div>
+      <div class="term-row"><button class="term-btn offer-yes" data-offer="accept">Accept</button><button class="term-btn" data-offer="decline">Decline</button></div>
+    </div>`;
+  }
   return `
+    ${offerCard}
     <p class="desk-lead">Lock a block of your output at a fixed price to hedge the live spot market.
       The rest of your served load clears at <b>spot</b> ($${Math.round(S.spot || 0)}/MWh now, baseline $${Math.round(baseline)}).</p>
     <div class="hedge-dial">
