@@ -152,10 +152,13 @@ export function signContract(S, spec){
 }
 
 // Accept / decline the pending special offer (populated by Phase F's offers.js;
-// null until then, so these are safe no-ops in B).
+// null until then, so these are safe no-ops in B). The offer carries a priceMult
+// applied to the standard term-contract rate for its term.
 export function acceptOffer(S){
   if (S.over || !S.pendingOffer) return { ok:false };
-  const res = signContract(S, S.pendingOffer);
+  const o = S.pendingOffer;
+  const price = Math.round(contractPrice(dailyBaseline(S.day), o.termDays) * (o.priceMult ?? 1));
+  const res = signContract(S, { mw:o.mw, price, term:o.termDays, origin:"offer", buyer:o.buyerName });
   if (res.ok) S.pendingOffer = null;
   return res;
 }
@@ -189,5 +192,33 @@ export function repay(S, amount){
   S.debt -= a; S.cash -= a;
   (S.debtLedger = S.debtLedger || []).push({ type:"repay", day:S.day, amount:a });
   setTicker(S, `＄ Repaid $${a.toLocaleString()} — debt now $${Math.round(S.debt).toLocaleString()}.`);
+  return { ok:true };
+}
+
+// ---- v4 "The Book": capacity market (Phase F, gated by the economy unlock) ----
+
+// Take on a capacity obligation: commit to keeping `reserveMW` of firm capacity
+// available for a term, earning an availability payment — and risking a breach
+// fine if a call finds you short. One obligation at a time. reserveMW defaults to
+// ~40% of current firm+peaker capacity (what a prudent operator can actually back).
+export function takeCapacityObligation(S, term = 4){
+  if (S.over) return { ok:false };
+  if (!(S.economyUnlocked && S.economyUnlocked["capacity-market"])) return { ok:false, msg:"Capacity Market not unlocked." };
+  if (S.capacityObligation) return { ok:false, msg:"Already under a capacity obligation." };
+  const firm = S.fleet.reduce((a, u) => a + ((u.kind === "firm" || u.kind === "peaker") ? u.cap : 0), 0);
+  const reserveMW = Math.round(0.4 * firm);
+  if (reserveMW <= 0) return { ok:false, msg:"No firm capacity to pledge." };
+  const termDays = Math.max(2, Math.min(6, Math.round(Number(term) || 4)));
+  S.capacityObligation = { reserveMW, pricePerMW:CFG.capacity.pricePerMW, termDays, daysLeft:termDays, calledToday:false };
+  setTicker(S, `✍ Capacity obligation — ${reserveMW} MW reserve for ${termDays} days at $${CFG.capacity.pricePerMW}/MW/day.`);
+  return { ok:true };
+}
+
+// Exit the capacity obligation early (stops payments; no exit fee).
+export function dropCapacityObligation(S){
+  if (S.over) return { ok:false };
+  if (!S.capacityObligation) return { ok:false };
+  S.capacityObligation = null;
+  setTicker(S, "Capacity obligation ended.");
   return { ok:true };
 }

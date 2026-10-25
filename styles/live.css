@@ -219,6 +219,14 @@ table.fleet .st{display:inline-block;font-family:var(--mono);font-size:.58rem;le
 .rec-tile small{font-size:.62rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .rec-tile b{font-family:var(--mono);font-size:1.05rem}
 .rec-tile .faint{font-size:.64rem}
+
+/* desk → special offer card (Phase F) */
+.offer-card{border:1px solid var(--accent);border-radius:9px;padding:10px 12px;margin:4px 0 12px;background:color-mix(in srgb,var(--accent) 8%,var(--panel))}
+.offer-lead{font-size:.86rem;margin-bottom:8px}
+.offer-lead b{color:var(--fg)}
+.offer-lead .faint{font-size:.72rem}
+.term-btn.offer-yes{border-color:var(--accent);color:#fff}
+.term-btn.offer-yes:hover{background:var(--accent)}
 @media (max-width:620px){.hub-nav{grid-template-columns:1fr}.fin-grid{grid-template-columns:repeat(2,1fr)}.rec-grid{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:620px){.hub-nav{grid-template-columns:1fr}}
 

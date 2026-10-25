@@ -16,6 +16,7 @@ import { computeMutatorMods } from "./mutators.js";
 import { exogenousBaseline, reserveMargin, spotPrice } from "./market.js";
 import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
 import { forecastFog, forecastInputs } from "./forecast.js";
+import { capacityPayment, capacityPenalty, rollCapacityCall } from "./capacity.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -29,7 +30,7 @@ export function interp(arr, t){
 
 // `mutators` is the rolled per-run mutator id list — supplied by the caller
 // (main.js rolls it at run start) so createGame itself stays deterministic.
-export function createGame(skills = {}, researchUnlocked = {}, mutators = [], creditStanding = CFG.creditStart){
+export function createGame(skills = {}, researchUnlocked = {}, mutators = [], creditStanding = CFG.creditStart, economyUnlocked = {}, maxRunDays = CFG.run.baseDays){
   const mods = computeMods(skills);
   const fleet = makeFleet();
   // monotonic per-tech counter for naming built units, so numbers are never
@@ -64,6 +65,10 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     cleanMWh:0, servedMWh:0, peakNetWorth:CFG.startCash + mods.startCashBonus, bestSpotKill:0,
     // ---- v4 earned forecast (Phase E): next-hour spot outlook + its fog width ----
     marketVolatility:0, spotForecast:0, spotForecastFog:CFG.forecast.baseFog, fcHour:-1,
+    // ---- v4 meta blooms (Phase F): a run is a finite contract (win at maxRunDays);
+    // capacity obligation + special offers are opt-in via economy unlocks. ----
+    economyUnlocked: { ...economyUnlocked }, maxRunDays, won:false,
+    capacityObligation:null, capHour:-1,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
@@ -128,6 +133,18 @@ export function surviveDay(S){
   S.dayInterest0 = S.interestPaid;
   const firstCarbon = S.carbon === 0 && S.day >= CFG.carbonStartDay;
   if (S.day >= CFG.carbonStartDay) S.carbon += CFG.carbonPerDay; // policy tightens as the run climbs
+  // v4 (F): age a capacity obligation; it lapses when its term runs out.
+  if (S.capacityObligation){
+    S.capacityObligation.daysLeft -= 1; S.capacityObligation.calledToday = false;
+    if (S.capacityObligation.daysLeft <= 0) S.capacityObligation = null;
+  }
+  // v4 (F): a run is a finite contract — surviving past maxRunDays is a WIN, not
+  // an endless grind. Set the win flag; the view layer reacts to S.over as usual.
+  if (S.day > (S.maxRunDays ?? Infinity)){
+    S.over = true; S.won = true; S.running = false;
+    S.reason = `Contract complete — ${S.day - 1} days operated. The city renews your licence.`;
+    return;
+  }
   setTicker(S, firstCarbon
     ? `✓ Day ${S.day - 1} cleared — carbon pricing begins at $${Math.round(S.carbon)}/t. Dirty plants cost more now.`
     : `✓ Day ${S.day - 1} cleared — demand rising to ${S.peak} MW peak.`);
@@ -224,6 +241,26 @@ export function step(S, dt){
   if (S.debt > 0){
     const interest = interestFor(S.debt, creditRating(S.credit).rate, dtH);
     S.cash -= interest; S.interestPaid += interest;
+  }
+
+  // v4 capacity market (Phase F): paid for availability every tick under an
+  // obligation; once per day a CALL may land (likelier when the grid is tight) and
+  // a shortfall against the obligation draws a recoverable breach fine (never fatal
+  // by itself — only sustained insolvency ends a run). Firm reserve = firm+peaker
+  // capacity not tripped or in service; renewables/batteries don't count.
+  if (S.capacityObligation){
+    S.cash += capacityPayment(S.capacityObligation, dtH / 24);
+    const capHourNow = Math.floor(S.t);
+    if (S.capHour !== capHourNow){
+      S.capHour = capHourNow;
+      if (S.rng && !S.capacityObligation.calledToday && rollCapacityCall(S, S.rng)){
+        S.capacityObligation.calledToday = true;
+        const deliverable = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "peaker") && u.status !== "tripped" && u.status !== "service") ? u.cap : 0), 0);
+        const fine = capacityPenalty(S.capacityObligation, deliverable);
+        if (fine > 0){ S.cash -= fine; setTicker(S, `⚠ Capacity call — short ${Math.round(S.capacityObligation.reserveMW - deliverable)} MW, fined $${Math.round(fine).toLocaleString()}.`); }
+        else setTicker(S, `✓ Capacity call met — reserve delivered.`);
+      }
+    }
   }
 
   // storage (one or more batteries): the engine aggregates all battery MW into

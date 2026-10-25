@@ -105,6 +105,20 @@ export const CFG = {
     fogMin: 0.04,            // sharpest possible band (±4%)
     fogMax: 0.60,            // blurriest band (±60%)
   },
+  // ---- v4 "The Book": meta blooms (Phase F) ----
+  // A run is now a finite CONTRACT, not endless survival: it runs baseDays, grown
+  // by the "Longer Shifts" economy unlocks, then ends as a graceful WIN.
+  run: { baseDays: 5, tier1: 2, tier2: 2, tier3: 3 }, // 5 → 7 → 9 → 12 days
+  // capacity market (advanced tier): get paid for available reserve MW, fined if
+  // you can't deliver when called. A breach fine is recoverable — never fatal by
+  // itself (only sustained insolvency ends a run).
+  capacity: {
+    pricePerMW: 9,        // $/MW/day availability payment while under obligation
+    penaltyPerMw: 55,     // $/MW breach fine when called and short
+    callBaseProb: 0.35,   // base per-day chance of a capacity call (rises with tightness)
+  },
+  // named-buyer special offers (the Rolodex): occasional standout contracts
+  offers: { dailyChance: 0.25 }, // per-day chance a buyer brings an offer (with the unlock)
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and
