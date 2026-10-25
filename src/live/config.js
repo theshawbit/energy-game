@@ -81,6 +81,7 @@ export const CFG = {
   hedgePriceCap: 1.35,        // a long lock can't beat baseline by more than this
   contractTermMin: 2,         // shortest term the dial offers (game-days)
   contractTermMax: 6,         // longest term the dial offers (game-days)
+  hedgeMaxContracts: 6,       // v4.1: most standing hedge legs you can ladder on the book at once
   // ---- v4 "The Book": financing — debt, credit, bankruptcy (Phase C) ----
   // A credit STANDING ∈ [0,100] carries across runs and sets both the interest
   // rate and the borrowing ceiling. Default craters it for the run and scars the

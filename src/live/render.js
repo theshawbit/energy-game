@@ -541,8 +541,10 @@ function wireDesk(S, actions){
     const dialMW = Math.round(frac * expectedOutput(S.peak));
     const ro = $("hedgeReadout"); if (ro) ro.textContent = `${dialMW} MW`;
   };
-  // term buttons sign (and replace) the standing hedge, then re-render the list
+  // term buttons add a hedge leg to the book, then re-render the list
   m.querySelectorAll("[data-term]").forEach(b => b.onclick = () => actions.hedge(Number(b.dataset.term)));
+  // ✕ cancels a single standing contract (hedge leg or accepted offer)
+  m.querySelectorAll("[data-cancel]").forEach(b => b.onclick = () => actions.cancelContract(b.dataset.cancel));
   // financing: borrow / repay preset amounts
   m.querySelectorAll("[data-borrow]").forEach(b => b.onclick = () => actions.borrow(Number(b.dataset.borrow)));
   m.querySelectorAll("[data-repay]").forEach(b => b.onclick = () => actions.repay(Number(b.dataset.repay)));
@@ -621,9 +623,11 @@ function contractsBody(S){
   const termBtns = terms.map(t =>
     `<button class="term-btn" data-term="${t}">${t}d · $${contractPrice(baseline, t)}</button>`).join("");
 
+  const bookMW = (S.contracts || []).reduce((a, c) => a + (c.mw || 0), 0);
   const rows = (S.contracts || []).length
-    ? `<table class="fleet ct-table"><thead><tr><th>Source</th><th>MW</th><th>$/MWh</th><th>Days left</th></tr></thead><tbody>` +
-      S.contracts.map(c => `<tr><td>${c.origin === "dial" ? "Hedge dial" : (c.buyer || "Offer")}</td><td>${Math.round(c.mw)}</td><td>$${c.price}</td><td>${c.remaining}</td></tr>`).join("") +
+    ? `<table class="fleet ct-table"><thead><tr><th>Source</th><th>MW</th><th>$/MWh</th><th>Days left</th><th></th></tr></thead><tbody>` +
+      S.contracts.map(c => `<tr><td>${c.origin === "dial" ? "Hedge" : (c.buyer || "Offer")}</td><td>${Math.round(c.mw)}</td><td>$${c.price}</td><td>${c.remaining}</td><td><button class="ct-cancel" data-cancel="${c.id}" title="Cancel this contract">✕</button></td></tr>`).join("") +
+      `<tr class="ct-total"><td>Total locked</td><td>${Math.round(bookMW)}</td><td colspan="3"></td></tr>` +
       `</tbody></table>`
     : `<p class="faint">No contracts — all served load clears at spot ($${Math.round(S.spot || 0)}/MWh now).</p>`;
 
@@ -645,8 +649,8 @@ function contractsBody(S){
       <label>Hedge dial — commit <b id="hedgeReadout">${dialMW} MW</b> (${Math.round(hedge * 100)}% of ~${expMW} MW expected)</label>
       <input type="range" id="hedgeRange" min="0" max="100" step="5" value="${Math.round(hedge * 100)}" />
     </div>
-    <div class="term-row"><span class="k">Sign standing hedge for:</span>${termBtns}</div>
-    <p class="faint tiny">Signing replaces your current hedge-dial contract. Longer terms lock a better rate.</p>
+    <div class="term-row"><span class="k">Sign a hedge leg for:</span>${termBtns}</div>
+    <p class="faint tiny">Each signing <b>adds</b> a leg to your book (ladder up to ${CFG.hedgeMaxContracts}). Longer terms lock a better rate; cancel any leg with ✕.</p>
     <h3 class="ct-h">Standing contracts</h3>
     ${rows}`;
 }
