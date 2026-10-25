@@ -84,6 +84,15 @@ export const CFG = {
   insolvencyFloor: 0,        // cash below this counts as insolvent
   hardInsolvency: -150000,   // cash this deep in the red = instant wind-up (assets seized)
   bankruptcyGrace: 6,        // real-seconds insolvent before bankruptcy (mirrors the strain window)
+  // ---- v4 "The Book": multi-track scoring (Phase D) — each track earns ⚡ on its
+  // own curve, so longevity, wealth, clean play and spot-trading can each be "the
+  // point". Divisors are $/⚡ or %/⚡; higher = that track rewards more slowly.
+  score: {
+    longevityPerDay: 3,      // ⚡ per day survived
+    netWorthPerCoin: 60000,  // $ of peak net worth per ⚡
+    cleanPerPct: 0.4,        // ⚡ per percentage-point of clean-energy share
+    spotKillPerCoin: 4000,   // $ of biggest single spot-spike capture per ⚡
+  },
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and

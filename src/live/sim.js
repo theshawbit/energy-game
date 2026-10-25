@@ -10,7 +10,7 @@
 import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, serviceCost } from "./config.js";
-import { computeMods, effPeakGrowth, newMilestones } from "./meta.js";
+import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
 import { exogenousBaseline, reserveMargin, spotPrice } from "./market.js";
@@ -59,6 +59,8 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     // carried STANDING (not a flat constant); creditCap drops after a default. ----
     debt:0, credit:creditStanding, creditCap:100, defaulted:false,
     insolventT:0, interestPaid:0, dayInterest0:0, debtLedger:[],
+    // ---- v4 scoring accumulators (Phase D): the four tracks build over the run ----
+    cleanMWh:0, servedMWh:0, peakNetWorth:CFG.startCash + mods.startCashBonus, bestSpotKill:0,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
@@ -267,6 +269,17 @@ export function step(S, dt){
   } else {
     S.insolventT = Math.max(0, S.insolventT - dt);
   }
+
+  // v4 scoring accumulators (Phase D): clean-energy share, peak net worth, and
+  // the biggest single spot-spike capture — each its own ⚡ track at run end.
+  // servedMWh is the total served load; cleanMWh sums only the clean techs in the
+  // dispatch stack (the stack also carries non-generation keys like _demand/unserved,
+  // so we read named clean techs rather than iterating every key).
+  S.servedMWh += hr.served * dtH;
+  for (const tech of CLEAN_TECHS){ const mw = hr.stack[tech]; if (mw > 0) S.cleanMWh += mw * dtH; }
+  S.peakNetWorth = Math.max(S.peakNetWorth, S.cash - (S.debt || 0));
+  const spike = Math.max(0, spot - baseline); // spot premium above baseline this tick
+  S.bestSpotKill = Math.max(S.bestSpotKill, residualMW * spike * dtH);
 
   // milestones reached this tick (near-term goals; scored at end of run)
   for (const m of newMilestones(S)){ S.milestonesHit.push(m.id); setTicker(S, `★ Milestone — ${m.label}!`); }

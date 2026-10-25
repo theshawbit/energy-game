@@ -5,7 +5,7 @@
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
 import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
-import { SKILLS, skillCost, MILESTONES, RESEARCH_UNLOCKS } from "./meta.js";
+import { SKILLS, skillCost, MILESTONES, RESEARCH_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
 import { makeFleetComparator } from "./fleetsort.js";
@@ -394,7 +394,21 @@ function hubBody(S){
     ["Credit", `${grade} · ${Math.round(S.credit ?? 70)}`, false],
     ["Satisfaction", Math.round(S.satisfaction) + "%", false], ["RP banked", Math.floor(S.rp || 0), false],
   ].map(([k, v, ph]) => `<div class="hub-tile${ph ? " placeholder" : ""}"><b>${v}</b><small>${k}</small></div>`).join("");
-  return `<div class="hub-nav">${nav}</div><div class="hub-stats">${tiles}</div>`;
+  return `<div class="hub-nav">${nav}</div><div class="hub-stats">${tiles}</div>${recordsStrip(S)}`;
+}
+
+// --- v4 (D): the four scored tracks — this run's live value vs the all-time best.
+//     Reads the read-only records mirror main.js stashes on S (never mutated). ---
+function recordsStrip(S){
+  const live = scoreTracks(S), best = S.bestRecords || {};
+  const fmt = (id, v) => id === "netWorth" || id === "spotKill" ? money(v)
+    : id === "cleanShare" ? Math.round(v * 100) + "%"
+    : Math.round(v) + (id === "longevity" ? "d" : "");
+  const rows = SCORE_TRACKS.map(tr => {
+    const b = best[tr.id]?.value || 0;
+    return `<div class="rec-tile"><small>${tr.label}</small><b>${fmt(tr.id, live[tr.id] || 0)}</b><span class="faint">best ${fmt(tr.id, b)}</span></div>`;
+  }).join("");
+  return `<div class="rec-head">Scored tracks — this run vs best</div><div class="rec-grid">${rows}</div>`;
 }
 
 // --- fleet: the dense, sortable table that replaces the old card list ---

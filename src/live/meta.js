@@ -104,5 +104,56 @@ export function scoreRun(S){
 }
 export function currencyFor(score){ return Math.max(1, Math.round(score / 15)); }
 
+// ---- v4 "The Book": multi-track scoring (Phase D) ----
+// Four independent tracks, each converting to ⚡ on its own curve, so money and
+// clean play can finally *be* the point. CLEAN_TECHS includes abated fossil (CCS)
+// — captured carbon counts as clean (locked decision 4).
+export const CLEAN_TECHS = new Set(["solar", "wind", "battery", "nuclear", "smr", "geo", "ccs_coal", "ccs_gas"]);
+
+export const SCORE_TRACKS = [
+  { id:"longevity",  label:"Longevity",   unit:"days",  reward:v => v * CFG.score.longevityPerDay },
+  { id:"netWorth",   label:"Peak net worth", unit:"$",  reward:v => Math.max(0, v) / CFG.score.netWorthPerCoin },
+  { id:"cleanShare", label:"Clean share", unit:"%",     reward:v => v * 100 * CFG.score.cleanPerPct },
+  { id:"spotKill",   label:"Spot trading", unit:"$",    reward:v => v / CFG.score.spotKillPerCoin },
+];
+
+// Raw per-track values for a finished (or live) run. All sibling reads use
+// ?? fallbacks so this degrades gracefully if called before B/C ran.
+export function scoreTracks(S){
+  return {
+    longevity:  Math.max(0, (S.day || 1) - 1),
+    netWorth:   S.peakNetWorth ?? (S.cash - (S.debt || 0)),
+    cleanShare: (S.servedMWh > 0) ? (S.cleanMWh / S.servedMWh) : 0,
+    spotKill:   S.bestSpotKill ?? 0,
+  };
+}
+
+// Total ⚡ a run earns: the sum of every track's reward, never below 1. Replaces
+// the single-score award (scoreRun/currencyFor are kept for legacy best.* fields).
+export function currencyForRun(S){
+  const t = scoreTracks(S);
+  const total = SCORE_TRACKS.reduce((a, tr) => a + tr.reward(t[tr.id] || 0), 0);
+  return Math.max(1, Math.round(total));
+}
+
+// The ONLY path that grants meta-currency (⚡). Kept isolated from the credit
+// thread (commitCreditStanding) so a test can assert the two never mix.
+export function awardCurrency(profile, n){
+  profile.currency = (profile.currency || 0) + Math.max(0, Math.round(n));
+  return profile.currency;
+}
+
+// Raise per-track bests in profile.records; returns the ids that set a new best.
+export function updateRecords(profile, tracks, at = null){
+  const rec = (profile.records ||= {});
+  const beaten = [];
+  for (const tr of SCORE_TRACKS){
+    const v = tracks[tr.id] || 0;
+    const cur = rec[tr.id] || (rec[tr.id] = { value:0, at:null });
+    if (v > cur.value){ cur.value = v; cur.at = at; beaten.push(tr.id); }
+  }
+  return beaten;
+}
+
 // Effective per-day demand growth after the Efficiency Drive skill.
 export function effPeakGrowth(mods){ return 1 + (CFG.peakGrowth - 1) * mods.peakGrowthMult; }

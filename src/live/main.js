@@ -9,7 +9,7 @@ import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, 
 import { makeRng } from "./rng.js";
 import { commitCreditStanding } from "./finance.js";
 import { render, buildUnits, showEndGame, clearEndGame, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner } from "./render.js";
-import { scoreRun, currencyFor, buySkill, buyUnlock } from "./meta.js";
+import { scoreRun, currencyFor, buySkill, buyUnlock, currencyForRun, awardCurrency, scoreTracks, updateRecords } from "./meta.js";
 import { rollMutators } from "./mutators.js";
 import { loadProfile, saveProfile } from "./persist.js";
 
@@ -61,6 +61,7 @@ function startRun(){
   hideAll(); clearEndGame();
   S = createGame(profile.skills, profile.researchUnlocked, rollMutators(), profile.credit?.standing); // roll mutators; carry credit standing
   const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG, replayable from the seed
+  S.bestRecords = profile.records; // v4 (D): read-only mirror for the hub scorecard (render never mutates it)
   buildUnits(S, act);
   renderMutatorBanner(S);
   ended = false; last = 0;
@@ -68,16 +69,18 @@ function startRun(){
   render(S);
 }
 function endRun(){
-  const res = scoreRun(S);
-  const earned = currencyFor(res.score);
+  const res = scoreRun(S);                         // legacy composite (kept for best.{score,days,peak})
+  const earned = currencyForRun(S);                // v4 (D): ⚡ summed across the four tracks
   const prevBest = { ...profile.best };
-  profile.currency += earned;
+  const tracks = scoreTracks(S);
+  updateRecords(profile, tracks, S.day);           // v4 (D): raise per-track bests (stats hub)
+  awardCurrency(profile, earned);                  // v4 (D): the ONLY ⚡-earn path
   profile.best = {
     days: Math.max(prevBest.days || 0, res.days),
     score: Math.max(prevBest.score || 0, res.score),
     peak: Math.max(prevBest.peak || 0, S.peak),
   };
-  commitCreditStanding(profile, S); // v4 (C): write the run's credit standing back (the only credit writer)
+  commitCreditStanding(profile, S);                // v4 (C): write the run's credit standing back (the only credit writer)
   saveProfile(profile);
   showEndGame(S, { score: res.score, earned, best: prevBest }, { replay: () => startRun(), home: showHome });
 }

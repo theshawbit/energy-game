@@ -513,5 +513,44 @@ function insolvent(debt){
   check("no-debt insolvency still bankrupts after grace, without a default event", S.over && !S.defaulted && /bankrupt/i.test(S.reason), S.reason);
 }
 
+// ---- Phase D: scoring accumulators built over the run ----
+
+// 55) Fresh game seeds the accumulators (peakNetWorth = opening cash)
+{
+  S = createGame();
+  check("fresh game: accumulators zeroed, peakNetWorth = starting cash",
+    S.cleanMWh === 0 && S.servedMWh === 0 && S.bestSpotKill === 0 && S.peakNetWorth === CFG.startCash);
+}
+
+// 56) A clean-only grid builds servedMWh & cleanMWh with cleanShare in [0,1] (≈1)
+{
+  S = controlled(400); // nuclear-only supply → every served MWh is clean
+  for (let i = 0; i < 6; i++) step(S, 0.4);
+  const share = S.servedMWh > 0 ? S.cleanMWh / S.servedMWh : 0;
+  check("served & clean MWh accumulate", S.servedMWh > 0 && S.cleanMWh > 0);
+  check("cleanShare stays within [0,1] and is ≈1 for a nuclear grid", share >= 0 && share <= 1 + 1e-9 && share > 0.99, share.toFixed(3));
+}
+
+// 57) peakNetWorth is monotonic (a high-water mark, never falls)
+{
+  S = controlled(400); let prev = S.peakNetWorth, mono = true;
+  for (let i = 0; i < 8; i++){ step(S, 0.4); if (S.peakNetWorth < prev) mono = false; prev = S.peakNetWorth; }
+  check("peakNetWorth never decreased across the run", mono);
+}
+
+// 58) bestSpotKill stays 0 on a flush grid (negative premium → no spike to capture)
+{
+  S = controlled(400); // margin ~0.28 > rmRef → premium ≤ 0
+  for (let i = 0; i < 5; i++) step(S, 0.4);
+  check("flush grid captures no spot spike (bestSpotKill = 0)", S.bestSpotKill === 0, "$" + S.bestSpotKill.toFixed(0));
+}
+
+// 59) bestSpotKill grows on a TIGHT-but-served grid (positive premium × residual)
+{
+  S = controlled(490); // demand ~240 vs 250 cap → margin < rmRef → premium > 0, still served
+  for (let i = 0; i < 5; i++) step(S, 0.3);
+  check("a tight-but-served grid captures a spot spike (bestSpotKill > 0)", S.bestSpotKill > 0, "$" + S.bestSpotKill.toFixed(0));
+}
+
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);
