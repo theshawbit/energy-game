@@ -1,13 +1,14 @@
 # Grid Operator v4.2 — "The Control Room" — UI/UX Redesign Spec
 
-> **Status: SPEC (not started).** A records doc, written from a two-round
-> grill-me session (2026-10-25) that converged on a design direction the user
-> confirmed. This is the *what, why, and how* for the live-screen redesign;
-> the phased build lands in reviewable PRs (§8). It is a **UI/UX release only** —
-> **zero game-mechanics changes** (§7). All v4.1 gameplay/contract/layout work
-> (PRs #41/#42/#43) is already merged and live; this **supersedes the v4.1
-> layout/landing pass** — specifically the "Desk · live" aside panel bolted in
-> during #43, which is folded into the status cluster here.
+> **Status: SHIPPED** (all four slices merged to `main`, 2026-10-26; Pages
+> auto-redeployed). Spec PR #44; build CR-1 #45, CR-2 #46, CR-3 #47, CR-4 #48.
+> Written from a two-round grill-me session (2026-10-25) that converged on a
+> design direction the user confirmed. This is the *what, why, and how* for the
+> live-screen redesign; the phased build landed in reviewable PRs (§8). It was a
+> **UI/UX release only** — **zero game-mechanics changes** (§7). All v4.1
+> gameplay/contract/layout work (PRs #41/#42/#43) was already merged and live;
+> this **supersedes the v4.1 layout/landing pass** — specifically the "Desk ·
+> live" aside panel bolted in during #43, folded into the status cluster here.
 >
 > *Versioning note:* labeled **v4.2** because v4.1 (layout) already shipped and
 > this redesigns that surface. Fold it under 4.1 if you'd rather — it's a name.
@@ -302,28 +303,29 @@ cards on the main tab — needs re-evaluating").
 
 ## 8. Build plan (reviewable PRs)
 
-Each PR is independently shippable, keeps all **13 test suites green**, and gets a
-browser pass before merge. Logic that computes a readout gets a unit test.
+Each PR was independently shippable, kept the test suite green, and got a browser
+pass before merge. Logic that computes a readout got a unit test. (The suite grew
+from 13 to **14** — CR-2 added `tests/readouts.test.mjs`.) All four merged:
 
-- **CR-1 — Command bar + layout skeleton.** New top command bar; relocate and
-  redesign **PAUSE/RESUME + MANAGE** (mechanics unchanged); establish the
-  no-scroll region grid (§3) with the old content re-homed. Demote secondary
-  header stats. *Done = controls up top, nothing below the fold, no scroll at
-  target size, all existing behavior intact.*
-- **CR-2 — Master status cluster + derived readouts.** The instrument-tile
-  primitive; the six tiles; the reserve dial; the new derived numbers (§5) with
-  unit tests (flow rate, potential/armable, time-to-peak, hedged %/exposure).
-  Retire the #43 "Desk · live" panel into the cluster. *Done = operator reads
-  rate+trend+headroom+exposure at a glance; tests cover each formula.*
-- **CR-3 — Fleet instruments + reconciliation.** Convert fleet cards to live
-  instrument tiles (sparkline, state reaction, per-unit $/MWh, spin-up ETA);
-  wire the `attentionRank` auto-reorder; unify the color/state grammar with the
-  Manage table. *Done = the fleet visibly lives and reorders; one visual language
-  across live and Manage.*
-- **CR-4 — Strip-chart + annunciator + polish.** Restyle the chart as a
-  control-room trace; upgrade the ticker to the severity-colored annunciator log;
-  motion/bezel/spacing polish pass; align the landing palette if needed. *Done =
-  the surface reads as one control room, glanceable and dense, in both themes.*
+- **CR-1 — Command bar + layout skeleton. ✅ DONE (PR #45).** New top command bar;
+  relocated + redesigned **PAUSE/RESUME + MANAGE** (mechanics unchanged; pause lights
+  an amber HOLD lamp and dims the play area); no-scroll region grid (§3) with old
+  content re-homed; secondary header stats demoted; old bottom "Shift" card removed.
+- **CR-2 — Master status cluster + derived readouts. ✅ DONE (PR #46).** Instrument-tile
+  primitive; the six tiles; the reserve **dial** (SVG needle); the derived numbers (§5),
+  with `tests/readouts.test.mjs` (25 checks: flow rate, potential/armable, time-to-peak,
+  hedged %/exposure, blended price). `step()` surfaces read-only `S.served` /
+  `S.contractRevenue` / `S.flowRate`. "Desk · live" panel retired into the cluster.
+- **CR-3 — Fleet instruments + reconciliation. ✅ DONE (PR #47).** Fleet cards → live
+  instrument tiles (output sparkline via a render-layer ring buffer, per-unit `$/MWh`
+  from the engine's `marginalCost`, state-reaction classes, spin-up ETA + service
+  countdown); `attentionRank` auto-reorder via CSS `order`. Shared-grammar fix:
+  `attentionRank` now ranks `strained` just below `tripped` and the Manage table gained
+  the `strained` pill — one `st-*` grammar + sort across live and Manage.
+- **CR-4 — Strip-chart + annunciator + polish. ✅ DONE (PR #48).** Chart lines got a
+  phosphor glow + CRT inset (same data/scales/bands); ticker → severity-colored
+  annunciator event log (render-layer, from the sim's existing ticker string; no sim
+  change). Landing palette left as-is (it still reads consistent).
 
 ---
 
@@ -346,15 +348,17 @@ browser pass before merge. Logic that computes a readout gets a unit test.
 
 ---
 
-## 10. Open questions
+## 10. Open questions — resolved as-built
 
-- **Flow-rate source:** expose `S.flowRate` from `step()` (exact, one line) vs.
-  roll `Δcash/Δt` in render (zero sim touch, slightly noisier). Lean toward the
-  derived `step()` field for accuracy; decide in CR-2.
-- **Sparkline window:** how many ticks of per-unit history read well without
-  noise — tune in CR-3 against the real frame rate (48 real-sec/day).
-- **Dial vs. bar for reserve margin:** dial is the control-room read; confirm it's
-  as *precise*-feeling as the current bar at the deciding thresholds, or keep a
-  thin bar under the dial.
-- **Target viewport(s)** for the no-scroll guarantee — pin the exact breakpoints
-  in CR-1 so "no scroll" is testable.
+- **Flow-rate source:** *Resolved — expose from `step()`.* `S.flowRate` is assembled
+  from the hour's existing revenue/varCost/spin/fixedOM/interest/capacity terms as a
+  $/game-hour rate (CR-2). Exact and non-jumpy; discrete one-off hits (e.g. a capacity
+  fine) are left out of the rate.
+- **Sparkline window:** *Resolved — 32 samples* per unit, held in a render-layer ring
+  buffer (CR-3). Reads as a clean recent-output trend without noise.
+- **Dial vs. bar for reserve margin:** *Resolved — dial only.* An SVG needle sweeping
+  −30%…+30% with the exact % printed beneath (CR-2); the printed value keeps it precise
+  at the deciding thresholds, so no bar was needed.
+- **No-scroll viewport:** *Resolved — ≥881px wide & ≥720px tall* get the one-surface
+  no-scroll layout (fleet/aside scroll internally, chart capped at 30vh); narrower or
+  shorter viewports fall back to normal page scroll (CR-1).
