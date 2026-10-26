@@ -28,8 +28,6 @@
         <button id="manageBtn" class="console-btn manage">▣ Manage</button>
       </div>
       <div class="cb-stats">
-        <div class="hstat lead"><span class="k">Cash</span><span class="v" id="s-cash">$0</span></div>
-        <span class="hdiv" aria-hidden="true"></span>
         <div class="hstat"><span class="k">Research</span><span class="v" id="s-rp">0 <small class="rd-sub" id="s-rdsub"></small></span></div>
         <div class="hstat"><span class="k">Wholesale</span><span class="v" id="s-price">$0</span></div>
         <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
@@ -41,16 +39,52 @@
     <div class="grid">
       <section class="card">
         <div class="mut-banner" id="mutBanner" style="display:none"></div>
-        <div class="hud-econ" id="hud-econ" style="display:none"></div>
-        <div class="live">
-          <div class="big"><div class="k">Demand</div><div class="v"><span id="s-demand">0</span> <small>MW</small></div></div>
-          <div class="big"><div class="k">Capacity online</div><div class="v"><span id="s-capacity">0</span> <small>MW</small></div></div>
-        </div>
 
-        <div class="gauge-wrap">
-          <div class="gauge-head"><span class="lab">Reserve margin</span><span class="val" id="s-margin">—</span></div>
-          <div class="gauge"><div class="fill" id="marginFill"></div><div class="mark" style="left:50%"></div><div class="mark" style="left:75%"></div></div>
-          <div class="gauge-scale"><span>−30%</span><span>0%</span><span>+30%</span></div>
+        <!-- v4.2 CR-2: master status cluster — backlit instrument tiles. The six
+             readouts that decide the run, each with its primary value, a live
+             rate/trend sub, and a state lamp. Values are patched by render(). -->
+        <div class="cluster" id="cluster">
+          <div class="tile" id="t-demand">
+            <span class="t-k">Demand</span>
+            <span class="t-v"><span id="s-demand">0</span><small>MW</small></span>
+            <span class="t-sub" id="cl-demand-sub">&nbsp;</span>
+          </div>
+          <div class="tile" id="t-online">
+            <span class="t-lamp" id="cl-online-lamp"></span>
+            <span class="t-k">Online</span>
+            <span class="t-v"><span id="s-capacity">0</span><small>MW</small></span>
+            <span class="t-sub" id="cl-headroom">headroom —</span>
+          </div>
+          <div class="tile" id="t-armable">
+            <span class="t-lamp" id="cl-armable-lamp"></span>
+            <span class="t-k">Armable</span>
+            <span class="t-v"><span id="cl-armable">0</span><small>MW</small></span>
+            <span class="t-sub" id="cl-topeak">peak in —</span>
+          </div>
+          <div class="tile dial" id="t-margin">
+            <span class="t-k">Reserve margin</span>
+            <svg class="dialsvg" viewBox="0 0 120 66" aria-hidden="true">
+              <path class="dial-track" d="M8 62 A52 52 0 0 1 112 62" />
+              <line class="dial-needle" id="cl-dial-needle" x1="60" y1="62" x2="60" y2="14" />
+              <circle class="dial-hub" cx="60" cy="62" r="3.5" />
+            </svg>
+            <span class="dial-val" id="s-margin">—</span>
+          </div>
+          <div class="tile" id="t-cash">
+            <span class="t-k">Cash</span>
+            <span class="t-v" id="s-cash">$0</span>
+            <span class="t-sub" id="cl-flow">—</span>
+            <span class="t-sub2" id="cl-fin">debt-free</span>
+          </div>
+          <div class="tile" id="t-spot">
+            <span class="t-k">Spot · P&amp;L</span>
+            <span class="t-v"><span id="cl-spot">$0</span><small id="cl-spot-unit">/MWh</small></span>
+            <span class="t-sub" id="cl-hedge">spot only</span>
+            <span class="t-sub2" id="cl-exposure">&nbsp;</span>
+          </div>
+        </div>
+        <div class="cl-pledge" id="cl-pledge" style="display:none">
+          <span class="t-k">Capacity pledge</span><b id="cl-pledge-v">—</b><span class="t-sub" id="cl-pledge-sub"></span>
         </div>
 
         <canvas id="chart" width="1100" height="260" aria-label="Live demand vs capacity"></canvas>
@@ -73,16 +107,6 @@
             <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> toggle peakers, <kbd>B</kbd> fires the battery,
             <kbd>Space</kbd> pauses.
           </div>
-        </section>
-        <section class="card" id="deskPanel" style="margin-bottom:14px">
-          <h2>Desk · live</h2>
-          <div class="desk-live">
-            <div class="dl-row"><span class="k">Spot now</span><b id="dl-spot">$0</b><span class="dl-sub" id="dl-fc"></span></div>
-            <div class="dl-row"><span class="k">Contract book</span><b id="dl-book">spot only</b><span class="dl-sub" id="dl-booksub"></span></div>
-            <div class="dl-row"><span class="k">Financing</span><b id="dl-fin">Debt-free</b><span class="dl-sub" id="dl-finsub"></span></div>
-            <div class="dl-row" id="dl-caprow" style="display:none"><span class="k">Capacity pledge</span><b id="dl-cap">—</b><span class="dl-sub" id="dl-capsub"></span></div>
-          </div>
-          <div class="hintbar">Your economy at a glance — open <b>Manage → Desk</b> to hedge, borrow, or work an offer.</div>
         </section>
       </aside>
     </div>

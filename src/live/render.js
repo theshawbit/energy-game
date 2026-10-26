@@ -11,6 +11,7 @@ import { mutatorById } from "./mutators.js";
 import { makeFleetComparator } from "./fleetsort.js";
 import { dailyBaseline } from "./market.js";
 import { contractPrice, expectedOutput, creditRating, gradeFor, debtCapacity } from "./finance.js";
+import { potentialCapacity, onlineHeadroom, armableHeadroom, timeToPeak, hedgedShare, exposedMW, blendedPrice } from "./readouts.js";
 
 const $ = id => document.getElementById(id);
 // Theme tokens are static (single committed dark theme), so read each once and
@@ -21,6 +22,17 @@ const css = v => _cssCache[v] !== undefined ? _cssCache[v]
 function money(x){ const a = Math.abs(x), s = x < 0 ? "−" : ""; if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(2) + "M"; if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(0) + "k"; return s + "$" + a.toFixed(0); }
 function clock(t){ const h = Math.floor(t), m = Math.floor((t - h) * 60); return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
 const roman = n => ["", "I", "II", "III", "IV", "V"][n] || String(n);
+
+// v4.2 CR-2: status-cluster state. Last demand sample for the rising/easing trend.
+let _prevDemand = null;
+// Light a backlit lamp a given status color (with a soft glow), or dim it when faint.
+function setLamp(el, color){
+  if (!el) return;
+  const faint = color === css("--faint");
+  el.style.background = color;
+  el.style.boxShadow = faint ? "none" : `0 0 7px ${color}`;
+  el.style.opacity = faint ? ".5" : "1";
+}
 
 export function render(S){
   $("s-day").textContent = S.day;
@@ -40,68 +52,79 @@ export function render(S){
   $("s-carbon").textContent = "$" + Math.round(S.carbon);
   $("s-carbon").style.color = S.carbon > 0 ? css("--warn") : css("--faint");
 
+  // ---- v4.2 CR-2: master status cluster ---------------------------------
+  // DEMAND — level + which way it's moving this tick.
   $("s-demand").textContent = Math.round(S.demand);
+  const dTrend = _prevDemand == null ? 0 : S.demand - _prevDemand;
+  $("cl-demand-sub").textContent = Math.abs(dTrend) < 0.5 ? "steady"
+    : (dTrend > 0 ? "▲ rising" : "▼ easing");
+  _prevDemand = S.demand;
+
+  // ONLINE — capacity now, headroom over demand, lamp by margin band.
+  const margin = S.demand > 0 ? (S.capacity - S.demand) / S.demand * 100 : 0;
+  const col = margin >= 15 ? css("--good") : margin >= 0 ? css("--warn") : css("--bad");
   $("s-capacity").textContent = Math.round(S.capacity);
   $("s-capacity").style.color = S.capacity >= S.demand ? css("--fg") : css("--bad");
+  const head = onlineHeadroom(S);
+  $("cl-headroom").textContent = (head >= 0 ? "+" : "−") + Math.round(Math.abs(head)) + " MW headroom";
+  $("cl-headroom").style.color = col;
+  setLamp($("cl-online-lamp"), col);
 
-  const margin = S.demand > 0 ? (S.capacity - S.demand) / S.demand * 100 : 0;
+  // ARMABLE — ceiling if every reserve were armed, with a countdown to the peak.
+  const pot = potentialCapacity(S);
+  $("cl-armable").textContent = Math.round(pot);
+  const ttp = timeToPeak(S);
+  $("cl-topeak").textContent = ttp < 0.5 ? "AT PEAK" : "peak in " + clock(ttp);
+  // amber nudge: peak is near, online margin is thin, and you still hold reserves to arm
+  const armNudge = margin < 0 ? css("--bad")
+    : (ttp <= 3 && margin < 15 && pot > S.capacity + 1 ? css("--warn") : css("--faint"));
+  setLamp($("cl-armable-lamp"), armNudge);
+  $("cl-topeak").style.color = armNudge === css("--faint") ? css("--muted") : armNudge;
+
+  // RESERVE MARGIN — the dial.
   $("s-margin").textContent = (margin >= 0 ? "+" : "") + margin.toFixed(0) + "%";
-  const col = margin >= 15 ? css("--good") : margin >= 0 ? css("--warn") : css("--bad");
   $("s-margin").style.color = col;
-  const fill = $("marginFill");
-  fill.style.width = clamp((margin + 30) / 60 * 100, 2, 100) + "%"; // -30%..+30% mapped across the bar
-  fill.style.background = col;
+  const f = clamp((margin + 30) / 60, 0, 1);       // -30%..+30% across the sweep
+  const rot = (f - 0.5) * 180;                      // -90° (left) .. +90° (right)
+  const needle = $("cl-dial-needle");
+  needle.setAttribute("transform", `rotate(${rot.toFixed(1)} 60 62)`);
+  needle.style.stroke = col;
 
   // reserve-margin urgency on the whole frame
   $("vignette").style.opacity = S.over ? "1" : (S.brownout ? clamp(0.25 + S.strain / 100 * 0.7, 0, 0.95).toFixed(2) : "0");
   $("shakeTarget").classList.toggle("shake", S.brownout && !S.over && S.strain > 35);
 
-  // v4 "The Book": live spot price + how much of served load is locked into
-  // contracts (the rest clears at spot). Shown in the reserved econ-HUD slot.
-  const econ = $("hud-econ");
-  if (econ){
-    const spot = Math.round(S.spot || 0);
-    const contracted = Math.round(S.contractedMW || 0);
-    const spotCol = spot > CFG.spotBase * 1.5 ? css("--bad") : spot < CFG.spotBase * 0.7 ? css("--warn") : css("--good");
-    econ.style.display = "";
-    // v4 (E): next-hour spot forecast ± its fog band (earned/conditional). Only
-    // shown once a forecasting desk is researched; a wider band = less certain.
-    const skill = S.rmods?.forecastSkill ?? 0;
-    let fcCell = "";
-    if (skill > 0){
-      const fc = Math.round(S.spotForecast || 0), fog = Math.round((S.spotForecastFog || 0) * 100);
-      fcCell = `<span class="econ-cell"><span class="k">Next-hr</span><b>~$${fc}</b><small>±${fog}%</small></span>`;
-    }
-    econ.innerHTML =
-      `<span class="econ-cell"><span class="k">Spot</span><b style="color:${spotCol}">$${spot}</b><small>/MWh</small></span>` +
-      fcCell +
-      `<span class="econ-cell"><span class="k">Contracted</span><b>${contracted}</b><small>MW locked</small></span>` +
-      `<span class="econ-cell"><span class="k">Hedge dial</span><b>${Math.round((S.hedge || 0) * 100)}%</b></span>`;
+  // CASH — balance + live flow rate ($/h and /day) + financing standing.
+  $("s-cash").textContent = money(S.cash);
+  $("s-cash").style.color = S.cash < 0 ? css("--bad") : css("--fg");
+  const flow = S.flowRate || 0;
+  if (Math.abs(flow) < 1){ $("cl-flow").textContent = "flat"; $("cl-flow").style.color = css("--muted"); }
+  else {
+    const sign = flow > 0 ? "+" : "−", a = Math.abs(flow);
+    $("cl-flow").textContent = `${sign}${money(a).slice(1)}/h · ${sign}${money(a * 24).slice(1)}/day`;
+    $("cl-flow").style.color = flow > 0 ? css("--good") : css("--bad");
   }
+  const debt = Math.round(S.debt || 0), fin = $("cl-fin");
+  if (debt > 0){ fin.textContent = `debt ${money(debt)} · ${gradeFor(S.credit)} @ ${(creditRating(S.credit).rate * 100).toFixed(1)}%/d`; fin.style.color = css("--warn"); }
+  else { fin.textContent = `credit ${gradeFor(S.credit)} · debt-free`; fin.style.color = css("--faint"); }
 
-  // v4.1 live Desk panel (right aside) — the economy at a glance without pausing.
-  const dlSpot = $("dl-spot");
-  if (dlSpot){
-    const spot = Math.round(S.spot || 0);
-    dlSpot.textContent = "$" + spot;
-    dlSpot.style.color = spot > CFG.spotBase * 1.5 ? css("--bad") : spot < CFG.spotBase * 0.7 ? css("--warn") : css("--good");
-    const skill = S.rmods?.forecastSkill ?? 0;
-    $("dl-fc").textContent = skill > 0 ? `next-hr ~$${Math.round(S.spotForecast || 0)} ±${Math.round((S.spotForecastFog || 0) * 100)}%` : "/MWh";
-    // contract book: total MW locked across all legs, and how much of served load that covers
-    const legs = (S.contracts || []); const bookMW = Math.round(legs.reduce((a, c) => a + (c.mw || 0), 0));
-    const share = S.demand > 0 ? Math.round(Math.min(1, (S.contractedMW || 0) / S.demand) * 100) : 0;
-    $("dl-book").textContent = bookMW > 0 ? `${bookMW} MW` : "spot only";
-    $("dl-booksub").textContent = bookMW > 0 ? `${legs.length} leg${legs.length === 1 ? "" : "s"} · ~${share}% of load` : "all load at spot";
-    // financing: debt + live credit grade, or debt-free
-    const debt = Math.round(S.debt || 0);
-    const fin = $("dl-fin"), finSub = $("dl-finsub");
-    if (debt > 0){ fin.textContent = money(debt); fin.style.color = css("--warn"); finSub.textContent = `debt · ${gradeFor(S.credit)} @ ${(creditRating(S.credit).rate * 100).toFixed(1)}%/day`; }
-    else { fin.textContent = "Debt-free"; fin.style.color = css("--good"); finSub.textContent = `credit ${gradeFor(S.credit)}`; }
-    // capacity pledge (only under an obligation)
-    const capRow = $("dl-caprow"), ob = S.capacityObligation;
-    if (ob){ capRow.style.display = ""; $("dl-cap").textContent = `${Math.round(ob.reserveMW)} MW`; $("dl-capsub").textContent = `${ob.daysLeft}d left${ob.calledToday ? " · called" : ""}`; }
-    else capRow.style.display = "none";
-  }
+  // SPOT · P&L — spot now, how much of load is hedged, and the live exposure.
+  const spot = Math.round(S.spot || 0);
+  const spotCol = spot > CFG.spotBase * 1.5 ? css("--bad") : spot < CFG.spotBase * 0.7 ? css("--warn") : css("--good");
+  $("cl-spot").textContent = "$" + spot;
+  $("cl-spot").style.color = spotCol;
+  const skill = S.rmods?.forecastSkill ?? 0;
+  $("cl-spot-unit").textContent = skill > 0 ? `/MWh · nxt ~$${Math.round(S.spotForecast || 0)}` : "/MWh";
+  const hShare = Math.round(hedgedShare(S) * 100);
+  $("cl-hedge").textContent = (S.contractedMW || 0) > 0.5 ? `${hShare}% hedged` : "spot only";
+  $("cl-hedge").style.color = (S.contractedMW || 0) > 0.5 ? css("--good") : css("--muted");
+  const exp = Math.round(exposedMW(S)), blend = Math.round(blendedPrice(S));
+  $("cl-exposure").textContent = (S.served || 0) > 0.5 ? `${exp} MW at spot · blend $${blend}` : " ";
+
+  // Capacity pledge — only visible under an obligation.
+  const ob = S.capacityObligation, pledge = $("cl-pledge");
+  if (ob){ pledge.style.display = ""; $("cl-pledge-v").textContent = `${Math.round(ob.reserveMW)} MW`; $("cl-pledge-sub").textContent = `${ob.daysLeft}d left${ob.calledToday ? " · called" : ""}`; }
+  else pledge.style.display = "none";
 
   $("ticker").textContent = S.ticker;
   $("ticker").style.color = S.ticker.startsWith("✓") ? css("--good") : css("--warn");
@@ -122,6 +145,7 @@ export function render(S){
 // click targets stay stable and the 60fps loop stays cheap.
 const unitEls = {};
 export function buildUnits(S, onToggle){
+  _prevDemand = null; // new game — forget the previous run's last demand sample
   const host = $("units"); host.innerHTML = "";
   for (const k in unitEls) delete unitEls[k];
   for (const u of S.fleet){
