@@ -19,8 +19,13 @@ const solar   = { id: "sol", name: "Solar",    status: "online",   condition: nu
 const batt    = { id: "bat", name: "Battery",  status: "off",      condition: null, kind: "battery" };
 const fleet = [mid, solar, tripped, healthy, worn, batt, service];
 
+const strained = { id: "pk3", name: "Peaker C", status: "strained", condition: 40, kind: "peaker" };
+
 // 1) attentionRank ordering primitives
 check("tripped outranks in-service", attentionRank(tripped) < attentionRank(service));
+check("tripped outranks strained", attentionRank(tripped) < attentionRank(strained));
+check("strained outranks in-service", attentionRank(strained) < attentionRank(service));
+check("strained outranks worn thermal", attentionRank(strained) < attentionRank(worn));
 check("in-service outranks worn thermal", attentionRank(service) < attentionRank(worn));
 check("worn thermal outranks healthy thermal", attentionRank(worn) < attentionRank(mid));
 check("thermal outranks condition-less units", attentionRank(mid) < attentionRank(solar));
