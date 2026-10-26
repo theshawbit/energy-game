@@ -29,8 +29,16 @@ export const CFG = {
   carbonStartDay: 3,          // carbon pricing kicks in after the opening days
   carbonPerDay: 3.5,          // $/t added each day thereafter (~day 13 flips coal→gas)
   wearRate: 0.7,              // condition %/game-hour lost while a plant generates
-  tripSafe: 85,               // v4.2.1: at/above this condition a plant is effectively trip-immune
-  tripFloor: 0.02,            // v4.2.1: residual share of the worn-out hazard a healthy plant still carries
+  // v4.2.1: trip risk is tied to CONDITION via this lookup — [condition%, daily
+  // strain probability] for a REFERENCE plant at fail = tripRefFail (coal). A
+  // plant's own u.fail scales it (nuclear is more reliable; an upgrade that cuts
+  // u.fail cuts trips too). Healthy plants are near-immune; the mid-band is
+  // deliberately punishing; condition ≤ the last point plateaus. Edit freely.
+  tripOdds: [[100,0.001],[90,0.002],[85,0.004],[77,0.008],[70,0.024],[60,0.124],[50,0.372],[40,0.558],[30,0.6667]],
+  tripRefFail: 0.0045,        // the fail rate the tripOdds table is calibrated to (coal)
+  tripOverhaul: 50,           // below this condition a service becomes a costly, slower OVERHAUL
+  overhaulCostMult: 6,        // an overhaul costs this × the normal service charge (deep damage)
+  overhaulTimeMult: 1.75,     // …and keeps the plant offline this × longer
                               //   (raised 3→5 — base rates are now low, so WEAR is the real trip
                               //   driver: a maintained plant almost never trips, a neglected one does)
   // v4.1 telegraphed trips: a hazard roll no longer drops a plant instantly — it enters a
@@ -136,10 +144,21 @@ export const CFG = {
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and
-// how big it is, plus a floor. Proactive service on a healthy plant is cheap.
+// how big it is, plus a floor. Proactive service on a healthy plant is cheap — but
+// let it fall below CFG.tripOverhaul and it's a wreck: a full OVERHAUL at a steep
+// premium (overhaulCostMult). The cliff is the point — service before 50%.
 export function serviceCost(u){
-  const damage = Math.max(0, 1 - (u.condition ?? 100) / 100);
-  return Math.round(CFG.repairPerMW * u.cap * damage) + CFG.repairMin;
+  const cond = u.condition ?? 100;
+  const damage = Math.max(0, 1 - cond / 100);
+  let cost = CFG.repairPerMW * u.cap * damage + CFG.repairMin;
+  if (cond < CFG.tripOverhaul) cost *= CFG.overhaulCostMult;
+  return Math.round(cost);
+}
+
+// Game-hours a service takes: a routine service is CFG.serviceTime; an overhaul
+// (condition below CFG.tripOverhaul) keeps the plant offline overhaulTimeMult× longer.
+export function serviceTimeFor(u){
+  return CFG.serviceTime * ((u.condition ?? 100) < CFG.tripOverhaul ? CFG.overhaulTimeMult : 1);
 }
 
 // Salvage cash recovered by decommissioning a unit — a fraction of its notional

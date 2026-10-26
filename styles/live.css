@@ -242,6 +242,8 @@ table.fleet .st{display:inline-block;font-family:var(--mono);font-size:.58rem;le
 .fleet-acts button{font-family:var(--mono);font-size:.7rem;padding:4px 7px;white-space:nowrap}
 .fleet-acts button.svc{border-color:#24415e;color:#7fb8ff}
 .fleet-acts button.svc:hover:not(:disabled){border-color:#7fb8ff;color:#fff}
+.fleet-acts button.svc.overhaul{border-color:#5e4a1c;color:var(--warn)} /* below 50% — costly overhaul */
+.fleet-acts button.svc.overhaul:hover:not(:disabled){border-color:var(--warn);color:#fff}
 .fleet-acts button.dec{border-color:#4a2a22;color:#e8926b}
 .fleet-acts button.dec:hover:not(:disabled){border-color:#e8926b;color:#fff}
 .fleet-acts button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line);color:var(--muted)}

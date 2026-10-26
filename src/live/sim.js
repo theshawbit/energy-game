@@ -9,7 +9,7 @@
 // ============================================================
 import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
-import { CFG, makeFleet, serviceCost } from "./config.js";
+import { CFG, makeFleet, serviceCost, serviceTimeFor } from "./config.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
@@ -94,26 +94,41 @@ export function autoService(S, dtH){
     if (S.cash < cost) break;
     const offline = u.kind === "battery" ? u.status !== "discharge" : u.status !== "online";
     if (!offline && (S.capacity - S.demand) <= u.cap * 1.1) continue; // would risk a shortfall
-    S.cash -= cost; u.status = "service"; u.serviceTimer = CFG.serviceTime;
-    setTicker(S, `⚙ Service Manager: ${u.name} pulled for maintenance.`);
+    const overhaul = u.condition < CFG.tripOverhaul;
+    S.cash -= cost; u.status = "service"; u.serviceTimer = serviceTimeFor(u);
+    setTicker(S, `⚙ Service Manager: ${u.name} pulled for ${overhaul ? "an overhaul" : "maintenance"}.`);
     break; // at most one per interval, to spread downtime
   }
 }
 
 export function setTicker(S, msg){ S.ticker = msg; S.tickerT = 3.5; }
 
-// Per-real-second trip hazard for a thermal unit. v4.2.1: condition GATES the
-// hazard rather than merely scaling it. A well-maintained plant (condition ≥
-// CFG.tripSafe) carries only a tiny residual risk (CFG.tripFloor of the worn-out
-// rate); below that band risk ramps up QUADRATICALLY to the full worn-out rate
-// `u.fail` at 0% condition. So a trip is the symptom of neglect, not bad luck —
-// keep plants serviced and they almost never go down. `diff` still lifts the
-// ceiling as the run climbs. (u.fail is the fully-worn per-second hazard.)
+// Daily strain probability for a condition, linearly interpolated from the
+// CFG.tripOdds lookup ([cond%, pDay], descending). Clamps above the top point and
+// plateaus below the bottom one — so the curve passes exactly through the tuned
+// benchmarks and never runs away.
+export function dailyStrainProb(cond){
+  const pts = CFG.tripOdds;
+  if (cond >= pts[0][0]) return pts[0][1];
+  const last = pts[pts.length - 1];
+  if (cond <= last[0]) return last[1];
+  for (let i = 1; i < pts.length; i++){
+    const [c1, p1] = pts[i - 1], [c0, p0] = pts[i]; // c1 > c0
+    if (cond >= c0){ const f = (c1 - cond) / (c1 - c0); return p1 + (p0 - p1) * f; }
+  }
+  return last[1];
+}
+// Per-real-second trip hazard for a thermal unit. v4.2.1: trip risk is tied to
+// CONDITION — the hazard is the per-second rate that integrates to the table's
+// daily strain probability for this condition, scaled by the plant's own
+// reliability (u.fail / tripRefFail, so nuclear is safer and upgrades help) and
+// lifted by `diff` as the run climbs. Healthy plants are near-immune; the mid-band
+// is punishing. A trip is the symptom of neglect, not bad luck.
 export function tripHazard(u, diff){
   if (u.condition == null) return 0; // only thermal plants wear and trip
-  const w = u.condition >= CFG.tripSafe ? 0 : (CFG.tripSafe - u.condition) / CFG.tripSafe;
-  const factor = CFG.tripFloor + (1 - CFG.tripFloor) * w * w;
-  return u.fail * diff * factor;
+  const pDay = dailyStrainProb(u.condition);
+  const baseRate = -Math.log(1 - pDay) / CFG.secondsPerDay; // rate → pDay over one game-day at diff 1
+  return baseRate * diff * (u.fail / CFG.tripRefFail);
 }
 
 // ---- capacity accounting ----

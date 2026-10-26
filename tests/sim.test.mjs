@@ -1,9 +1,9 @@
 // Unit tests for the live simulation (no DOM). Run: `npm test`.
 // These pin the real-time loop's state machine and economics so the Phase B+
 // feature work can't silently break pacing or the dispatch wiring.
-import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHazard, autoService } from "../src/live/sim.js";
+import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHazard, dailyStrainProb, autoService } from "../src/live/sim.js";
 import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
-import { CFG, UPGRADE, upgradeCost, serviceCost, salvageValue } from "../src/live/config.js";
+import { CFG, UPGRADE, upgradeCost, serviceCost, serviceTimeFor, salvageValue } from "../src/live/config.js";
 import { computeResearchMods } from "../src/live/research.js";
 import { computeMutatorMods } from "../src/live/mutators.js";
 
@@ -97,18 +97,22 @@ while ((pk.tier || 1) < UPGRADE.maxTier) upgradeUnit(S, "pk1");
 res = upgradeUnit(S, "pk1");
 check("upgrade refused past max tier", !res.ok && pk.tier === UPGRADE.maxTier, "tier " + pk.tier);
 
-// 12) v4.2.1: condition GATES trip hazard — healthy plants are near-immune, risk
-// ramps quadratically to the full worn-out rate (u.fail) as condition falls.
-S = createGame();
-const u100 = { fail: 0.02, condition: 100 }, u85 = { fail: 0.02, condition: CFG.tripSafe };
-const u50 = { fail: 0.02, condition: 50 }, u0 = { fail: 0.02, condition: 0 };
-check("tripHazard rises as a plant wears", tripHazard(u0, 1) > tripHazard(u50, 1) && tripHazard(u50, 1) > tripHazard(u85, 1),
-  `${tripHazard(u85, 1).toFixed(4)} → ${tripHazard(u50, 1).toFixed(4)} → ${tripHazard(u0, 1).toFixed(4)}/s`);
-check("healthy band (≥tripSafe) carries only the tiny floor", near(tripHazard(u100, 1), u100.fail * CFG.tripFloor, 1e-9));
-check("a pristine plant is far safer than the floor-less old model", tripHazard(u100, 1) < u100.fail * 0.05);
-check("fully worn (0%) hazard is the full u.fail rate", near(tripHazard(u0, 1), u0.fail, 1e-9));
-check("the ramp below tripSafe is quadratic (gentle mid-wear)", tripHazard(u50, 1) < u0.fail * 0.5,
-  `${tripHazard(u50, 1).toFixed(4)} vs full ${u0.fail}`);
+// 12) v4.2.1: trip risk is tied to CONDITION via the tripOdds lookup. A reference
+// plant (fail = tripRefFail) hits the tuned daily-strain benchmarks exactly; a
+// plant's own fail scales it; healthy plants are near-immune, the mid-band bites.
+const sec = CFG.secondsPerDay;
+const ref = c => ({ fail: CFG.tripRefFail, condition: c });
+const pDayOf = u => 1 - Math.exp(-tripHazard(u, 1) * sec); // realized daily strain prob (diff 1)
+check("100% ≈ 0.1%/day", near(pDayOf(ref(100)), 0.001, 1e-6), (pDayOf(ref(100)) * 100).toFixed(2) + "%");
+check("85% ≈ 0.4%/day", near(pDayOf(ref(85)), 0.004, 1e-6), (pDayOf(ref(85)) * 100).toFixed(2) + "%");
+check("70% ≈ 2.4%/day", near(pDayOf(ref(70)), 0.024, 1e-6), (pDayOf(ref(70)) * 100).toFixed(2) + "%");
+check("50% ≈ 37.2%/day", near(pDayOf(ref(50)), 0.372, 1e-6), (pDayOf(ref(50)) * 100).toFixed(1) + "%");
+check("dailyStrainProb passes through its table points", near(dailyStrainProb(60), 0.124, 1e-9) && near(dailyStrainProb(40), 0.558, 1e-9));
+check("odds rise monotonically as condition falls",
+  tripHazard(ref(100), 1) < tripHazard(ref(70), 1) && tripHazard(ref(70), 1) < tripHazard(ref(50), 1) && tripHazard(ref(50), 1) < tripHazard(ref(30), 1));
+check("odds plateau below the last point", dailyStrainProb(10) === dailyStrainProb(30));
+check("a more reliable plant (lower fail) trips less", tripHazard({ fail: 0.0020, condition: 50 }, 1) < tripHazard(ref(50), 1));
+check("the day ramp (diff) lifts the hazard", tripHazard(ref(50), 1.5) > tripHazard(ref(50), 1));
 check("condition-less units never trip", tripHazard({ fail: 0.02, condition: null }, 1) === 0);
 
 // 13) Condition degrades while a plant generates
@@ -128,6 +132,18 @@ colA.serviceTimer = 0.05; // nearly done
 step(S, 0.3);
 check("service completes at 100% condition, back online", colA.condition > 99 && colA.status === "online",
   colA.condition.toFixed(1) + "% / " + colA.status);
+
+// 14b) v4.2.1 overhaul tier: below tripOverhaul a service becomes a costly, slower overhaul
+{
+  const S2 = createGame(); const u = S2.fleet.find(x => x.id === "colB");
+  u.condition = CFG.tripOverhaul + 1; const normalCost = serviceCost(u), normalTime = serviceTimeFor(u);
+  u.condition = CFG.tripOverhaul - 1; const overhaulCost = serviceCost(u), overhaulTime = serviceTimeFor(u);
+  check("crossing below tripOverhaul jumps the service cost (premium)", overhaulCost > normalCost * (CFG.overhaulCostMult - 1),
+    `$${normalCost} → $${overhaulCost}`);
+  check("a routine service runs the base time; an overhaul runs longer",
+    normalTime === CFG.serviceTime && near(overhaulTime, CFG.serviceTime * CFG.overhaulTimeMult, 1e-9),
+    `${normalTime}h → ${overhaulTime}h`);
+}
 
 // 15) Service is gated by cash
 S = createGame(); S.cash = 0;
