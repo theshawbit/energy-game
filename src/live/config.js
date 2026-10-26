@@ -28,7 +28,21 @@ export const CFG = {
   battRecharge: 70,           // MW recharge rate when idle
   carbonStartDay: 3,          // carbon pricing kicks in after the opening days
   carbonPerDay: 3.5,          // $/t added each day thereafter (~day 13 flips coal→gas)
-  wearRate: 0.7,              // condition %/game-hour lost while a plant generates
+  // v4.2.1 WEAR MODEL — deterioration is a function of LOAD × AGE, not a flat clock.
+  //   wear/gh = wearRate × loadMult × ageMult × strainMult × (run mods)
+  // loadMult ("both combined") = gridUtil (demand/online-capacity, the system stress)
+  //   × assetLoad (this unit's own dispatch share of its cap). A baseload plant on a
+  //   tight grid wears hard; a lightly-loaded reserve barely wears. Age accumulates
+  //   only while generating and PERSISTS through service/upgrade, but each service
+  //   partially relieves it (knocks it down, never to a full reset).
+  wearRate: 0.5,              // base condition %/game-hour at full load, fresh plant
+  wearLoadFloor: 0.35,        // gridUtil can't push loadMult below this (a slack grid still wears some)
+  wearLoadMax: 1.25,          // …nor above this (an overloaded grid wears a touch harder)
+  wearIdleFloor: 0.12,        // an online-but-undispatched plant still wears this share (spinning idle)
+  ageRef: 180,                // game-hours of generation that adds ageWearK to the age multiplier
+  ageWearK: 0.9,              // age multiplier gain per ageRef of accumulated runtime (fresh = 1.0)
+  serviceAgeRelief: 0.55,     // a service multiplies accumulated ageHours by this (removes ~45%)
+  upgradeAgeRelief: 0.30,     // an upgrade is deeper — keeps only this share of ageHours
   // v4.2.1: trip risk is tied to CONDITION via this lookup — [condition%, daily
   // strain probability] for a REFERENCE plant at fail = tripRefFail (coal). A
   // plant's own u.fail scales it (nuclear is more reliable; an upgrade that cuts
@@ -249,7 +263,7 @@ export function makeUnit(tech, n, seq){
   const u = { id:`${tech}-${seq}`, name:`${b.label} ${n}`, kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
               status: (kind === "peaker" || kind === "battery") ? "off" : "online",
               ctrl: (kind === "peaker" || kind === "battery"), key:null };
-  if (kind === "firm" || kind === "peaker") u.condition = 100; // mechanical plants wear & can be serviced
+  if (kind === "firm" || kind === "peaker"){ u.condition = 100; u.ageHours = 0; } // mechanical plants wear & can be serviced
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
   if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
   if (kind === "firm"){ const p = FIRM_PARAMS[tech] || FIRM_PARAMS.coal; u.spin = p.spin; u.fail = p.fail; u.recover = [...p.recover]; }

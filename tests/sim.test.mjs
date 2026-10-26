@@ -121,6 +121,51 @@ const nucW = S.fleet.find(u => u.id === "nuc"); nucW.fail = 0; // isolate wear f
 step(S, 2.0);
 check("online plant wears down", nucW.condition < 100, nucW.condition.toFixed(1) + "%");
 
+// 13b) v4.2.1 wear is weighted by LOAD × AGE.
+// Load: a fully-dispatched baseload wears more than a lightly-loaded same-step unit.
+// Freeze renewables out so capacity (and thus gridUtil) is deterministic firm-only.
+{
+  const Sw = createGame();
+  Sw.fleet.filter(u => u.kind === "renew").forEach(u => u.status = "off");
+  for (const u of Sw.fleet) if (u.fail != null) u.fail = 0; // isolate wear from trips
+  const nuc = Sw.fleet.find(u => u.id === "nuc"), colA = Sw.fleet.find(u => u.id === "colA");
+  const nuc0 = nuc.condition, colA0 = colA.condition;
+  step(Sw, 1.0);
+  check("baseload runs fully loaded; coal only partly (demand < firm cap)",
+    nuc.loadFrac > 0.99 && colA.loadFrac < nuc.loadFrac && colA.loadFrac > 0,
+    `nuc ${(nuc.loadFrac*100).toFixed(0)}% vs coal ${(colA.loadFrac*100).toFixed(0)}%`);
+  check("the harder-loaded plant wears faster", (nuc0 - nuc.condition) > (colA0 - colA.condition),
+    `nuc −${(nuc0-nuc.condition).toFixed(2)} vs coal −${(colA0-colA.condition).toFixed(2)}`);
+  check("generating plants accrue age (persists)", nuc.ageHours > 0, nuc.ageHours.toFixed(2) + "gh");
+}
+// Age: an old plant wears faster than a fresh one under identical load.
+{
+  const dropFor = age => {
+    const g = createGame();
+    g.fleet.filter(u => u.kind === "renew").forEach(u => u.status = "off");
+    const n = g.fleet.find(u => u.id === "nuc"); n.fail = 0; n.ageHours = age;
+    const before = n.condition; step(g, 1.0); return before - n.condition;
+  };
+  check("an aged plant wears faster than a fresh one", dropFor(360) > dropFor(0) * 1.5,
+    `−${dropFor(360).toFixed(2)} (aged) vs −${dropFor(0).toFixed(2)} (fresh)`);
+}
+// Relief: service and upgrade knock accumulated age down (but never to zero).
+{
+  const Sr = createGame(); const u = Sr.fleet.find(x => x.id === "colA");
+  u.condition = 60; u.ageHours = 200; const aged = u.ageHours;
+  serviceUnit(Sr, "colA"); u.serviceTimer = 0.01; step(Sr, 0.1);
+  // relieved to aged×serviceAgeRelief, then it runs for the rest of the tick and
+  // accrues a sliver back — so check it landed at the relief floor (+ <1gh), not 0.
+  check("service relieves age by serviceAgeRelief (not a full reset)",
+    near(u.ageHours, aged * CFG.serviceAgeRelief, 0.2) && u.ageHours > 0,
+    `${aged}gh → ${u.ageHours.toFixed(1)}gh`);
+  const u2 = Sr.fleet.find(x => x.id === "colB"); u2.ageHours = 200;
+  upgradeUnit(Sr, "colB");
+  check("upgrade relieves age deeper (upgradeAgeRelief)",
+    near(u2.ageHours, 200 * CFG.upgradeAgeRelief, 1e-6),
+    `200gh → ${u2.ageHours.toFixed(1)}gh`);
+}
+
 // 14) Service: pulls offline, costs cash, then restores condition
 S = createGame();
 const colA = S.fleet.find(u => u.id === "colA"); colA.condition = 40;

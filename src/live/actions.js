@@ -56,6 +56,9 @@ export function upgradeUnit(S, id){
   if (u.kind === "battery") u.maxEnergy = Math.round(u.maxEnergy * capMult);
   if (u.fail != null) u.fail *= UPGRADE.failMult;
   if (u.spin != null) u.spin *= UPGRADE.spinMult;
+  // v4.2.1: an upgrade is a deep refit — it relieves most accumulated age (but age
+  // persists, so a long-serving plant never fully returns to new).
+  if (u.ageHours != null) u.ageHours *= CFG.upgradeAgeRelief;
   setTicker(S, `✓ ${u.name} upgraded to Mk ${u.tier}.`);
   return { ok:true };
 }

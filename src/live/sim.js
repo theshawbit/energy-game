@@ -37,6 +37,8 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
   // reused after a decommission (which would duplicate a card label).
   const techCount = {};
   for (const u of fleet) techCount[u.tech] = (techCount[u.tech] || 0) + 1;
+  for (const u of fleet) if (u.condition != null) u.ageHours = 0; // v4.2.1: fresh iron
+
   const bat = fleet.find(u => u.id === "bat");
   if (bat && mods.battMult !== 1){
     bat.cap = Math.round(bat.cap * mods.battMult);
@@ -189,7 +191,7 @@ export function step(S, dt){
   // unit state machines
   for (const u of S.fleet){
     if (u.status === "starting"){ u.startTimer -= dtH; if (u.startTimer <= 0) u.status = "online"; }
-    else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
+    else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; u.ageHours = (u.ageHours || 0) * CFG.serviceAgeRelief; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
     else if (u.status === "tripped"){ u.tripTimer -= dtH; if (u.tripTimer <= 0) u.status = u.ctrl ? "off" : "online"; }
     // v4.1 telegraphed trip: a strained plant is still generating but on borrowed
     // time — it drops when the warning window runs out. The window is your cue to
@@ -211,14 +213,8 @@ export function step(S, dt){
         setTicker(S, `⚠ ${u.name} straining — ${Math.round(u.cap)} MW at risk; stabilize or fire reserves!`);
       }
     }
-    // wear: thermal plants (the only units with condition) degrade while generating —
-    // online OR straining (a strained plant is still running). Worn plants strain more,
-    // via tripHazard. Batteries and renewables don't wear.
-    if (u.condition != null && (u.status === "online" || u.status === "strained")){
-      const wmult = u.status === "strained" ? 1.5 : 1; // a straining plant wears a touch faster
-      u.condition = Math.max(0, u.condition - CFG.wearRate * wmult * S.mods.wearMult * (S.rmods?.wearMult ?? 1) * dtH);
-    }
   }
+  // (wear is applied after dispatch, below — it needs each unit's actual load.)
 
   // demand: daily shape × peak, lifted by mutators (heat wave / cold snap), then
   // shaved by demand-response research (the demand-SIDE lever).
@@ -233,6 +229,27 @@ export function step(S, dt){
   S.price = hr.price;
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
   S.co2Total += hr.emissions * dtH;                           // run total, tCO₂ (emissions is tCO₂/h)
+
+  // ---- WEAR (v4.2.1): deterioration weighted by LOAD × AGE ----
+  // Only generating thermal plants wear. loadMult = gridUtil (how hard the whole
+  // grid is leaning on its online capacity) × assetLoad (this unit's own dispatch
+  // share of its cap — derived by splitting each tech's dispatched MW across that
+  // tech's online units). ageMult rises with accumulated runtime (ageHours), which
+  // persists through service/upgrade but is partially relieved each time.
+  const gridUtil = clamp(S.capacity > 0 ? S.demand / S.capacity : 0, CFG.wearLoadFloor, CFG.wearLoadMax);
+  const wearMods = S.mods.wearMult * (S.rmods?.wearMult ?? 1);
+  for (const u of S.fleet){
+    if (u.condition == null || !(u.status === "online" || u.status === "strained")) continue;
+    const techAvail = avail[u.tech] || 0;                     // MW this tech offered the merit order
+    const share = techAvail > 0 ? (hr.stack?.[u.tech] || 0) / techAvail : 0; // 0..1 dispatched fraction
+    u.loadFrac = share;                                                      // expose for UI/tests
+    const assetLoad = Math.max(CFG.wearIdleFloor, Math.min(1, share));       // spinning-idle floor
+    u.ageHours = (u.ageHours || 0) + dtH;                     // accrues only while generating; persists
+    const ageMult = 1 + CFG.ageWearK * (u.ageHours / CFG.ageRef);
+    const strainMult = u.status === "strained" ? 1.5 : 1;     // a straining plant wears a touch faster
+    const wear = CFG.wearRate * gridUtil * assetLoad * ageMult * strainMult * wearMods * dtH;
+    u.condition = Math.max(0, u.condition - wear);
+  }
 
   // spin: cost of keeping a thermal plant synced while it's generating (online or
   // straining — a strained plant is still running until it trips).
