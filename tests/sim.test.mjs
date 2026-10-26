@@ -97,12 +97,19 @@ while ((pk.tier || 1) < UPGRADE.maxTier) upgradeUnit(S, "pk1");
 res = upgradeUnit(S, "pk1");
 check("upgrade refused past max tier", !res.ok && pk.tier === UPGRADE.maxTier, "tier " + pk.tier);
 
-// 12) Wear drives trip hazard: a worn plant trips more than a healthy one
+// 12) v4.2.1: condition GATES trip hazard — healthy plants are near-immune, risk
+// ramps quadratically to the full worn-out rate (u.fail) as condition falls.
 S = createGame();
-const u100 = { fail: 0.02, condition: 100 }, u0 = { fail: 0.02, condition: 0 };
-check("tripHazard rises with wear", tripHazard(u0, 1) > tripHazard(u100, 1),
-  `${tripHazard(u100, 1).toFixed(4)} → ${tripHazard(u0, 1).toFixed(4)}/s`);
-check("worn hazard = (1+wearTripK)× healthy", near(tripHazard(u0, 1), tripHazard(u100, 1) * (1 + CFG.wearTripK), 1e-9));
+const u100 = { fail: 0.02, condition: 100 }, u85 = { fail: 0.02, condition: CFG.tripSafe };
+const u50 = { fail: 0.02, condition: 50 }, u0 = { fail: 0.02, condition: 0 };
+check("tripHazard rises as a plant wears", tripHazard(u0, 1) > tripHazard(u50, 1) && tripHazard(u50, 1) > tripHazard(u85, 1),
+  `${tripHazard(u85, 1).toFixed(4)} → ${tripHazard(u50, 1).toFixed(4)} → ${tripHazard(u0, 1).toFixed(4)}/s`);
+check("healthy band (≥tripSafe) carries only the tiny floor", near(tripHazard(u100, 1), u100.fail * CFG.tripFloor, 1e-9));
+check("a pristine plant is far safer than the floor-less old model", tripHazard(u100, 1) < u100.fail * 0.05);
+check("fully worn (0%) hazard is the full u.fail rate", near(tripHazard(u0, 1), u0.fail, 1e-9));
+check("the ramp below tripSafe is quadratic (gentle mid-wear)", tripHazard(u50, 1) < u0.fail * 0.5,
+  `${tripHazard(u50, 1).toFixed(4)} vs full ${u0.fail}`);
+check("condition-less units never trip", tripHazard({ fail: 0.02, condition: null }, 1) === 0);
 
 // 13) Condition degrades while a plant generates
 S = createGame();

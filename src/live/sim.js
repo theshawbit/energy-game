@@ -102,11 +102,18 @@ export function autoService(S, dtH){
 
 export function setTicker(S, msg){ S.ticker = msg; S.tickerT = 3.5; }
 
-// Per-real-second trip hazard for a thermal unit: its base rate, scaled up as
-// the run climbs (diff) and as the plant wears (condition → more failures).
+// Per-real-second trip hazard for a thermal unit. v4.2.1: condition GATES the
+// hazard rather than merely scaling it. A well-maintained plant (condition ≥
+// CFG.tripSafe) carries only a tiny residual risk (CFG.tripFloor of the worn-out
+// rate); below that band risk ramps up QUADRATICALLY to the full worn-out rate
+// `u.fail` at 0% condition. So a trip is the symptom of neglect, not bad luck —
+// keep plants serviced and they almost never go down. `diff` still lifts the
+// ceiling as the run climbs. (u.fail is the fully-worn per-second hazard.)
 export function tripHazard(u, diff){
-  const wear = u.condition != null ? 1 + CFG.wearTripK * (1 - u.condition / 100) : 1;
-  return u.fail * diff * wear;
+  if (u.condition == null) return 0; // only thermal plants wear and trip
+  const w = u.condition >= CFG.tripSafe ? 0 : (CFG.tripSafe - u.condition) / CFG.tripSafe;
+  const factor = CFG.tripFloor + (1 - CFG.tripFloor) * w * w;
+  return u.fail * diff * factor;
 }
 
 // ---- capacity accounting ----

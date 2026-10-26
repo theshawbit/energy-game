@@ -29,7 +29,8 @@ export const CFG = {
   carbonStartDay: 3,          // carbon pricing kicks in after the opening days
   carbonPerDay: 3.5,          // $/t added each day thereafter (~day 13 flips coal→gas)
   wearRate: 0.7,              // condition %/game-hour lost while a plant generates
-  wearTripK: 5,               // v4.1: worn plants trip up to (1+K)× as often at 0% condition
+  tripSafe: 85,               // v4.2.1: at/above this condition a plant is effectively trip-immune
+  tripFloor: 0.02,            // v4.2.1: residual share of the worn-out hazard a healthy plant still carries
                               //   (raised 3→5 — base rates are now low, so WEAR is the real trip
                               //   driver: a maintained plant almost never trips, a neglected one does)
   // v4.1 telegraphed trips: a hazard roll no longer drops a plant instantly — it enters a
