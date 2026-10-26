@@ -67,27 +67,37 @@ header.cmdbar{display:flex;align-items:center;gap:14px 20px;flex-wrap:wrap;flex:
 .card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px}
 .card h2{font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-size:.78rem;color:var(--muted);margin:0 0 10px;font-weight:600}
 
-/* big live readout */
-.live{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
-.big{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--panel-2)}
-.big .k{font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
-.big .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:2.0rem;font-weight:700;line-height:1.1}
-.big .v small{font-size:.9rem;color:var(--muted);font-weight:500}
-
-/* reserve margin gauge */
-.gauge-wrap{margin-bottom:12px}
-.gauge-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
-.gauge-head .lab{font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
-.gauge-head .val{font-family:var(--mono);font-weight:700;font-size:1.1rem}
-.gauge{height:20px;border-radius:10px;background:#0a0e14;border:1px solid var(--line);overflow:hidden;position:relative}
-.gauge .fill{height:100%;width:50%;transition:width .12s linear,background .2s;border-radius:9px}
-.gauge .mark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--muted);opacity:.6}
+/* v4.2 CR-2 — master status cluster: backlit instrument tiles */
+.cluster{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}
+@media (max-width:1180px){.cluster{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:560px){.cluster{grid-template-columns:repeat(2,1fr)}}
+.tile{position:relative;display:flex;flex-direction:column;gap:2px;min-height:84px;padding:10px 12px;
+  border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--panel-2),#0a0e15);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+.t-k{font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.t-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:1.5rem;font-weight:700;line-height:1.05}
+.t-v small{font-size:.7rem;color:var(--muted);font-weight:500;margin-left:3px}
+.t-sub{font-family:var(--mono);font-size:.63rem;color:var(--muted);margin-top:auto}
+.t-sub2{font-family:var(--mono);font-size:.58rem;color:var(--faint)}
+.t-lamp{position:absolute;top:10px;right:10px;width:9px;height:9px;border-radius:50%;background:var(--faint);transition:background .2s,box-shadow .2s,opacity .2s}
+/* reserve-margin dial */
+.tile.dial{align-items:center}
+.tile.dial .t-k{align-self:flex-start}
+.dialsvg{width:100%;max-width:116px;height:auto;margin-top:2px}
+.dial-track{fill:none;stroke:#0a0e14;stroke-width:9;stroke-linecap:round}
+.dial-needle{stroke:var(--muted);stroke-width:3;stroke-linecap:round;transition:transform .12s linear,stroke .2s}
+.dial-hub{fill:var(--muted)}
+.dial-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:700;font-size:1.2rem;margin-top:-4px}
+.cl-pledge{display:flex;align-items:baseline;gap:8px;margin:0 0 12px;padding:6px 10px;font-family:var(--mono);
+  border:1px solid var(--warn);border-radius:9px;background:rgba(244,192,78,.08)}
+.cl-pledge b{font-size:.95rem}
+.cl-pledge .t-k{letter-spacing:.1em}
+.cl-pledge .t-sub{margin:0 0 0 auto;color:var(--warn)}
 
 canvas{width:100%;height:auto;display:block;border-radius:10px;background:#0a0e14;border:1px solid var(--line)}
 .chart-legend{display:flex;gap:16px;margin-top:8px;font-size:.72rem;color:var(--muted);flex-wrap:wrap}
 .chart-legend i{display:inline-block;width:14px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
 .chart-legend i.box{height:10px;border:none;border-radius:2px;opacity:.75}
-.gauge-scale{display:flex;justify-content:space-between;margin-top:3px;font-family:var(--mono);font-size:.56rem;color:var(--faint)}
 
 /* units */
 .units{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -109,11 +119,6 @@ canvas{width:100%;height:auto;display:block;border-radius:10px;background:#0a0e1
 .unit:has(.st-strained){border-color:#5e4a1c}
 @keyframes pulse{50%{opacity:.5}}
 /* v4.1 live Desk panel (right aside) */
-.desk-live{display:flex;flex-direction:column;gap:9px}
-.dl-row{display:flex;align-items:baseline;gap:8px}
-.dl-row .k{font-family:var(--mono);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);min-width:102px}
-.dl-row b{font-family:var(--mono);font-size:.98rem;color:var(--fg)}
-.dl-row .dl-sub{font-family:var(--mono);font-size:.64rem;color:var(--faint);margin-left:auto;text-align:right}
 .condbar{height:3px;border-radius:3px;background:#0a0e14;margin-top:5px;overflow:hidden}
 .condbar i{display:block;height:100%;width:100%;border-radius:3px;transition:width .2s,background .2s}
 
@@ -221,11 +226,6 @@ table.fleet .st{display:inline-block;font-family:var(--mono);font-size:.58rem;le
 .fleet-acts button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line);color:var(--muted)}
 .desk-stub{color:var(--muted);font-size:.86rem;margin-top:14px}
 /* slim live economy readout slot (v4 "The Book": spot + contracts) */
-.hud-econ{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 12px;font-family:var(--mono);font-size:.82rem;align-items:baseline}
-.hud-econ .econ-cell{display:inline-flex;align-items:baseline;gap:5px}
-.hud-econ .econ-cell .k{color:var(--faint);letter-spacing:.08em;text-transform:uppercase;font-size:.66rem}
-.hud-econ .econ-cell b{font-size:1rem}
-.hud-econ .econ-cell small{color:var(--muted);font-size:.66rem}
 
 /* desk → contracts (Phase B) */
 .desk-lead{color:var(--muted);font-size:.84rem;margin:12px 0}

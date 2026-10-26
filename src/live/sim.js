@@ -57,6 +57,8 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     // so a bare createGame() stays reproducible (spotNoise is always 0 in B). ----
     spot:0, spotBaseline:0, spotNoise:0, hedge:CFG.hedgeDefault,
     contracts:[], pendingOffer:null, contractSeq:1, contractedMW:0,
+    // v4.2 (CR-2): read-only live readouts surfaced each step for the status cluster
+    served:0, contractRevenue:0, flowRate:0,
     // ---- v4 financing (Phase C): start clean, borrow by choice. Credit is the
     // carried STANDING (not a flat constant); creditCap drops after a default. ----
     debt:0, credit:creditStanding, creditCap:100, defaulted:false,
@@ -256,12 +258,20 @@ export function step(S, dt){
   const revenue = contractRevenue + residualMW * spot;
   S.cash += (revenue - hr.varCost - spin - fixedOM) * dtH;  // unserved load earns nothing
 
+  // v4.2 (CR-2): surface the existing hour's figures as read-only live readouts.
+  // Not new mechanics — just the numbers already summed above, exposed as rates so
+  // the status cluster can show cash flow ($/h), spot exposure, and blended price.
+  S.served = hr.served;                                     // MW actually delivered
+  S.contractRevenue = contractRevenue;                      // $/h locked at contract prices
+  let flowPerH = revenue - hr.varCost - spin - fixedOM;     // instantaneous net cash, $/game-hour
+
   // financing (v4, Phase C): interest on outstanding debt is the fixed obligation
   // that makes the hedge floor matter. Rate comes off the live credit standing;
   // interestFor already bakes in dtH, so it's subtracted directly (not ×dtH again).
   if (S.debt > 0){
     const interest = interestFor(S.debt, creditRating(S.credit).rate, dtH);
     S.cash -= interest; S.interestPaid += interest;
+    flowPerH -= dtH > 0 ? interest / dtH : 0;                // interest drags the flow rate
   }
 
   // v4 capacity market (Phase F): paid for availability every tick under an
@@ -271,6 +281,7 @@ export function step(S, dt){
   // capacity not tripped or in service; renewables/batteries don't count.
   if (S.capacityObligation){
     S.cash += capacityPayment(S.capacityObligation, dtH / 24);
+    flowPerH += capacityPayment(S.capacityObligation, 1 / 24);  // steady availability payment ($/h)
     const capHourNow = Math.floor(S.t);
     if (S.capHour !== capHourNow){
       S.capHour = capHourNow;
@@ -283,6 +294,7 @@ export function step(S, dt){
       }
     }
   }
+  S.flowRate = flowPerH;                                     // net cash velocity, $/game-hour
 
   // storage (one or more batteries): the engine aggregates all battery MW into
   // hr.stack.battery, so drain that total across the discharging units — split in
