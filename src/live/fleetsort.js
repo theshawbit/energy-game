@@ -11,6 +11,7 @@
 // (renewables, batteries) last.
 export function attentionRank(u){
   if (u.status === "tripped") return 0;
+  if (u.status === "strained") return 0.5; // about to trip — act now (floats above in-service)
   if (u.status === "service") return 1;
   if (u.condition != null) return 10 + u.condition; // 10..110 — worn thermal sorts above healthy
   return 1000;                                       // renew / battery (no condition): last
