@@ -28,8 +28,31 @@ export const CFG = {
   battRecharge: 70,           // MW recharge rate when idle
   carbonStartDay: 3,          // carbon pricing kicks in after the opening days
   carbonPerDay: 3.5,          // $/t added each day thereafter (~day 13 flips coal→gas)
-  wearRate: 0.7,              // condition %/game-hour lost while a plant generates
-  wearTripK: 5,               // v4.1: worn plants trip up to (1+K)× as often at 0% condition
+  // v4.2.1 WEAR MODEL — deterioration is a function of LOAD × AGE, not a flat clock.
+  //   wear/gh = wearRate × loadMult × ageMult × strainMult × (run mods)
+  // loadMult ("both combined") = gridUtil (demand/online-capacity, the system stress)
+  //   × assetLoad (this unit's own dispatch share of its cap). A baseload plant on a
+  //   tight grid wears hard; a lightly-loaded reserve barely wears. Age accumulates
+  //   only while generating and PERSISTS through service/upgrade, but each service
+  //   partially relieves it (knocks it down, never to a full reset).
+  wearRate: 0.5,              // base condition %/game-hour at full load, fresh plant
+  wearLoadFloor: 0.35,        // gridUtil can't push loadMult below this (a slack grid still wears some)
+  wearLoadMax: 1.25,          // …nor above this (an overloaded grid wears a touch harder)
+  wearIdleFloor: 0.12,        // an online-but-undispatched plant still wears this share (spinning idle)
+  ageRef: 180,                // game-hours of generation that adds ageWearK to the age multiplier
+  ageWearK: 0.9,              // age multiplier gain per ageRef of accumulated runtime (fresh = 1.0)
+  serviceAgeRelief: 0.55,     // a service multiplies accumulated ageHours by this (removes ~45%)
+  upgradeAgeRelief: 0.30,     // an upgrade is deeper — keeps only this share of ageHours
+  // v4.2.1: trip risk is tied to CONDITION via this lookup — [condition%, daily
+  // strain probability] for a REFERENCE plant at fail = tripRefFail (coal). A
+  // plant's own u.fail scales it (nuclear is more reliable; an upgrade that cuts
+  // u.fail cuts trips too). Healthy plants are near-immune; the mid-band is
+  // deliberately punishing; condition ≤ the last point plateaus. Edit freely.
+  tripOdds: [[100,0.001],[90,0.002],[85,0.004],[77,0.008],[70,0.024],[60,0.124],[50,0.372],[40,0.558],[30,0.6667]],
+  tripRefFail: 0.0045,        // the fail rate the tripOdds table is calibrated to (coal)
+  tripOverhaul: 50,           // below this condition a service becomes a costly, slower OVERHAUL
+  overhaulCostMult: 6,        // an overhaul costs this × the normal service charge (deep damage)
+  overhaulTimeMult: 1.75,     // …and keeps the plant offline this × longer
                               //   (raised 3→5 — base rates are now low, so WEAR is the real trip
                               //   driver: a maintained plant almost never trips, a neglected one does)
   // v4.1 telegraphed trips: a hazard roll no longer drops a plant instantly — it enters a
@@ -135,10 +158,21 @@ export const CFG = {
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and
-// how big it is, plus a floor. Proactive service on a healthy plant is cheap.
+// how big it is, plus a floor. Proactive service on a healthy plant is cheap — but
+// let it fall below CFG.tripOverhaul and it's a wreck: a full OVERHAUL at a steep
+// premium (overhaulCostMult). The cliff is the point — service before 50%.
 export function serviceCost(u){
-  const damage = Math.max(0, 1 - (u.condition ?? 100) / 100);
-  return Math.round(CFG.repairPerMW * u.cap * damage) + CFG.repairMin;
+  const cond = u.condition ?? 100;
+  const damage = Math.max(0, 1 - cond / 100);
+  let cost = CFG.repairPerMW * u.cap * damage + CFG.repairMin;
+  if (cond < CFG.tripOverhaul) cost *= CFG.overhaulCostMult;
+  return Math.round(cost);
+}
+
+// Game-hours a service takes: a routine service is CFG.serviceTime; an overhaul
+// (condition below CFG.tripOverhaul) keeps the plant offline overhaulTimeMult× longer.
+export function serviceTimeFor(u){
+  return CFG.serviceTime * ((u.condition ?? 100) < CFG.tripOverhaul ? CFG.overhaulTimeMult : 1);
 }
 
 // Salvage cash recovered by decommissioning a unit — a fraction of its notional
@@ -229,7 +263,7 @@ export function makeUnit(tech, n, seq){
   const u = { id:`${tech}-${seq}`, name:`${b.label} ${n}`, kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
               status: (kind === "peaker" || kind === "battery") ? "off" : "online",
               ctrl: (kind === "peaker" || kind === "battery"), key:null };
-  if (kind === "firm" || kind === "peaker") u.condition = 100; // mechanical plants wear & can be serviced
+  if (kind === "firm" || kind === "peaker"){ u.condition = 100; u.ageHours = 0; } // mechanical plants wear & can be serviced
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
   if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
   if (kind === "firm"){ const p = FIRM_PARAMS[tech] || FIRM_PARAMS.coal; u.spin = p.spin; u.fail = p.fail; u.recover = [...p.recover]; }

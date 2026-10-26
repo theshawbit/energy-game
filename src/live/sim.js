@@ -9,7 +9,7 @@
 // ============================================================
 import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
-import { CFG, makeFleet, serviceCost } from "./config.js";
+import { CFG, makeFleet, serviceCost, serviceTimeFor } from "./config.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
@@ -37,6 +37,8 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
   // reused after a decommission (which would duplicate a card label).
   const techCount = {};
   for (const u of fleet) techCount[u.tech] = (techCount[u.tech] || 0) + 1;
+  for (const u of fleet) if (u.condition != null) u.ageHours = 0; // v4.2.1: fresh iron
+
   const bat = fleet.find(u => u.id === "bat");
   if (bat && mods.battMult !== 1){
     bat.cap = Math.round(bat.cap * mods.battMult);
@@ -94,19 +96,41 @@ export function autoService(S, dtH){
     if (S.cash < cost) break;
     const offline = u.kind === "battery" ? u.status !== "discharge" : u.status !== "online";
     if (!offline && (S.capacity - S.demand) <= u.cap * 1.1) continue; // would risk a shortfall
-    S.cash -= cost; u.status = "service"; u.serviceTimer = CFG.serviceTime;
-    setTicker(S, `⚙ Service Manager: ${u.name} pulled for maintenance.`);
+    const overhaul = u.condition < CFG.tripOverhaul;
+    S.cash -= cost; u.status = "service"; u.serviceTimer = serviceTimeFor(u);
+    setTicker(S, `⚙ Service Manager: ${u.name} pulled for ${overhaul ? "an overhaul" : "maintenance"}.`);
     break; // at most one per interval, to spread downtime
   }
 }
 
 export function setTicker(S, msg){ S.ticker = msg; S.tickerT = 3.5; }
 
-// Per-real-second trip hazard for a thermal unit: its base rate, scaled up as
-// the run climbs (diff) and as the plant wears (condition → more failures).
+// Daily strain probability for a condition, linearly interpolated from the
+// CFG.tripOdds lookup ([cond%, pDay], descending). Clamps above the top point and
+// plateaus below the bottom one — so the curve passes exactly through the tuned
+// benchmarks and never runs away.
+export function dailyStrainProb(cond){
+  const pts = CFG.tripOdds;
+  if (cond >= pts[0][0]) return pts[0][1];
+  const last = pts[pts.length - 1];
+  if (cond <= last[0]) return last[1];
+  for (let i = 1; i < pts.length; i++){
+    const [c1, p1] = pts[i - 1], [c0, p0] = pts[i]; // c1 > c0
+    if (cond >= c0){ const f = (c1 - cond) / (c1 - c0); return p1 + (p0 - p1) * f; }
+  }
+  return last[1];
+}
+// Per-real-second trip hazard for a thermal unit. v4.2.1: trip risk is tied to
+// CONDITION — the hazard is the per-second rate that integrates to the table's
+// daily strain probability for this condition, scaled by the plant's own
+// reliability (u.fail / tripRefFail, so nuclear is safer and upgrades help) and
+// lifted by `diff` as the run climbs. Healthy plants are near-immune; the mid-band
+// is punishing. A trip is the symptom of neglect, not bad luck.
 export function tripHazard(u, diff){
-  const wear = u.condition != null ? 1 + CFG.wearTripK * (1 - u.condition / 100) : 1;
-  return u.fail * diff * wear;
+  if (u.condition == null) return 0; // only thermal plants wear and trip
+  const pDay = dailyStrainProb(u.condition);
+  const baseRate = -Math.log(1 - pDay) / CFG.secondsPerDay; // rate → pDay over one game-day at diff 1
+  return baseRate * diff * (u.fail / CFG.tripRefFail);
 }
 
 // ---- capacity accounting ----
@@ -167,7 +191,7 @@ export function step(S, dt){
   // unit state machines
   for (const u of S.fleet){
     if (u.status === "starting"){ u.startTimer -= dtH; if (u.startTimer <= 0) u.status = "online"; }
-    else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
+    else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; u.ageHours = (u.ageHours || 0) * CFG.serviceAgeRelief; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
     else if (u.status === "tripped"){ u.tripTimer -= dtH; if (u.tripTimer <= 0) u.status = u.ctrl ? "off" : "online"; }
     // v4.1 telegraphed trip: a strained plant is still generating but on borrowed
     // time — it drops when the warning window runs out. The window is your cue to
@@ -189,14 +213,8 @@ export function step(S, dt){
         setTicker(S, `⚠ ${u.name} straining — ${Math.round(u.cap)} MW at risk; stabilize or fire reserves!`);
       }
     }
-    // wear: thermal plants (the only units with condition) degrade while generating —
-    // online OR straining (a strained plant is still running). Worn plants strain more,
-    // via tripHazard. Batteries and renewables don't wear.
-    if (u.condition != null && (u.status === "online" || u.status === "strained")){
-      const wmult = u.status === "strained" ? 1.5 : 1; // a straining plant wears a touch faster
-      u.condition = Math.max(0, u.condition - CFG.wearRate * wmult * S.mods.wearMult * (S.rmods?.wearMult ?? 1) * dtH);
-    }
   }
+  // (wear is applied after dispatch, below — it needs each unit's actual load.)
 
   // demand: daily shape × peak, lifted by mutators (heat wave / cold snap), then
   // shaved by demand-response research (the demand-SIDE lever).
@@ -211,6 +229,27 @@ export function step(S, dt){
   S.price = hr.price;
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
   S.co2Total += hr.emissions * dtH;                           // run total, tCO₂ (emissions is tCO₂/h)
+
+  // ---- WEAR (v4.2.1): deterioration weighted by LOAD × AGE ----
+  // Only generating thermal plants wear. loadMult = gridUtil (how hard the whole
+  // grid is leaning on its online capacity) × assetLoad (this unit's own dispatch
+  // share of its cap — derived by splitting each tech's dispatched MW across that
+  // tech's online units). ageMult rises with accumulated runtime (ageHours), which
+  // persists through service/upgrade but is partially relieved each time.
+  const gridUtil = clamp(S.capacity > 0 ? S.demand / S.capacity : 0, CFG.wearLoadFloor, CFG.wearLoadMax);
+  const wearMods = S.mods.wearMult * (S.rmods?.wearMult ?? 1);
+  for (const u of S.fleet){
+    if (u.condition == null || !(u.status === "online" || u.status === "strained")) continue;
+    const techAvail = avail[u.tech] || 0;                     // MW this tech offered the merit order
+    const share = techAvail > 0 ? (hr.stack?.[u.tech] || 0) / techAvail : 0; // 0..1 dispatched fraction
+    u.loadFrac = share;                                                      // expose for UI/tests
+    const assetLoad = Math.max(CFG.wearIdleFloor, Math.min(1, share));       // spinning-idle floor
+    u.ageHours = (u.ageHours || 0) + dtH;                     // accrues only while generating; persists
+    const ageMult = 1 + CFG.ageWearK * (u.ageHours / CFG.ageRef);
+    const strainMult = u.status === "strained" ? 1.5 : 1;     // a straining plant wears a touch faster
+    const wear = CFG.wearRate * gridUtil * assetLoad * ageMult * strainMult * wearMods * dtH;
+    u.condition = Math.max(0, u.condition - wear);
+  }
 
   // spin: cost of keeping a thermal plant synced while it's generating (online or
   // straining — a strained plant is still running until it trips).

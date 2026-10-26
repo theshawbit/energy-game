@@ -589,7 +589,8 @@ function fleetRow(S, u){
   let svcBtn = "";
   if (u.condition != null){
     const inSvc = u.status === "service", sCost = Math.round(serviceCost(u) * (S.mods?.repairMult ?? 1)), canSvc = !inSvc && S.cash >= sCost;
-    svcBtn = `<button class="svc" data-svc="${u.id}" ${canSvc ? "" : "disabled"}>${inSvc ? "In service…" : `Service · ${money(sCost)}`}</button>`;
+    const overhaul = u.condition < CFG.tripOverhaul, svcLabel = overhaul ? "Overhaul" : "Service";
+    svcBtn = `<button class="svc${overhaul ? " overhaul" : ""}" data-svc="${u.id}" ${canSvc ? "" : "disabled"}>${inSvc ? "In service…" : `${svcLabel} · ${money(sCost)}`}</button>`;
   }
   const lastBattery = u.kind === "battery" && S.fleet.filter(x => x.kind === "battery").length <= 1;
   const decBtn = `<button class="dec" data-dec="${u.id}" ${lastBattery ? "disabled" : ""}>Sell · ${money(salvageValue(u))}</button>`;

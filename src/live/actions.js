@@ -4,7 +4,7 @@
 // live, unpaused play.
 // ============================================================
 import { setTicker } from "./sim.js";
-import { CFG, BUILD, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue, makeUnit } from "./config.js";
+import { CFG, BUILD, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, serviceTimeFor, salvageValue, makeUnit } from "./config.js";
 import { doResearch, researchById } from "./research.js";
 import { dailyBaseline } from "./market.js";
 import { contractPrice, expectedOutput, makeContract, creditRating } from "./finance.js";
@@ -56,6 +56,9 @@ export function upgradeUnit(S, id){
   if (u.kind === "battery") u.maxEnergy = Math.round(u.maxEnergy * capMult);
   if (u.fail != null) u.fail *= UPGRADE.failMult;
   if (u.spin != null) u.spin *= UPGRADE.spinMult;
+  // v4.2.1: an upgrade is a deep refit — it relieves most accumulated age (but age
+  // persists, so a long-serving plant never fully returns to new).
+  if (u.ageHours != null) u.ageHours *= CFG.upgradeAgeRelief;
   setTicker(S, `✓ ${u.name} upgraded to Mk ${u.tier}.`);
   return { ok:true };
 }
@@ -70,9 +73,10 @@ export function serviceUnit(S, id){
   if (u.status === "service") return { ok:false, msg:"Already in service." };
   const cost = Math.round(serviceCost(u) * (S.mods?.repairMult ?? 1));
   if (S.cash < cost) return { ok:false, msg:"Not enough cash to service." };
+  const overhaul = u.condition < CFG.tripOverhaul, time = serviceTimeFor(u);
   S.cash -= cost;
-  u.status = "service"; u.serviceTimer = CFG.serviceTime;
-  setTicker(S, `${u.name} pulled for service — back in ${CFG.serviceTime}h.`);
+  u.status = "service"; u.serviceTimer = time;
+  setTicker(S, `${u.name} pulled for ${overhaul ? "an overhaul" : "service"} — back in ${time}h.`);
   return { ok:true };
 }
 
