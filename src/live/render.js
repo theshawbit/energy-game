@@ -109,7 +109,12 @@ export function render(S){
   updateUnits(S);
   drawChart(S);
 
-  $("pauseBtn").textContent = S.paused ? "Resume" : "Pause";
+  // v4.2 CR-1: the pause control is a deliberate console toggle — lamp on + the
+  // play area reads "held" while the clock is frozen (the command bar stays lit).
+  const pb = $("pauseBtn");
+  pb.textContent = S.paused ? "Resume" : "Pause";
+  pb.classList.toggle("on", S.paused);
+  $("shakeTarget").classList.toggle("held", S.paused);
 }
 
 // Unit cards are built once per game (buildUnits) and only their dynamic bits are
