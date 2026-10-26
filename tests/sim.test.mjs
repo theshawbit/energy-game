@@ -97,19 +97,21 @@ while ((pk.tier || 1) < UPGRADE.maxTier) upgradeUnit(S, "pk1");
 res = upgradeUnit(S, "pk1");
 check("upgrade refused past max tier", !res.ok && pk.tier === UPGRADE.maxTier, "tier " + pk.tier);
 
-// 12) v4.2.1: trip risk is tied to CONDITION via the tripOdds lookup. A reference
-// plant (fail = tripRefFail) hits the tuned daily-strain benchmarks exactly; a
-// plant's own fail scales it; healthy plants are near-immune, the mid-band bites.
+// 12) v4.2.2: trip risk is tied to CONDITION via the tripOdds lookup. HARD RULE —
+// a plant at ≥85% NEVER trips (trips are now a rare neglect event, not a tax). Below
+// 85% risk ramps; a plant's own fail scales it; the deep-wreck zone still bites.
 const sec = CFG.secondsPerDay;
 const ref = c => ({ fail: CFG.tripRefFail, condition: c });
 const pDayOf = u => 1 - Math.exp(-tripHazard(u, 1) * sec); // realized daily strain prob (diff 1)
-check("100% ≈ 0.1%/day", near(pDayOf(ref(100)), 0.001, 1e-6), (pDayOf(ref(100)) * 100).toFixed(2) + "%");
-check("85% ≈ 0.4%/day", near(pDayOf(ref(85)), 0.004, 1e-6), (pDayOf(ref(85)) * 100).toFixed(2) + "%");
-check("70% ≈ 2.4%/day", near(pDayOf(ref(70)), 0.024, 1e-6), (pDayOf(ref(70)) * 100).toFixed(2) + "%");
-check("50% ≈ 37.2%/day", near(pDayOf(ref(50)), 0.372, 1e-6), (pDayOf(ref(50)) * 100).toFixed(1) + "%");
-check("dailyStrainProb passes through its table points", near(dailyStrainProb(60), 0.124, 1e-9) && near(dailyStrainProb(40), 0.558, 1e-9));
-check("odds rise monotonically as condition falls",
-  tripHazard(ref(100), 1) < tripHazard(ref(70), 1) && tripHazard(ref(70), 1) < tripHazard(ref(50), 1) && tripHazard(ref(50), 1) < tripHazard(ref(30), 1));
+check("a plant at ≥85% NEVER trips (hard floor)",
+  dailyStrainProb(100) === 0 && dailyStrainProb(90) === 0 && dailyStrainProb(85) === 0 && pDayOf(ref(100)) === 0,
+  "100/90/85% all 0%/day");
+check("77% ≈ 0.4%/day (rare)", near(pDayOf(ref(77)), 0.004, 1e-6), (pDayOf(ref(77)) * 100).toFixed(2) + "%");
+check("70% ≈ 1.2%/day", near(pDayOf(ref(70)), 0.012, 1e-6), (pDayOf(ref(70)) * 100).toFixed(2) + "%");
+check("50% ≈ 18%/day (neglect bites)", near(pDayOf(ref(50)), 0.18, 1e-6), (pDayOf(ref(50)) * 100).toFixed(1) + "%");
+check("dailyStrainProb passes through its table points", near(dailyStrainProb(60), 0.06, 1e-9) && near(dailyStrainProb(40), 0.30, 1e-9));
+check("odds rise monotonically as condition falls below 85",
+  tripHazard(ref(85), 1) < tripHazard(ref(70), 1) && tripHazard(ref(70), 1) < tripHazard(ref(50), 1) && tripHazard(ref(50), 1) < tripHazard(ref(30), 1));
 check("odds plateau below the last point", dailyStrainProb(10) === dailyStrainProb(30));
 check("a more reliable plant (lower fail) trips less", tripHazard({ fail: 0.0020, condition: 50 }, 1) < tripHazard(ref(50), 1));
 check("the day ramp (diff) lifts the hazard", tripHazard(ref(50), 1.5) > tripHazard(ref(50), 1));
@@ -443,7 +445,7 @@ check("fast-ramp cuts peaker spin-up 20%", near(t2, t1 * 0.80, 1e-9), `${t1.toFi
 // Controlled single-source grid (only nuclear, no trips, no renewables/batteries,
 // no R&D) so the cash line is deterministic and driven purely by the revenue model.
 function controlled(peak){
-  const g = createGame(); g.peak = peak; g.t = 3; g.running = true; g.rdFunding = 0;
+  const g = createGame(); g.peak = peak; g.t = 3; g.running = true; g.rdFunding = 0; g.calm = true; // v4.2.2: suppress net-load volatility for a deterministic cash line
   for (const u of g.fleet){
     if (u.id === "nuc"){ u.status = "online"; u.fail = 0; }
     else if (u.kind === "renew"){ u.cap = 0; }
