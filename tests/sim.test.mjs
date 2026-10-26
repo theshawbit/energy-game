@@ -319,8 +319,8 @@ check("the last battery can't be decommissioned", !dr.ok && S.fleet.some(u => u.
 
 // 30) Demand-response research shaves live demand (the demand-side lever)
 {
-  const A = createGame(); A.t = 18; step(A, 0.01); const dBase = A.demand;
-  const B = createGame(); B.t = 18; B.research = { "demand-response": true }; B.rmods = computeResearchMods(B.research);
+  const A = createGame(); A.t = 18; A.calm = true; step(A, 0.01); const dBase = A.demand;
+  const B = createGame(); B.t = 18; B.calm = true; B.research = { "demand-response": true }; B.rmods = computeResearchMods(B.research);
   step(B, 0.01); const dShaved = B.demand;
   check("demand-response shaves ~6% off demand", near(dShaved, dBase * 0.94, 1), `${dBase.toFixed(0)} → ${dShaved.toFixed(0)} MW`);
 }
@@ -400,8 +400,8 @@ check("fast-ramp cuts peaker spin-up 20%", near(t2, t1 * 0.80, 1e-9), `${t1.toFi
 
 // 39) A heat-wave mutator lifts live demand
 {
-  const A = createGame(); A.mmods = computeMutatorMods([]); A.t = 18; step(A, 0.01); const dBase = A.demand;
-  const B = createGame(); B.mmods = computeMutatorMods(["heatwave"]); B.t = 18; step(B, 0.01); const dHot = B.demand;
+  const A = createGame(); A.mmods = computeMutatorMods([]); A.t = 18; A.calm = true; step(A, 0.01); const dBase = A.demand;
+  const B = createGame(); B.mmods = computeMutatorMods(["heatwave"]); B.t = 18; B.calm = true; step(B, 0.01); const dHot = B.demand;
   check("heat wave raises demand ~18%", near(dHot, dBase * CFG.mut.heatwave, 1), `${dBase.toFixed(0)} → ${dHot.toFixed(0)} MW`);
 }
 
