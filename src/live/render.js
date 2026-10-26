@@ -26,6 +26,17 @@ const roman = n => ["", "I", "II", "III", "IV", "V"][n] || String(n);
 
 // v4.2 CR-2: status-cluster state. Last demand sample for the rising/easing trend.
 let _prevDemand = null;
+// v4.2 CR-4: annunciator event log — a short rolling feed of timestamped events,
+// severity-colored. Built in the render layer from the sim's one-line ticker (no
+// sim change): each new ticker message is captured once with the game clock.
+const _log = [];
+let _lastTicker = null;
+const ANN_MAX = 5;
+function annSeverity(msg){
+  if (msg.startsWith("✓")) return "ok";
+  if (msg.startsWith("⚠")) return "alarm";
+  return "advisory";
+}
 // Light a backlit lamp a given status color (with a soft glow), or dim it when faint.
 function setLamp(el, color){
   if (!el) return;
@@ -127,8 +138,18 @@ export function render(S){
   if (ob){ pledge.style.display = ""; $("cl-pledge-v").textContent = `${Math.round(ob.reserveMW)} MW`; $("cl-pledge-sub").textContent = `${ob.daysLeft}d left${ob.calledToday ? " · called" : ""}`; }
   else pledge.style.display = "none";
 
-  $("ticker").textContent = S.ticker;
-  $("ticker").style.color = S.ticker.startsWith("✓") ? css("--good") : css("--warn");
+  // v4.2 CR-4: annunciator log. Capture each new ticker message once (with the
+  // game clock + severity), newest on top, and flash the freshest row briefly.
+  if (S.ticker && S.ticker !== _lastTicker){
+    _log.unshift({ t: clock(S.t), msg: S.ticker, sev: annSeverity(S.ticker), fresh: true });
+    for (let i = 1; i < _log.length; i++) _log[i].fresh = false;
+    if (_log.length > ANN_MAX) _log.length = ANN_MAX;
+    const tk = $("ticker");
+    tk.innerHTML = _log.map(e =>
+      `<div class="ann-row ann-${e.sev}${e.fresh ? " fresh" : ""}"><span class="ann-t">${e.t}</span><span class="ann-m">${e.msg}</span></div>`
+    ).join("");
+  }
+  _lastTicker = S.ticker;
 
   updateUnits(S);
   drawChart(S);
@@ -154,6 +175,7 @@ let _unitOrder = "";               // last applied order signature, to skip no-o
 export function buildUnits(S, onToggle){
   _prevDemand = null; // new game — forget the previous run's last demand sample
   _unitOrder = "";
+  _log.length = 0; _lastTicker = null; $("ticker").innerHTML = ""; // fresh annunciator log
   const host = $("units"); host.innerHTML = "";
   for (const k in unitEls) delete unitEls[k];
   for (const k in sparkData) delete sparkData[k];
@@ -305,8 +327,14 @@ function drawChart(S){
     ctx.beginPath(); ctx.moveTo(padL, yp); ctx.lineTo(padL + W, yp); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = css("--faint"); ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText("peak " + S.peak, padL + 3, yp - 3);
 
+    // control-room phosphor trace: a soft glow under each line (restored so the
+    // crisp 2px stroke sits on top, labels/dots stay sharp).
+    ctx.save();
+    ctx.shadowColor = hexA(css("--accent"), 0.9); ctx.shadowBlur = 7;
     line(ctx, hist, x, y, "c", css("--accent"), 2); // capacity (amber)
+    ctx.shadowColor = "rgba(255,255,255,.85)"; ctx.shadowBlur = 6;
     line(ctx, hist, x, y, "d", "#fff", 2);           // demand (white)
+    ctx.restore();
 
     // live "now" markers at the leading edge, nudged apart if they'd overlap
     const last = hist[n - 1], xn = x(n - 1);
