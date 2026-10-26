@@ -12,20 +12,30 @@
 <body>
   <div id="vignette"></div>
   <div class="wrap" id="shakeTarget">
-    <header>
-      <div class="brand">
-        <h1>Grid Operator — Live</h1>
-        <span class="sub">Real-time grid balancing</span>
+    <!-- v4.2 CR-1: command bar. Clock + the two deliberate console controls up top;
+         secondary readouts demote to the right strip. Stat ids are unchanged so the
+         render loop keeps patching them. -->
+    <header class="cmdbar">
+      <div class="cb-id">
+        <span class="cb-mark">Grid Operator</span>
+        <div class="cb-clock">
+          <span class="cb-day">DAY <b id="s-day">1</b></span>
+          <span class="cb-time" id="s-clock">06:00</span>
+        </div>
       </div>
-      <div class="hstat"><span class="k">Day</span><span class="v" id="s-day">1</span></div>
-      <div class="hstat"><span class="k">Clock</span><span class="v" id="s-clock">06:00</span></div>
-      <div class="hstat"><span class="k">Cash</span><span class="v" id="s-cash">$0</span></div>
-      <div class="hstat"><span class="k">Research</span><span class="v" id="s-rp">0 <small class="rd-sub" id="s-rdsub"></small></span></div>
-      <span class="hdiv" aria-hidden="true"></span>
-      <div class="hstat"><span class="k">Wholesale</span><span class="v" id="s-price">$0</span></div>
-      <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
-      <div class="hstat"><span class="k">Carbon $/t</span><span class="v" id="s-carbon">$0</span></div>
-      <div class="hstat"><span class="k">Satisfaction</span><span class="v" id="s-sat">100%</span></div>
+      <div class="cb-controls">
+        <button id="pauseBtn" class="console-btn pause" aria-keyshortcuts="Space">Pause</button>
+        <button id="manageBtn" class="console-btn manage">▣ Manage</button>
+      </div>
+      <div class="cb-stats">
+        <div class="hstat lead"><span class="k">Cash</span><span class="v" id="s-cash">$0</span></div>
+        <span class="hdiv" aria-hidden="true"></span>
+        <div class="hstat"><span class="k">Research</span><span class="v" id="s-rp">0 <small class="rd-sub" id="s-rdsub"></small></span></div>
+        <div class="hstat"><span class="k">Wholesale</span><span class="v" id="s-price">$0</span></div>
+        <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
+        <div class="hstat"><span class="k">Carbon $/t</span><span class="v" id="s-carbon">$0</span></div>
+        <div class="hstat"><span class="k">Satisfaction</span><span class="v" id="s-sat">100%</span></div>
+      </div>
     </header>
 
     <div class="grid">
@@ -73,18 +83,6 @@
             <div class="dl-row" id="dl-caprow" style="display:none"><span class="k">Capacity pledge</span><b id="dl-cap">—</b><span class="dl-sub" id="dl-capsub"></span></div>
           </div>
           <div class="hintbar">Your economy at a glance — open <b>Manage → Desk</b> to hedge, borrow, or work an offer.</div>
-        </section>
-        <section class="card">
-          <h2>Shift</h2>
-          <div class="controls">
-            <button class="btn-primary" id="manageBtn" style="flex:1">Manage grid</button>
-            <button id="pauseBtn">Pause</button>
-          </div>
-          <div class="hintbar">
-            Keep <b>capacity ≥ demand</b>. Dip below and the grid <b>browns out</b> — a short, punishing
-            window to recover. Let it run deep or long and it's a <b>blackout</b>: run over. Survive each
-            day and demand climbs — and from day 3 a rising <b>carbon price</b> makes dirty plants cost more.
-          </div>
         </section>
       </aside>
     </div>
