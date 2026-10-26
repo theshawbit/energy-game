@@ -43,12 +43,14 @@ export const CFG = {
   ageWearK: 0.9,              // age multiplier gain per ageRef of accumulated runtime (fresh = 1.0)
   serviceAgeRelief: 0.55,     // a service multiplies accumulated ageHours by this (removes ~45%)
   upgradeAgeRelief: 0.30,     // an upgrade is deeper — keeps only this share of ageHours
-  // v4.2.1: trip risk is tied to CONDITION via this lookup — [condition%, daily
+  // v4.2.2: trip risk is tied to CONDITION via this lookup — [condition%, daily
   // strain probability] for a REFERENCE plant at fail = tripRefFail (coal). A
   // plant's own u.fail scales it (nuclear is more reliable; an upgrade that cuts
-  // u.fail cuts trips too). Healthy plants are near-immune; the mid-band is
-  // deliberately punishing; condition ≤ the last point plateaus. Edit freely.
-  tripOdds: [[100,0.001],[90,0.002],[85,0.004],[77,0.008],[70,0.024],[60,0.124],[50,0.372],[40,0.558],[30,0.6667]],
+  // u.fail cuts trips too). HARD RULE: a plant at ≥85% NEVER trips (first point is
+  // 0) — real plants rarely fail, so trips are now a rare, dramatic neglect event,
+  // not a constant tax. Below 85% risk ramps; condition ≤ the last point plateaus.
+  // The real moment-to-moment challenge lives in the volatile net-load curve (vol).
+  tripOdds: [[85,0],[77,0.004],[70,0.012],[60,0.06],[50,0.18],[40,0.30],[30,0.40]],
   tripRefFail: 0.0045,        // the fail rate the tripOdds table is calibrated to (coal)
   tripOverhaul: 50,           // below this condition a service becomes a costly, slower OVERHAUL
   overhaulCostMult: 6,        // an overhaul costs this × the normal service charge (deep damage)
@@ -60,8 +62,30 @@ export const CFG = {
   // fire reserves / shed load / stand a peaker down before it actually trips offline.
   strainWarn: 1.6,            // game-hours a plant strains before it trips (~3 real-seconds of warning)
   serviceTime: 4,             // game-hours a plant is offline for a full service
-  repairPerMW: 90,            // $/MW of capacity to fully service a wrecked plant
-  repairMin: 4000,            // minimum service charge
+  // v4.2.2: service fee is strongly CONDITION-graduated. The per-MW-of-damage term
+  // dominates (small flat floor), so a light touch-up at 80% is cheap and a heavy
+  // service at 50% clearly isn't — condition visibly drives the bill.
+  repairPerMW: 140,           // $/MW × damage fraction — the condition-driven term
+  repairMin: 1500,            // small flat floor (call-out / fixed labour)
+  // ---- v4.2.2 NET-LOAD VOLATILITY — the real moment-to-moment challenge ----
+  // With trips now rare, difficulty comes from a choppy demand-vs-capacity curve:
+  // intermittent renewables (gusts, cloud banks, lulls) and demand noise + spikes.
+  // Both are mean-reverting random walks (toward 1.0 / 0) so they wander and recover
+  // rather than ratcheting; a shortfall fills the strain meter (seconds to react),
+  // so volatility rewards attention and a kept reserve margin, never instakills.
+  // Each is a mean-reverting (Ornstein-Uhlenbeck) process: pull = revert×(μ−v)×dt,
+  // noise = rand(-1,1)×vol×√dt. The √dt is the point — it makes volatility real and
+  // FRAME-RATE INDEPENDENT (a linear ×dt noise averages out at 60fps, which is why the
+  // old drift felt glassy). Equilibrium swing ≈ vol/√(2·revert)×0.577; correlation time
+  // ≈ 1/revert real-seconds (a game-hour ≈ 2 real-sec), so swings last a few game-hours.
+  vol: {
+    sunRevert: 0.20, sunVol: 0.20, sunLo: 0.25, sunHi: 1.15,   // solar ≈ ±18% (cloud banks)
+    windRevert: 0.15, windVol: 0.26, windLo: 0.15, windHi: 1.55, // wind ≈ ±27% (gusts & lulls)
+    demandRevert: 0.20, demandVol: 0.11, demandJitMax: 0.14,   // continuous load wobble ≈ ±10%
+    spikeChance: 0.14,  // probability per game-hour a demand spike begins
+    spikeMin: 0.07, spikeMax: 0.20,  // +7%…+20% demand while a spike runs
+    spikeDurMin: 0.6, spikeDurMax: 1.8, // game-hours a spike lasts
+  },
   // ---- research / R&D lab (v3) ----
   rpPerDollar: 0.0006,        // RP per $ diverted into R&D. Tuned (F2) so a typical run
                               //   researches ~5–8 of 12 nodes — forcing a path choice —

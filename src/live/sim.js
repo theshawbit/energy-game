@@ -54,6 +54,7 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     researchUnlocked: { ...researchUnlocked },                     // meta-unlocked branches (read-only this run)
     mutators: [...mutators], mmods:computeMutatorMods(mutators),   // per-run mutators (v3)
     fleet, techCount, weather:freshWeather(), buildSeq:1,
+    demandJit:0, spikeMag:0, spikeT:0, // v4.2.2 net-load volatility state
     demand:0, capacity:0, price:0, brownout:false,
     // ---- v4 "The Book": spot + contracts (Phase B) — all deterministic defaults
     // so a bare createGame() stays reproducible (spotNoise is always 0 in B). ----
@@ -182,9 +183,22 @@ export function step(S, dt){
   S.t += dtH;
   if (S.t >= 24){ S.t -= 24; surviveDay(S); }
 
-  // weather drifts slowly
-  S.weather.sun  = clamp(S.weather.sun  + rand(-0.4, 0.4) * dt * 0.15, 0.55, 1.1);
-  S.weather.wind = clamp(S.weather.wind + rand(-0.6, 0.6) * dt * 0.15, 0.45, 1.35);
+  // v4.2.2: weather is now genuinely VOLATILE — a mean-reverting random walk (pulled
+  // back toward clear-sky 1.0) with wider bands, so solar and wind swing enough to
+  // move the net-load curve you're managing. Cloud banks, gusts and lulls, not a
+  // gentle drift. Magnitudes live in CFG.vol so balance stays central.
+  const V = CFG.vol, sq = Math.sqrt(dt); // √dt → frame-rate-independent volatility
+  S.weather.sun  = clamp(S.weather.sun  + (1 - S.weather.sun)  * V.sunRevert  * dt + rand(-1, 1) * V.sunVol  * sq, V.sunLo,  V.sunHi);
+  S.weather.wind = clamp(S.weather.wind + (1 - S.weather.wind) * V.windRevert * dt + rand(-1, 1) * V.windVol * sq, V.windLo, V.windHi);
+  // demand jitter + spikes (S.calm suppresses them for the deterministic test harness):
+  if (!S.calm){
+    // a continuous mean-reverting wobble on load…
+    S.demandJit = clamp(S.demandJit + (0 - S.demandJit) * V.demandRevert * dt + rand(-1, 1) * V.demandVol * sq, -V.demandJitMax, V.demandJitMax);
+    // …plus occasional short SPIKES (a cold front, an industrial swing) that bump load
+    // for a game-hour or two — telegraphed only by the chart, so watch your margin.
+    if (S.spikeT > 0) S.spikeT -= dtH;
+    else if (Math.random() < V.spikeChance * dtH){ S.spikeMag = rand(V.spikeMin, V.spikeMax); S.spikeT = rand(V.spikeDurMin, V.spikeDurMax); }
+  }
 
   const diff = 1 + (S.day - 1) * CFG.outageRamp; // outages get worse as days climb
 
@@ -218,7 +232,8 @@ export function step(S, dt){
 
   // demand: daily shape × peak, lifted by mutators (heat wave / cold snap), then
   // shaved by demand-response research (the demand-SIDE lever).
-  S.demand = S.peak * interp(DEMAND_SHAPE, S.t) * (S.mmods?.demandMult ?? 1) * (1 - (S.rmods?.demandShave ?? 0));
+  S.demand = S.peak * interp(DEMAND_SHAPE, S.t) * (S.mmods?.demandMult ?? 1) * (1 - (S.rmods?.demandShave ?? 0))
+    * (1 + S.demandJit) * (S.spikeT > 0 ? 1 + S.spikeMag : 1); // v4.2.2 jitter + spikes
   S.capacity = totalCapacity(S);
 
   // economics — clear the hour through the shared, verified merit-order engine.
