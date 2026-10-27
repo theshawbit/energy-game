@@ -185,92 +185,104 @@ export function render(S){
 // bank auto-reorders by urgency (shared attentionRank → same order as the Manage
 // table). Reorder is done with CSS `order` so DOM nodes never move.
 const unitEls = {};
-const sparkN = 32;                 // samples kept per unit for the sparkline
-const sparkData = {};              // id -> ring buffer of output fractions (0..1)
-let _unitOrder = "";               // last applied order signature, to skip no-op reorders
+let _unitOrder = "";               // last applied row order, to skip no-op reorders
+// v4.2.4: the fleet is a live, dense MONITOR TABLE (was a card bank). One row per
+// unit, built once per game and patched each frame. Status pills + the row accent
+// update INSTANTLY (an alarm can't wait); the numeric MW / Condition / Load columns
+// and the sub-note throttle with the readout cadence so renewable output doesn't
+// strobe. Rows auto-sort by urgency (worst first, shared compareNeedsAttention) and
+// controllable units (peakers / battery) are tappable rows that arm/fire. Condition
+// and Load% are now visible at a glance — the two things the wear model made matter.
 export function buildUnits(S, onToggle){
   _prevDemand = null; // new game — forget the previous run's last demand sample
   _unitOrder = "";
   _log.length = 0; _lastTicker = null; $("ticker").innerHTML = ""; // fresh annunciator log
-  const host = $("units"); host.innerHTML = "";
   for (const k in unitEls) delete unitEls[k];
-  for (const k in sparkData) delete sparkData[k];
+  const table = document.createElement("table");
+  table.className = "fleet-live";
+  table.innerHTML = `<thead><tr>
+    <th>Plant</th><th>Status</th><th class="num">MW</th><th class="num">Cond</th><th class="num">Load</th>
+  </tr></thead>`;
+  const tb = document.createElement("tbody");
   for (const u of S.fleet){
-    const el = document.createElement("div");
-    el.className = "unit" + (u.ctrl ? " ctrl" : "");
-    const tierBadge = (u.tier || 1) > 1 ? ` <span class="mk">Mk ${roman(u.tier)}</span>` : "";
-    const condBar = u.condition != null ? `<div class="condbar" title="condition"><i data-cond></i></div>` : "";
-    el.innerHTML = `
-      <div class="top">
-        <span class="nm">${u.name}${tierBadge}</span>
-        <span class="st" data-st>—</span>
-      </div>
-      <div class="umid">
-        <span class="cap"><b data-out>0</b>/${u.cap} MW</span>
-        <svg class="spark" viewBox="0 0 ${sparkN - 1} 20" preserveAspectRatio="none" aria-hidden="true"><polyline data-spark fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke" points=""/></svg>
-      </div>
-      <div class="hint" data-hint></div>${condBar}`;
-    if (u.ctrl) el.onclick = () => onToggle(u.id);
-    host.appendChild(el);
-    sparkData[u.id] = [];
-    unitEls[u.id] = { el, st:el.querySelector("[data-st]"), out:el.querySelector("[data-out]"), hint:el.querySelector("[data-hint]"), cond:el.querySelector("[data-cond]"), spark:el.querySelector("[data-spark]") };
+    const tr = document.createElement("tr");
+    tr.className = "fu" + (u.ctrl ? " ctrl" : "");
+    const mk = (u.tier || 1) > 1 ? ` <span class="mk">Mk ${roman(u.tier)}</span>` : "";
+    const key = u.ctrl && u.key ? `<span class="fkey" title="shortcut">${u.key}</span>` : "";
+    const condCell = u.condition != null
+      ? `<b class="condtxt" data-condtxt>—</b><span class="cbar"><i data-cond></i></span>`
+      : `<span class="faint">—</span>`;
+    tr.innerHTML = `
+      <td class="fu-nm"><span class="nm">${u.name}${mk}</span>${key}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
+      <td><span class="st" data-st>—</span></td>
+      <td class="num"><b data-out>0</b><span class="faint">/${Math.round(u.cap)}</span></td>
+      <td class="num fu-cond">${condCell}</td>
+      <td class="num"><span data-load>—</span></td>`;
+    if (u.ctrl) tr.onclick = () => onToggle(u.id);
+    tb.appendChild(tr);
+    unitEls[u.id] = {
+      el: tr, st: tr.querySelector("[data-st]"), out: tr.querySelector("[data-out]"),
+      sub: tr.querySelector("[data-sub]"), cond: tr.querySelector("[data-cond]"),
+      condtxt: tr.querySelector("[data-condtxt]"), load: tr.querySelector("[data-load]"),
+    };
   }
+  table.appendChild(tb);
+  const host = $("units"); host.innerHTML = ""; host.appendChild(table);
 }
 function updateUnits(S, tick = true){
   const fuelMult = S.mmods?.fuelMult ?? 1;
   for (const u of S.fleet){
     const refs = unitEls[u.id]; if (!refs) continue;
     const out = Math.round(unitOutput(S, u));
-    // state → status pill + tile reaction class + sparkline color
-    let stClass, stText, tileState, sparkVar;
-    if (u.status === "service"){ stClass = "st-service"; stText = "SERVICE"; tileState = "service"; sparkVar = "--faint"; }
-    else if (u.status === "strained"){ stClass = "st-strained"; stText = "⚠ STRAINING"; tileState = "strained"; sparkVar = "--warn"; }
-    else if (u.status === "online" || u.status === "discharge"){ stClass = "st-online"; stText = u.kind === "battery" ? "DISCHARGE" : "ONLINE"; tileState = "live"; sparkVar = "--online"; }
-    else if (u.status === "starting"){ stClass = "st-starting"; stText = "STARTING"; tileState = "starting"; sparkVar = "--starting"; }
-    else if (u.status === "tripped"){ stClass = "st-tripped"; stText = "TRIPPED"; tileState = "tripped"; sparkVar = "--tripped"; }
-    else { stClass = "st-off"; stText = u.kind === "renew" ? "IDLE" : "RESERVE"; tileState = "idle"; sparkVar = "--faint"; }
-    // hint: strain/maintenance callouts, spin-up ETA, or the live running $/MWh
-    let hint = "";
-    if (u.status === "strained") hint = u.ctrl ? "about to trip — stand it down or back it up" : "about to trip — fire reserves to cover it";
-    else if (u.status === "service") hint = `maintenance · ${clock(Math.max(0, u.serviceTimer || 0))} left`;
-    else if (u.status === "starting") hint = `spin-up · ${clock(Math.max(0, u.startTimer || 0))} to online`;
-    else if (u.kind === "battery") hint = `charge ${Math.round(u.energy)}/${Math.round(u.maxEnergy * (S.rmods?.battEnergyMult ?? 1))} MWh`;
-    else if (u.kind === "renew") hint = `${out} MW now · $0/MWh`;
-    else { const mc = Math.round(marginalCost(u.tech, S.carbon, fuelMult)); hint = u.ctrl ? `$${mc}/MWh · tap ${u.key} to ${u.status === "off" ? "start" : "stop"}` : `$${mc}/MWh baseload`; }
-    // alarm pill + tile state are instant (a trip/strain must show the moment it
-    // happens); the numeric MW/hint/condition text throttles with the readout cadence
-    // so renewable output doesn't strobe. The sparkline samples & repaints every frame.
-    if (tick && refs.out.textContent != String(out)) refs.out.textContent = out;
+    // state → status pill + row accent class
+    let stClass, stText, rowState;
+    if (u.status === "service"){ stClass = "st-service"; stText = "SERVICE"; rowState = "service"; }
+    else if (u.status === "strained"){ stClass = "st-strained"; stText = "⚠ STRAIN"; rowState = "strained"; }
+    else if (u.status === "online" || u.status === "discharge"){ stClass = "st-online"; stText = u.kind === "battery" ? "DISCHG" : "ONLINE"; rowState = "live"; }
+    else if (u.status === "starting"){ stClass = "st-starting"; stText = "STARTING"; rowState = "starting"; }
+    else if (u.status === "tripped"){ stClass = "st-tripped"; stText = "TRIPPED"; rowState = "tripped"; }
+    else { stClass = "st-off"; stText = u.kind === "renew" ? "IDLE" : "RESERVE"; rowState = "idle"; }
+    // status pill + row accent are INSTANT (a trip/strain must show the moment it happens)
     if (refs.st.textContent != stText) refs.st.textContent = stText;
     const cls = "st " + stClass; if (refs.st.className != cls) refs.st.className = cls;
-    const elCls = "unit" + (u.ctrl ? " ctrl" : "") + " u-" + tileState;
-    if (refs.el.className != elCls) refs.el.className = elCls;
-    if (tick && refs.hint.textContent != hint) refs.hint.textContent = hint;
-    if (tick && refs.cond && u.condition != null){
-      const c = u.condition;
+    const rcls = "fu" + (u.ctrl ? " ctrl" : "") + " u-" + rowState;
+    if (refs.el.className != rcls) refs.el.className = rcls;
+
+    if (!tick) continue; // numeric columns + sub-note throttle with the readout cadence
+    if (refs.out.textContent != String(out)) refs.out.textContent = out;
+    // Condition % + bar (thermal only)
+    if (refs.cond && u.condition != null){
+      const c = Math.round(u.condition), band = c > 60 ? "ok" : c > 30 ? "warn" : "bad";
+      if (refs.condtxt.textContent != c + "%") refs.condtxt.textContent = c + "%";
+      refs.condtxt.className = "condtxt " + band;
       refs.cond.style.width = c + "%";
-      refs.cond.style.background = css(c > 60 ? "--good" : c > 30 ? "--warn" : "--bad");
+      refs.cond.style.background = css(band === "ok" ? "--good" : band === "warn" ? "--warn" : "--bad");
     }
-    // sparkline: push the latest output fraction and repaint the polyline
-    const buf = sparkData[u.id];
-    buf.push(u.cap > 0 ? clamp(out / u.cap, 0, 1) : 0);
-    if (buf.length > sparkN) buf.shift();
-    if (refs.spark){
-      const n = buf.length;
-      const pts = buf.map((v, i) => `${i},${(20 - v * 18 - 1).toFixed(1)}`).join(" ");
-      refs.spark.setAttribute("points", pts);
-      refs.spark.style.stroke = css(sparkVar);
-      refs.spark.style.opacity = (tileState === "idle" || tileState === "service") ? ".5" : "1";
-      // keep the x-scale aligned while the buffer is still filling
-      refs.spark.parentNode.setAttribute("viewBox", `0 0 ${Math.max(1, n - 1)} 20`);
+    // Load% — how hard this unit is worked (the wear driver). Thermal/peaker use the
+    // dispatch share (loadFrac); renewables = output/cap; off/idle = —.
+    let loadTxt = "—";
+    if (u.status === "online" || u.status === "strained" || u.status === "discharge"){
+      const lf = u.kind === "renew" ? (u.cap > 0 ? out / u.cap : 0) : (u.loadFrac ?? (u.cap > 0 ? out / u.cap : 0));
+      loadTxt = Math.round(clamp(lf, 0, 1) * 100) + "%";
     }
+    if (refs.load.textContent != loadTxt) refs.load.textContent = loadTxt;
+    // contextual sub-note: strain/spin/service/charge callout, else cap · running $/MWh
+    let sub;
+    if (u.status === "strained") sub = u.ctrl ? "about to trip — stand down / back up" : "about to trip — fire reserves";
+    else if (u.status === "service") sub = `maintenance · ${clock(Math.max(0, u.serviceTimer || 0))} left`;
+    else if (u.status === "starting") sub = `spin-up · ${clock(Math.max(0, u.startTimer || 0))}`;
+    else if (u.kind === "battery") sub = `charge ${Math.round(u.energy)}/${Math.round(u.maxEnergy * (S.rmods?.battEnergyMult ?? 1))} MWh${u.ctrl ? ` · tap ${u.key}` : ""}`;
+    else if (u.kind === "renew") sub = `${Math.round(u.cap)} MW · $0/MWh`;
+    else { const mc = Math.round(marginalCost(u.tech, S.carbon, fuelMult)); sub = u.ctrl ? `$${mc}/MWh · tap ${u.key} to ${u.status === "off" ? "start" : "stop"}` : `$${mc}/MWh base`; }
+    if (refs.sub.textContent != sub) refs.sub.textContent = sub;
   }
-  // auto-reorder by urgency (shared with the Manage table). CSS order only —
-  // nodes stay put, so clicks/keys never retarget. Skip when the order is unchanged.
+  // auto-sort rows by urgency (worst first) — move <tr> nodes only when the order
+  // actually changes (onclick travels with the node, so taps never retarget).
   const order = [...S.fleet].sort(compareNeedsAttention);
   const sig = order.map(u => u.id).join(",");
   if (sig !== _unitOrder){
-    order.forEach((u, i) => { const r = unitEls[u.id]; if (r) r.el.style.order = i; });
+    const tb = unitEls[order[0]?.id]?.el.parentNode;
+    if (tb) order.forEach(u => { const r = unitEls[u.id]; if (r) tb.appendChild(r.el); });
     _unitOrder = sig;
   }
 }
