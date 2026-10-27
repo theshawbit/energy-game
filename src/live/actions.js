@@ -36,8 +36,9 @@ export function buildCapacity(S, tech){
   S.cash -= b.cost;
   // monotonic per-tech number so a build after a sell can't reuse a label
   const n = (S.techCount[tech] = (S.techCount[tech] || 0) + 1);
-  S.fleet.push(makeUnit(tech, n, S.buildSeq++));
-  setTicker(S, `✓ Built ${b.label} ${n} — +${b.mw} MW online.`);
+  const u = makeUnit(tech, n, S.buildSeq++);
+  S.fleet.push(u);
+  setTicker(S, `✓ Built ${u.name} — +${b.mw} MW online.`);
   return { ok:true };
 }
 

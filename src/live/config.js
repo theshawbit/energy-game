@@ -259,21 +259,57 @@ export const UPGRADE = {
 };
 export function upgradeCost(tier){ return Math.round(UPGRADE.cost * Math.pow(UPGRADE.costGrowth, (tier || 1) - 1)); }
 
+// ---- plant naming ----
+// Real grids name their iron after the place it stands on, not "Coal Plant A".
+// Each name is `<place> <fuel>` so it reads like a real station (Blackmoor Coal,
+// Fellcrest Wind) while still telegraphing the tech at a glance. The fuel word is
+// the clarifier; the fleet table's sub-line carries kind + MW separately. Pure
+// data — a fuller named-territory scheme is the v5 "Identity" work.
+const FUEL_WORD = {
+  nuclear:"Nuclear", coal:"Coal", solar:"Solar", wind:"Wind", peaker:"Peaker",
+  battery:"Battery", smr:"SMR", geo:"Geothermal", ccs_coal:"Coal CCS", ccs_gas:"Gas CCS",
+};
+// Place-name pools for units built mid-run. Indexed by the per-tech build count,
+// so the first new coal plant is "Sootbank Coal", the second "Emberly Coal", … .
+// Starting-fleet names are set directly in makeFleet() and don't draw from here,
+// so there's no collision. Wraps with a numeral only in very long runs.
+const PLACE_POOL = {
+  nuclear: ["Dunmoor","Severn Reach","Kesterling","Thornwick"],
+  coal:    ["Sootbank","Emberly","Colliers Rise","Dunsmere","Blackdyke","Furnace Hill"],
+  solar:   ["Harbrook","Oakfield","Sunderley","Marsh End","Pennington","Goldacre"],
+  wind:    ["Stormholt","Gale Point","Hollowfell","Ravensmoor","Netherby","Cragwind"],
+  peaker:  ["Sparkbridge","Quickfell","Flintlock","Dormer Gate","Tindall","Risewood"],
+  battery: ["Fenwick","Hollowmere","Tanfield","Larkstone","Brindle","Saltmarsh"],
+  smr:     ["Aldermint","Beacon Hill","Quellstone","Vale End"],
+  geo:     ["Cauldwell","Hotspring Vale","Ironvent","Deepcombe"],
+  ccs_coal:["Carbonmoor","Scrubbdale","Greycap","Ashworth"],
+  ccs_gas: ["Cleanburn","Methermere","Vaporton","Blueflame"],
+};
+// Name for the n-th (1-based) mid-run build of a tech: `<place> <fuel>`, with a
+// numeral suffix if the run outlasts the pool.
+export function plantName(tech, n){
+  const pool = PLACE_POOL[tech] || PLACE_POOL.coal;
+  const fuel = FUEL_WORD[tech] || (BUILD[tech]?.label ?? tech);
+  const i = (n - 1) % pool.length;
+  const wrap = Math.floor((n - 1) / pool.length);
+  return `${pool[i]} ${fuel}${wrap ? " " + (wrap + 1) : ""}`;
+}
+
 // ---- fleet definition ----
 // kind: firm (always-on thermal), renew (variable), peaker (reserve), battery
 // `tech` maps each unit onto an engine resource; `mc` mirrors TECH so the cards
 // and the dispatchHour() clearing agree on one set of economics.
 export function makeFleet() {
   return [
-    { id:"nuc",  name:"Nuclear",   kind:"firm",   tech:"nuclear", cap:250, mc:TECH.nuclear.mc, spin:2,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0020, recover:[5,9],  key:null },
-    { id:"colA", name:"Coal A",    kind:"firm",   tech:"coal",    cap:180, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0045, recover:[1.5,3], key:null },
-    { id:"colB", name:"Coal B",    kind:"firm",   tech:"coal",    cap:140, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0045, recover:[1.5,3], key:null },
-    { id:"sol",  name:"Solar farm",kind:"renew",  tech:"solar",   cap:220, mc:TECH.solar.mc,   tier:1, status:"online", ctrl:false, cf:SOLAR_CF, key:null },
-    { id:"wnd",  name:"Wind",      kind:"renew",  tech:"wind",    cap:160, mc:TECH.wind.mc,    tier:1, status:"online", ctrl:false, cf:WIND_CF,  key:null },
-    { id:"pk1",  name:"Peaker 1",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"1" },
-    { id:"pk2",  name:"Peaker 2",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"2" },
-    { id:"pk3",  name:"Peaker 3",  kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"3" },
-    { id:"bat",  name:"Battery",   kind:"battery",tech:"battery", cap:120, mc:TECH.battery.mc, tier:1, status:"off",    ctrl:true,  energy:240, maxEnergy:240, key:"B" },
+    { id:"nuc",  name:"Harrowgate Nuclear", kind:"firm",   tech:"nuclear", cap:250, mc:TECH.nuclear.mc, spin:2,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0020, recover:[5,9],  key:null },
+    { id:"colA", name:"Blackmoor Coal",     kind:"firm",   tech:"coal",    cap:180, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0045, recover:[1.5,3], key:null },
+    { id:"colB", name:"Cinderhope Coal",    kind:"firm",   tech:"coal",    cap:140, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0045, recover:[1.5,3], key:null },
+    { id:"sol",  name:"Meadowbank Solar",   kind:"renew",  tech:"solar",   cap:220, mc:TECH.solar.mc,   tier:1, status:"online", ctrl:false, cf:SOLAR_CF, key:null },
+    { id:"wnd",  name:"Fellcrest Wind",     kind:"renew",  tech:"wind",    cap:160, mc:TECH.wind.mc,    tier:1, status:"online", ctrl:false, cf:WIND_CF,  key:null },
+    { id:"pk1",  name:"Ashgate Peaker",     kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"1" },
+    { id:"pk2",  name:"Kilnbrook Peaker",   kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"2" },
+    { id:"pk3",  name:"Forgewell Peaker",   kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"3" },
+    { id:"bat",  name:"Weircross Battery",  kind:"battery",tech:"battery", cap:120, mc:TECH.battery.mc, tier:1, status:"off",    ctrl:true,  energy:240, maxEnergy:240, key:"B" },
   ];
 }
 
@@ -284,7 +320,7 @@ export function makeUnit(tech, n, seq){
   const kind = (tech === "solar" || tech === "wind") ? "renew"
              : tech === "peaker" ? "peaker"
              : tech === "battery" ? "battery" : "firm";
-  const u = { id:`${tech}-${seq}`, name:`${b.label} ${n}`, kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
+  const u = { id:`${tech}-${seq}`, name:plantName(tech, n), kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
               status: (kind === "peaker" || kind === "battery") ? "off" : "online",
               ctrl: (kind === "peaker" || kind === "battery"), key:null };
   if (kind === "firm" || kind === "peaker"){ u.condition = 100; u.ageHours = 0; } // mechanical plants wear & can be serviced
