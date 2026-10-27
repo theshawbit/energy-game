@@ -26,6 +26,13 @@ const roman = n => ["", "I", "II", "III", "IV", "V"][n] || String(n);
 
 // v4.2 CR-2: status-cluster state. Last demand sample for the rising/easing trend.
 let _prevDemand = null;
+// v4.2.3: the readable numbers refresh on a calm ~5Hz cadence, decoupled from the
+// render frame rate. With net-load volatility the raw values move every frame (60Hz),
+// which strobes the tiles into an unreadable blur — but the *chart*, the urgency
+// vignette/shake, the alarm pills and the sparklines stay fully live (they're meant
+// to move). So volatility keeps its teeth where it belongs and the instruments read.
+const READOUT_MS = 200;
+let _lastReadout = 0;
 // v4.2 CR-4: annunciator event log — a short rolling feed of timestamped events,
 // severity-colored. Built in the render layer from the sim's one-line ticker (no
 // sim change): each new ticker message is captured once with the game clock.
@@ -47,6 +54,10 @@ function setLamp(el, color){
 }
 
 export function render(S){
+  const now = performance.now();
+  const tick = now - _lastReadout >= READOUT_MS; // ~5Hz readable cadence
+  if (tick){
+  _lastReadout = now;
   $("s-day").textContent = S.day;
   $("s-clock").textContent = clock(S.t);
   $("s-cash").textContent = money(S.cash);
@@ -68,7 +79,9 @@ export function render(S){
   // DEMAND — level + which way it's moving this tick.
   $("s-demand").textContent = Math.round(S.demand);
   const dTrend = _prevDemand == null ? 0 : S.demand - _prevDemand;
-  $("cl-demand-sub").textContent = Math.abs(dTrend) < 0.5 ? "steady"
+  // deadband at ~1.5% of load so the volatile jitter reads "steady" and the label
+  // only flips on a real directional move (the ramp, or a spike) — no flip-flopping.
+  $("cl-demand-sub").textContent = Math.abs(dTrend) < Math.max(1, S.demand * 0.015) ? "steady"
     : (dTrend > 0 ? "▲ rising" : "▼ easing");
   _prevDemand = S.demand;
 
@@ -102,10 +115,6 @@ export function render(S){
   needle.setAttribute("transform", `rotate(${rot.toFixed(1)} 60 62)`);
   needle.style.stroke = col;
 
-  // reserve-margin urgency on the whole frame
-  $("vignette").style.opacity = S.over ? "1" : (S.brownout ? clamp(0.25 + S.strain / 100 * 0.7, 0, 0.95).toFixed(2) : "0");
-  $("shakeTarget").classList.toggle("shake", S.brownout && !S.over && S.strain > 35);
-
   // CASH — balance + live flow rate ($/h and /day) + financing standing.
   $("s-cash").textContent = money(S.cash);
   $("s-cash").style.color = S.cash < 0 ? css("--bad") : css("--fg");
@@ -137,6 +146,13 @@ export function render(S){
   const ob = S.capacityObligation, pledge = $("cl-pledge");
   if (ob){ pledge.style.display = ""; $("cl-pledge-v").textContent = `${Math.round(ob.reserveMW)} MW`; $("cl-pledge-sub").textContent = `${ob.daysLeft}d left${ob.calledToday ? " · called" : ""}`; }
   else pledge.style.display = "none";
+  } // end throttled readouts (~5Hz)
+
+  // ---- always live, every frame ----
+  // reserve-margin urgency: the vignette + shake must react instantly, not on the
+  // readout cadence — a brownout can't wait 200ms to show.
+  $("vignette").style.opacity = S.over ? "1" : (S.brownout ? clamp(0.25 + S.strain / 100 * 0.7, 0, 0.95).toFixed(2) : "0");
+  $("shakeTarget").classList.toggle("shake", S.brownout && !S.over && S.strain > 35);
 
   // v4.2 CR-4: annunciator log. Capture each new ticker message once (with the
   // game clock + severity), newest on top, and flash the freshest row briefly.
@@ -151,7 +167,7 @@ export function render(S){
   }
   _lastTicker = S.ticker;
 
-  updateUnits(S);
+  updateUnits(S, tick);
   drawChart(S);
 
   // v4.2 CR-1: the pause control is a deliberate console toggle — lamp on + the
@@ -200,7 +216,7 @@ export function buildUnits(S, onToggle){
     unitEls[u.id] = { el, st:el.querySelector("[data-st]"), out:el.querySelector("[data-out]"), hint:el.querySelector("[data-hint]"), cond:el.querySelector("[data-cond]"), spark:el.querySelector("[data-spark]") };
   }
 }
-function updateUnits(S){
+function updateUnits(S, tick = true){
   const fuelMult = S.mmods?.fuelMult ?? 1;
   for (const u of S.fleet){
     const refs = unitEls[u.id]; if (!refs) continue;
@@ -221,13 +237,16 @@ function updateUnits(S){
     else if (u.kind === "battery") hint = `charge ${Math.round(u.energy)}/${Math.round(u.maxEnergy * (S.rmods?.battEnergyMult ?? 1))} MWh`;
     else if (u.kind === "renew") hint = `${out} MW now · $0/MWh`;
     else { const mc = Math.round(marginalCost(u.tech, S.carbon, fuelMult)); hint = u.ctrl ? `$${mc}/MWh · tap ${u.key} to ${u.status === "off" ? "start" : "stop"}` : `$${mc}/MWh baseload`; }
-    if (refs.out.textContent != String(out)) refs.out.textContent = out;
+    // alarm pill + tile state are instant (a trip/strain must show the moment it
+    // happens); the numeric MW/hint/condition text throttles with the readout cadence
+    // so renewable output doesn't strobe. The sparkline samples & repaints every frame.
+    if (tick && refs.out.textContent != String(out)) refs.out.textContent = out;
     if (refs.st.textContent != stText) refs.st.textContent = stText;
     const cls = "st " + stClass; if (refs.st.className != cls) refs.st.className = cls;
     const elCls = "unit" + (u.ctrl ? " ctrl" : "") + " u-" + tileState;
     if (refs.el.className != elCls) refs.el.className = elCls;
-    if (refs.hint.textContent != hint) refs.hint.textContent = hint;
-    if (refs.cond && u.condition != null){
+    if (tick && refs.hint.textContent != hint) refs.hint.textContent = hint;
+    if (tick && refs.cond && u.condition != null){
       const c = u.condition;
       refs.cond.style.width = c + "%";
       refs.cond.style.background = css(c > 60 ? "--good" : c > 30 ? "--warn" : "--bad");
