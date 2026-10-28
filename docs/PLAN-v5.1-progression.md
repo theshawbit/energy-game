@@ -1,5 +1,16 @@
 # Grid Operator v5.1 — Progression Revamp (DESIGN / scoped)
 
+> ⚠️ **SUPERSEDED (2026-10-27).** A design grill + playtester feedback pivoted v5 from a
+> survival roguelike to a **persistent management / ops sim** — see
+> [ROADMAP-v5.md](ROADMAP-v5.md). The roguelike assumptions this doc is built on (per-run
+> reset, commit-ONE-branch-per-run, named-archetype-at-commit, ⚡-from-ending-runs) **no
+> longer hold**. What survives, re-framed for a persistent world: the four axes
+> (Performance/Efficiency/Quality/Flexibility), the per-family **curated axes**, RP raising
+> ceilings, ⚡ unlocking branches, and the per-family-axis-ladder research structure.
+> What changed: specialization is now **free development with steepening cost → emergent**
+> (no hard commit), tiers become the **four KPIs**, and the whole thing sits inside the new
+> operate-week/plan-window loop. This doc is retained for history and **may be removed**.
+
 > **Status: scoped from the design interview (2026-10-26), awaiting build sign-off.**
 > This is the first slice of v5 "Identity & Progression". The narrative layer
 > (New Veridia / C.A.S.S. — see [STORYLINE-v5-new-veridia.md](STORYLINE-v5-new-veridia.md))
