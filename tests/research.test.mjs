@@ -13,6 +13,16 @@ function check(name, cond, detail = "") {
 }
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
+// Determinism: the live sim's net-load volatility (sim.js spike roll) and trip
+// hazard ride the GLOBAL Math.random stream (locked decision 12), and a bare
+// createGame() has no seeded stream — so every step() below is otherwise noisy.
+// Pin Math.random to a constant for the whole suite: this makes each step()
+// deterministic AND, crucially, lets the two-arm comparisons (e.g. the wear-buff
+// check) see identical draws rather than different slices of a stream. These
+// tests lock mod-math and economic invariants, not volatility, so a calm fixed
+// realization is the right baseline. (The process exits after; no restore needed.)
+Math.random = () => 0.5;
+
 // 1) Neutral mods when nothing is researched
 const n0 = computeResearchMods({});
 check("no research → neutral mods", n0.wearMult === 1 && n0.upgradeCapBonus === 0 && n0.smrUnlocked === false);
