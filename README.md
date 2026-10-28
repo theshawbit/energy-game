@@ -81,25 +81,33 @@ src/
     mutators.js         Per-run mutator deck, weighted roll, and the per-run modifiers (mmods)
     meta.js             Roguelike meta: milestones, scoring, skills & research-branch unlocks
     persist.js          Cross-run profile in localStorage (currency, skills, unlocks, best) + migration
+    rng.js              Seeded, dependency-free RNG — replayable economic randomness (pure)
+    market.js           Spot market: residual served-load price driven by reserve margin (pure)
+    finance.js          Term contracts, credit/debt, bankruptcy — "The Book" (pure)
+    forecast.js         Spot-forecast accuracy/fog model: earned, sharpened, blurred by volatility (pure)
+    capacity.js         Capacity market: firm-capacity obligation, availability pay, breach fines (pure)
+    offers.js           Special offers ("Rolodex"): named buyers bring standout contracts (pure)
+    fleetsort.js        Pure comparators for the Manage → Fleet table (urgency, output, etc.)
+    readouts.js         Derived operator readouts for the Control Room status cluster (pure)
     render.js           Live view — paints DOM/canvas from state
     main.js             Live glue: owns state, runs the loop, wires input
   game.js               Batch game state & rules (build, sell, advance, events, scoring)
   render.js             Batch view layer
   main.js               Batch glue
 batch/index.html        Turn-based reference build (loads the shared engine + src/*.js)
-tests/
-  engine.test.mjs       Engine: dispatchHour, energy balance, carbon switching, v3 techs
-  sim.test.mjs          Live sim: state machine, clock, carbon, research/mutator/storage wiring
-  research.test.mjs     Research tree: node effects, RP gating, meta gating, prereqs
-  mutators.test.mjs     Mutators: deck composition, weighted roll, day-1 fairness invariant
-  persist.test.mjs      Profile persistence & v1→v2 migration
+tests/                  Node test suites (no dependencies) — one per pure module:
+  engine, sim, research, mutators, persist, fleetsort, market, finance,
+  meta, forecast, capacity, offers, guards, readouts (.test.mjs)
 tools/
   balance.mjs           Headless balance harness — plays many runs; reports survival,
                         the research economy, and per-mutator fairness
 docs/
-  ROADMAP-v3.md         v3 design & roadmap (research tree, mutators, meta-gating)
-  PLAN-v3.md            v3 implementation plan (phases A–F, PR map)
-  ROADMAP-v2.md         v2 design & roadmap (the real-time roguelike core)
+  README.md             Documentation map — every doc with its shipped/planned/superseded status
+  ROADMAP-v2…v5.md      Design roadmaps per version (v5 = the scoped, unbuilt pivot)
+  PLAN-*.md             Per-version build plans (v3, v4, v4.2, v4.2.1, v5.1)
+  STORYLINE-v5-*.md     New Veridia / C.A.S.S. narrative bibles (later flavour layer)
+  DEPLOY.md             GitHub Pages hosting notes
+CHANGELOG.md            Running version history (v2 → v4.2.6 shipped; v5 planned)
 archive/                The original single-file MVP, preserved
 ```
 
@@ -111,4 +119,12 @@ npm test     # runs all suites: engine, live-sim, research, mutators, persist (N
 
 ## Roadmap
 
-**v3 (the research tech tree) is shipped.** See [docs/ROADMAP-v3.md](docs/ROADMAP-v3.md) for the design and [docs/PLAN-v3.md](docs/PLAN-v3.md) for the phase-by-phase build. The one deferred item is a **juice pass** (screen-shake, celebration/breakthrough feedback, sound). The v2 real-time roguelike core that v3 builds on is documented in [docs/ROADMAP-v2.md](docs/ROADMAP-v2.md).
+The live game has shipped through **v4.2.6**. In version order:
+
+- **v2** — the real-time roguelike core (live dispatch loop, wear/trips, meta-currency).
+- **v3** — the research tech tree, mutator deck, and meta-gating. *(Deferred: a "juice" pass — screen-shake, breakthrough feedback, sound.)*
+- **v4 "The Book"** — contracts + a reserve-margin-driven spot market, financing & bankruptcy, an earned forecast, multi-track scoring, capacity market & buyer offers.
+- **v4.1 / v4.2** — gameplay-feel and economy tuning; the **"Control Room"** UI redesign; a reworked reliability/volatility model; the fleet table; and proper plant names.
+- **v5 "The Persistent Grid"** — a **scoped-but-unbuilt genre pivot** from survival roguelike to a persistent management / ops sim. See [docs/ROADMAP-v5.md](docs/ROADMAP-v5.md).
+
+Full version history is in [CHANGELOG.md](CHANGELOG.md); a status-tagged map of every design/plan/narrative doc is in [docs/README.md](docs/README.md).
