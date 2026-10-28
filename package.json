@@ -2,6 +2,7 @@
   "name": "grid-operator",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Grid Operator — an energy-economics grid simulation game.",
   "type": "module",
   "scripts": {
