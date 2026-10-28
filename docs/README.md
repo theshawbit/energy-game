@@ -1,0 +1,47 @@
+# Grid Operator — Documentation Map
+
+This folder holds the design roadmaps, build plans, and narrative bibles for Grid Operator.
+Each doc is tagged with its status so you can tell at a glance what reflects the **shipped**
+game, what's **planned**, and what's been **superseded**.
+
+> **Game status:** the live game shipped through **v4.2.6** is a real-time **survival
+> roguelike**. **v5 is a scoped-but-unbuilt genre pivot** to a persistent management / ops
+> sim — see [`ROADMAP-v5.md`](ROADMAP-v5.md). Until v5 ships, the roguelike docs below
+> describe the game as it actually plays.
+
+## Design roadmaps (the "what & why")
+
+| Doc | Version | Status |
+| :-- | :-- | :-- |
+| [`ROADMAP-v2.md`](ROADMAP-v2.md) | v2 | ✅ Shipped — the real-time roguelike core |
+| [`ROADMAP-v3.md`](ROADMAP-v3.md) | v3 | ✅ Shipped — research tech tree, mutators, meta-gating |
+| [`ROADMAP-v4.md`](ROADMAP-v4.md) | v4 | ✅ Shipped — "The Book": contracts + spot, financing, forecast, scoring |
+| [`ROADMAP-v5.md`](ROADMAP-v5.md) | v5 | 📋 **Scoped, not built** — persistent management/ops-sim pivot (parent program spec) |
+
+## Build plans (the "how")
+
+| Doc | Version | Status |
+| :-- | :-- | :-- |
+| [`PLAN-v3.md`](PLAN-v3.md) | v3 | ✅ Built |
+| [`PLAN-v4.md`](PLAN-v4.md) | v4 | ✅ Built (phases A–G) |
+| [`PLAN-v4.2-control-room.md`](PLAN-v4.2-control-room.md) | v4.2 | ✅ Built — Control Room UI redesign (CR-1…CR-4) |
+| [`PLAN-v4.2.1-reliability-and-volatility.md`](PLAN-v4.2.1-reliability-and-volatility.md) | v4.2.1–4.2.3 | ✅ Built — wear = load × age, rare trips, volatile net-load |
+| [`PLAN-v5.1-progression.md`](PLAN-v5.1-progression.md) | v5.1 | ⚠️ **Superseded** by the v5 pivot (retained for history) |
+
+## Narrative bibles (later flavour layer)
+
+| Doc | Scope | Status |
+| :-- | :-- | :-- |
+| [`STORYLINE-v5-new-veridia.md`](STORYLINE-v5-new-veridia.md) | New Veridia / C.A.S.S. setting bible | 📋 Reference — fits the v5 pivot; `Mk` refs need reconciling to the KPI/axis model |
+| [`STORYLINE-v5-script.md`](STORYLINE-v5-script.md) | Full narrative script | 📋 Reference — same reconciliation pending |
+
+## Operations
+
+| Doc | Purpose |
+| :-- | :-- |
+| [`DEPLOY.md`](DEPLOY.md) | How the live build is served (GitHub Pages from `main`, no build step, no CI) |
+
+---
+
+*For the running version history, see [`../CHANGELOG.md`](../CHANGELOG.md). For gameplay and
+project layout, see the [root README](../README.md).*
