@@ -3,8 +3,8 @@
 > **Status: SCOPED via design grill. Not yet built.**
 > First grilled 2026-10-27 (the genre pivot); **refined in a full design grill 2026-10-28**
 > that set the time base, the economy, the operating surface, and the tone. This doc is the
-> parent program spec. It **supersedes** the roguelike framing in
-> [PLAN-v5.1-progression.md](PLAN-v5.1-progression.md) (legacy — may be removed). The storyline
+> parent program spec; its phased implementation spec lives in [plan-v5/](plan-v5/README.md). It
+> **supersedes** the roguelike framing of the retired `PLAN-v5.1-progression.md`. The storyline
 > bibles ([STORYLINE-v5-new-veridia.md](STORYLINE-v5-new-veridia.md),
 > [STORYLINE-v5-script.md](STORYLINE-v5-script.md)) remain a **later flavour layer**; their
 > roguelike *succession-loop* framing is dead (no resets now), but the **setting** survives and

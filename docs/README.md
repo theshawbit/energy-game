@@ -26,7 +26,7 @@ game, what's **planned**, and what's been **superseded**.
 | [`PLAN-v4.md`](PLAN-v4.md) | v4 | ✅ Built (phases A–G) |
 | [`PLAN-v4.2-control-room.md`](PLAN-v4.2-control-room.md) | v4.2 | ✅ Built — Control Room UI redesign (CR-1…CR-4) |
 | [`PLAN-v4.2.1-reliability-and-volatility.md`](PLAN-v4.2.1-reliability-and-volatility.md) | v4.2.1–4.2.3 | ✅ Built — wear = load × age, rare trips, volatile net-load |
-| [`PLAN-v5.1-progression.md`](PLAN-v5.1-progression.md) | v5.1 | ⚠️ **Superseded** by the v5 pivot (retained for history) |
+| [`plan-v5/`](plan-v5/README.md) | v5 | 📋 Planned — phased implementation spec (9 phases) for [`ROADMAP-v5.md`](ROADMAP-v5.md) |
 
 ## Narrative bibles (later flavour layer)
 
