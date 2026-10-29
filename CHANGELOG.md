@@ -11,14 +11,19 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 ### Planned — v5 "The Persistent Grid" (scoped, not built)
 
 A **genre pivot** from survival roguelike to a persistent management / operations sim: one
-grid you own and grow, no run reset, the goal being to keep a growing city powered. Captured
-in [`docs/ROADMAP-v5.md`](docs/ROADMAP-v5.md). Headline changes being designed: hard-phase
-operate-week → plan-window loop, variable auto-pause clock, dial-able dispatch (peakers
-dissolve into tunable gas), four axis-aligned KPIs per asset, operating-style-driven
-degradation, crew-limited per-KPI maintenance, lead-time construction, a regulated
-tariff+performance economy (retiring the merchant spot/contract layer), three currency lanes,
-emergent specialization, and dynamic weather/market events. `engine.js` stays sacred.
-Supersedes the earlier [`docs/PLAN-v5.1-progression.md`](docs/PLAN-v5.1-progression.md).
+grid you own and grow, no run reset, the goal being to keep a growing city powered. Fully
+scoped in a design grill (pivot 2026-10-27, refined 2026-10-28) and captured in
+[`docs/ROADMAP-v5.md`](docs/ROADMAP-v5.md). Headline design: a **daily** tactical loop (~3-min
+live day) inside a **Year ▸ Quarter ▸ Day** calendar (quarter = season = fiscal period, ~22
+days, ending in a scored board review); variable auto-pause clock; **Core+ dial-able dispatch**
+(commitment · output band · reserve hold · push; peakers dissolve into tunable gas); four
+axis-aligned KPIs mapped 1:1 to revenue; operating-style-driven degradation; **cut-throat
+quarter-end maintenance** with a soft-specialized, levelling crew pool; lead-time construction
+with an overextension soft-cap; a **hybrid economy** — regulated capacity floor + market swing
+(which *revives* `market.js`/`finance.js`/`capacity.js` rather than retiring them); three
+currency lanes with ⚡ automation gated to late game; emergent specialization; and a
+**corporate-dystopian, Rust-District-→-New-Veridia** tone. `engine.js` stays sacred. Supersedes
+the earlier [`docs/PLAN-v5.1-progression.md`](docs/PLAN-v5.1-progression.md).
 
 ## [4.2.6] — 2026-10-26
 
