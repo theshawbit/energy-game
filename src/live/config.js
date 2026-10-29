@@ -6,7 +6,10 @@ import { SOLAR_CF, WIND_CF, TECH } from "../constants.js";
 
 // ---- tuning (meant to be played with) ----
 export const CFG = {
-  secondsPerDay: 48,          // real seconds for a 24h cycle (1 hour ≈ 2s)
+  // v5: a ~3-minute engaged day (was 48s). At 180s a game-hour ≈ 7.5 real-sec, so a
+  // trip warning (strainWarn 1.6 gh ≈ 12s) and a peaker spin-up breathe — read-decide-act
+  // with intent, not twitch. All code + tests read this constant, so the pacing is central.
+  secondsPerDay: 180,         // real seconds for a 24h cycle (~3-min day; 1 game-hour ≈ 7.5s)
   startHour: 6,               // shift begins at 06:00
   startPeak: 780,             // MW peak demand, day 1
   startCash: 120000,          // $ on hand day 1, so the manage panel has an opening move
@@ -179,6 +182,17 @@ export const CFG = {
   },
   // named-buyer special offers (the Rolodex): occasional standout contracts
   offers: { dailyChance: 0.25 }, // per-day chance a buyer brings an offer (with the unlock)
+  // ---- v5 "The Persistent Grid" (Phase 1): the Year ▸ Quarter ▸ Day calendar +
+  // the variable clock. The day LENGTH is the top-level CFG.secondsPerDay above
+  // (one source, read by code + tests); these are the calendar/clock knobs. All
+  // v5 tuning lands under CFG.v5 so the persistent-grid balance stays central. ----
+  v5: {
+    daysPerQuarter: 22,       // ~22 game-days per quarter (a ×4 compression of a real 90-day Q)
+    quartersPerYear: 4,       // quarter = season = fiscal period; Q1 winter … Q4 autumn
+    fastSpeed: 3,             // fast-forward multiplier (skip calm hours); 1× is the ~3-min day
+    startYear: 1,             // the long arc begins at Year 1 …
+    startQuarter: 1,          // … Quarter 1, Day 1
+  },
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and
