@@ -22,8 +22,9 @@ quarter-end maintenance** with a soft-specialized, levelling crew pool; lead-tim
 with an overextension soft-cap; a **hybrid economy** — regulated capacity floor + market swing
 (which *revives* `market.js`/`finance.js`/`capacity.js` rather than retiring them); three
 currency lanes with ⚡ automation gated to late game; emergent specialization; and a
-**corporate-dystopian, Rust-District-→-New-Veridia** tone. `engine.js` stays sacred. Supersedes
-the earlier [`docs/PLAN-v5.1-progression.md`](docs/PLAN-v5.1-progression.md).
+**corporate-dystopian, Rust-District-→-New-Veridia** tone. `engine.js` stays sacred. The phased implementation spec
+lives in [`docs/plan-v5/`](docs/plan-v5/README.md) (9 phases); it retires the earlier
+`PLAN-v5.1-progression.md`.
 
 ## [4.2.6] — 2026-10-26
 
