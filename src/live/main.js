@@ -6,7 +6,7 @@
 // phase) and resumes into the next quarter.
 // ============================================================
 import { createGame, step, setTicker, beginNextQuarter } from "./sim.js";
-import { toggleUnit, upgradeUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
+import { toggleUnit, specializeUnit, raiseAxisCeiling, buyPerk, pinUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
 import { scheduleTask, cancelTask } from "./maint.js";
 import { promote, hireCrew } from "./crews.js";
 import { commitBuild } from "./construct.js";
@@ -53,8 +53,9 @@ function rollDailyOffer(){
 
 // manage mode (opens paused): hub-and-spoke navigation + per-page actions
 const menu = {
-  upgrade(id){ upgradeUnit(S, id); buildUnits(S, act); refreshPage(); render(S); },
   decommission(id){ decommissionUnit(S, id); buildUnits(S, act); refreshPage(); render(S); },
+  // v5 Phase 7: pin a plant against Dispatch Assist (fleet page toggle).
+  pin(id){ pinUnit(S, id); refreshPage(); render(S); },
   // v5 Phase 2 dials: commit re-renders the page (band/push enable with it); the
   // sliders write u.dials live without a page rebuild so the drag stays smooth.
   commit(id){ const u = S.fleet.find(x => x.id === id); if (u && u.dials){ u.dials.commit = !u.dials.commit; } refreshPage(); render(S); },
@@ -106,6 +107,11 @@ const planningActions = {
   promote(crewId){ promote(S, crewId); renderPlanning(S, planningActions); },
   hire(trade){ hireCrew(S, trade); renderPlanning(S, planningActions); },
   commitBuild(tech){ commitBuild(S, tech); renderPlanning(S, planningActions); },
+  // v5 Phase 7: progression — spend cash to specialize a plant's axis, RP to lift a tech
+  // family's axis ceiling, ⚡ to unlock a perk. All three repaint the office in place.
+  specialize(unitId, axis){ specializeUnit(S, unitId, axis); renderPlanning(S, planningActions); },
+  raiseCeiling(tech, axis){ raiseAxisCeiling(S, tech, axis); renderPlanning(S, planningActions); },
+  perk(perkId){ buyPerk(S, perkId); renderPlanning(S, planningActions); },
   begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; buildUnits(S, act); render(S); },
 };
 

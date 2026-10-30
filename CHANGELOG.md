@@ -176,6 +176,43 @@ See [`docs/plan-v5/phase-6-hybrid-economy.md`](docs/plan-v5/phase-6-hybrid-econo
 - **Still deferred:** the steep `peakGrowth` demand *cadence* (per-day compounding) is a dedicated
   balance pass, not this phase; `tools/balance.mjs` remains stale.
 
+### Added — v5 Phase 7: progression — specialization, ceilings & ⚡ perks (2026-10-30)
+
+The grid now **grows deeper, not just wider.** The v4 `Mk I→II→III` upgrade ladder is **retired**
+wholesale and replaced by three growth lanes, built at the quarter-end Development Office. See
+[`docs/plan-v5/phase-7-progression.md`](docs/plan-v5/phase-7-progression.md).
+
+- **`progression.js` (new, pure).** `applyUpgrade`/`upgradeCost`, `raiseCeiling`/`ceilingCost`,
+  `unlockPerk` + the automation gate (`automationTier`/`isAutomationUnlocked`), and the two
+  automation behaviours (`autoMaintenancePlan`/`dispatchAssist`). State in → values out / mutate-`S`.
+- **Specialization (cash).** Each thermal plant carries per-axis attainable-maxes `u.caps` (seeded at
+  100 by `freshCaps`). Spending cash raises one axis's cap by a step along a **steepening** per-axis
+  curve (`cost0` × `costGrowth^steps`) — no branch lock, any mix allowed, spreading thin costs more.
+  The four axes **subsume the old Mk tier** (its cap/fail/spin effects now live on Output/Reliability/
+  Flexibility). Renewables and batteries grow by *building more*, not specializing.
+- **KPI curves read past 100.** `kpi.js` now extends every effect curve to `CFG.v5.upgrade.axisMax`
+  (150) so a specialized axis is a real edge: Output beats nameplate MW, Efficiency burns less fuel,
+  Flexibility ramps faster / turns down further. `degradeKPIs` clamps to each axis's own cap (not a
+  flat 100), and maintenance restores *toward the raised cap* — a specialized plant is nursed back to
+  its upgraded level, not erased to base.
+- **Research ceilings (RP).** Cash alone reaches `baseCeiling` (120); `raiseCeiling` spends RP to lift
+  a whole **tech family's** hard ceiling on an axis by `ceilingStep` (up to `axisMax`), stored in
+  `S.capCeil`. The named v3 research tree (`research.js`) is kept intact for build gates / buffs; its
+  now-inert `amp-upgrades` node is re-pointed to a **15% discount** on specialization cost.
+- **⚡ Perks + the automation growth-gate.** `unlockPerk` spends ⚡ on roster expansion, research-branch
+  unlocks (the v5 path that opens `advgen`/`forecasting` nodes), and **automation** —
+  **Auto-Maintenance** (free crews auto-assigned to the neediest plants at the review; still paid) and
+  **Dispatch Assist** (unpinned committed plants open their band to the legal max each tick). Automation
+  is **growth-tier-gated** (`CFG.v5.perks.tiers`: fleet size × year) — a small grid can't automate, so
+  you feel the clerical burden of scale before earning the relief. A **📌 pin** toggle shields a
+  hand-tuned plant from Dispatch Assist.
+- **Development Office** UI in the Planning Office: per-plant R·E·O·F specialization chips, per-family
+  ceiling raises, and the perk catalogue (automation shown locked-until-tier).
+- New `progression` suite (40 checks); `research`/`sim` re-based off the retired Mk ladder; all
+  **24 suites green**.
+- **Still deferred:** the `peakGrowth` demand cadence re-tune (carried from Phase 6); v4 narrative copy
+  (→ Phase 9); `tools/balance.mjs` remains stale.
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a

@@ -1,6 +1,6 @@
 # Grid Operator v5 — Implementation Plan (master index)
 
-> **Status: building. Phases 1–5 shipped (2026-10-29), Phase 6 shipped (2026-10-30); Phases 7–9 planned.** This is the
+> **Status: building. Phases 1–5 shipped (2026-10-29), Phases 6–7 shipped (2026-10-30); Phases 8–9 planned.** This is the
 > engineering decomposition of [`docs/ROADMAP-v5.md`](../ROADMAP-v5.md) (the program spec)
 > into nine independently shippable phases. The ROADMAP is *what and why*; this folder is
 > *how and in what order*. `engine.js` stays **sacred** throughout — `dispatchHour()` +
@@ -27,7 +27,7 @@ section) is what actually gates them.
 | 4 | **Maintenance & crews** | [phase-4-maintenance-crews.md](phase-4-maintenance-crews.md) | `crews.js`, `maint.js` | ✅ shipped 2026-10-29 |
 | 5 | **Construction** | [phase-5-construction.md](phase-5-construction.md) | `construct.js` | ✅ shipped 2026-10-29 |
 | 6 | **Hybrid economy** | [phase-6-hybrid-economy.md](phase-6-hybrid-economy.md) | revives `market.js`/`finance.js`/`capacity.js`, `verdict.js` | ✅ shipped 2026-10-30 |
-| 7 | **Progression** | [phase-7-progression.md](phase-7-progression.md) | `progression.js` | ☐ planned |
+| 7 | **Progression** | [phase-7-progression.md](phase-7-progression.md) | `progression.js` | ✅ shipped 2026-10-30 |
 | 8 | **Crisis toolkit & events** | [phase-8-crisis-events.md](phase-8-crisis-events.md) | `crisis.js`, `events.js` | ☐ planned |
 | 9 | **World & narrative** | [phase-9-world-narrative.md](phase-9-world-narrative.md) | `world.js` + copy | ☐ planned |
 
@@ -158,7 +158,10 @@ KPIAxis = "reliability" | "efficiency" | "output" | "flexibility";
 | `commitBuild(S, tech) → Build` | 5 | planning UI |
 | `tickBuilds(S)` *(mutates `S.builds`, fleet on completion)* | 5 | 1 (quarter rollover) |
 | `settleQuarter(S) → Verdict` | 6 | 1 (planning mode), 7 |
-| `applyUpgrade(S, unitId, axis) → bool` | 7 | planning UI |
+| `applyUpgrade(S, unitId, axis) → bool` *(cash; raises `u.caps[axis]`)* | 7 | planning UI |
+| `raiseCeiling(S, tech, axis) → bool` *(RP; lifts the family hard ceiling)* | 7 | planning UI |
+| `unlockPerk(S, perkId) → bool` *(⚡; roster / branch / tier-gated automation)* | 7 | planning UI |
+| `autoMaintenancePlan(S)` / `dispatchAssist(S)` *(automation perks)* | 7 | 1 (planning entry) / sim loop |
 | `triggerLoadShed(S, tier)` / `triggerDemandResponse(S)` | 8 | operating UI |
 | `rollRegime(S)` | 8 | 1 (quarter rollover) |
 

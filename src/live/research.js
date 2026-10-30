@@ -20,7 +20,7 @@
 export const RESEARCH = [
   // transmission / efficiency
   { id:"amp-upgrades", branch:"transmission", label:"Modular Upgrades", rpCost:60, prereq:[], metaGate:null,
-    desc:"Every Mk upgrade adds +10% more capacity" },
+    desc:"−15% cost on every plant specialization upgrade" },
   { id:"buff-wear",    branch:"transmission", label:"Condition Monitoring", rpCost:50, prereq:[], metaGate:null,
     desc:"−15% plant wear while generating" },
   { id:"grid-efficiency", branch:"transmission", label:"Grid Efficiency", rpCost:65, prereq:[], metaGate:null,
@@ -91,7 +91,7 @@ export function computeResearchMods(research = {}){
   const has = id => !!research[id];
   return {
     wearMult:        has("buff-wear")    ? 0.85 : 1,   // multiplies CFG.wearRate
-    upgradeCapBonus: has("amp-upgrades") ? 0.10 : 0,   // added to UPGRADE.capMult−1
+    upgradeDiscount: has("amp-upgrades") ? 0.15 : 0,   // v5 Phase 7: cuts progression.upgradeCost (cash axis upgrades)
     spinMult:        has("grid-efficiency") ? 0.85 : 1,// multiplies thermal spin cost
     startTimeMult:   has("fast-ramp")    ? 0.80 : 1,   // multiplies peaker spin-up time
     smrUnlocked:     has("unlock-smr"),                // build gates (see config.BUILD_GATE)
