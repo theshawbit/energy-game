@@ -34,6 +34,9 @@
         <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
         <div class="hstat"><span class="k">Carbon $/t</span><span class="v" id="s-carbon">$0</span></div>
         <div class="hstat"><span class="k">Satisfaction</span><span class="v" id="s-sat">100%</span></div>
+        <!-- v5.1 Phase 2: grid-stability HP bar. 0% = pristine, 100% = collapse. Fills on a
+             shortfall, drains on served hours; topping out ends the run. Phase 7 styles it. -->
+        <div class="hstat hstat-stability"><span class="k">Grid Stability</span><span class="v" id="s-stability">OK</span></div>
       </div>
     </header>
 
@@ -117,6 +120,9 @@
   </div>
 
   <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+  <!-- v5.1 Phase 2: the grid-collapse end screen — shown when the stability bar tops out.
+       Run summary + a roguelite restart (profile's banked ⚡/skills/records carry over). -->
+  <div class="overlay" id="collapseOverlay"><div class="modal collapse" id="collapse"></div></div>
   <div class="overlay" id="menuOverlay"><div class="modal menu" id="menu"></div></div>
   <div class="overlay" id="metaOverlay"><div class="modal menu" id="meta"></div></div>
   <div class="overlay" id="homeOverlay"><div class="modal home" id="home"></div></div>

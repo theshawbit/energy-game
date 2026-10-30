@@ -85,7 +85,10 @@ function st({ kpiAvg = { reliability: 100, efficiency: 100, output: 100, flexibi
       s1 > 0 && s1 < 100 && s2 > s1, `strain ${s1.toFixed(1)} → ${s2.toFixed(1)}`);
     for (let i = 0; i < 8; i++) step(S, 1);
     check("a sustained shortfall costs cash (never a free ride)", S.cash < cash0);
-    check("and the grid keeps running — no game-over, ever", S.over === undefined && S.won === undefined);
+    // v5.1 Phase 2: a shortfall now FILLS the stability bar; the run keeps running until it
+    // tops out (ending is pinned in sim.test #64 + stability.test), and win-state stays retired.
+    check("the shortfall fills the stability bar; the grid runs on until it tops out",
+      S.over === false && S.won === undefined && S.stability.hp > 0, `hp ${S.stability.hp.toFixed(1)}`);
   } finally { Math.random = realRandom; }
 }
 
@@ -108,7 +111,7 @@ function st({ kpiAvg = { reliability: 100, efficiency: 100, output: 100, flexibi
       !!S.economy.lastVerdict && typeof S.economy.lastVerdict.pnl === "number" && S.calendar.mode === "planning");
     check("the quarter log reset for the new quarter (wages/served cleared)",
       S.quarterLog.servedMWh === 0 && S.quarterLog.swingPay === 0 && S.quarterLog.wages === 0);
-    check("the rollover never ends the game", S.over === undefined);
+    check("a healthy rollover does not end the run (S.over stays false)", S.over === false);
   } finally { Math.random = realRandom; }
 }
 

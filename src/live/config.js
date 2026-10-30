@@ -450,6 +450,24 @@ export const CFG = {
       // ± daily swing of the live peak around the quarter baseline, by season (summer days swing hardest).
       noiseAmp: { winter: 0.06, spring: 0.04, summer: 0.08, autumn: 0.04, default: 0.05 },
     },
+    // Phase 2 — the grid-stability HP bar and the fail-state. A reservoir that fills on a
+    // shortfall (asymmetric by cause) and drains on served hours; topping out ends the run
+    // into a roguelite restart. Numbers are PLACEHOLDER balance data — the tests pin the
+    // RELATIONSHIPS (fillCapacity > fillDispatch > drainRate; verdict heals and damages),
+    // not these values; the real curve is settled by tools/balance.mjs + a UI prototype.
+    // (Re-seating strainRate/strainRecover/bankruptcyGrace against this model is likewise
+    // deferred to that balance pass, per the v5.1 "exact tuning numbers" decision.)
+    stability: {
+      max: 100,            // reservoir ceiling; hp ≥ max ends the run
+      epsilon: 0.5,        // a shortfall under this MW counts as "served" (float slack)
+      fillCapacity: 8,     // hp/game-hour on a TRUE capacity shortfall (every lever exhausted)
+      fillDispatch: 3,     // hp/game-hour on a dispatch shortfall (a move remained) — < fillCapacity
+      drainRate: 1.5,      // hp/game-hour recovered on a served hour — < fillCapacity (flicker nets up)
+      verdictPar: 0.5,     // the 0..1 verdict grade that neither heals nor harms (par)
+      verdictHeal: 25,     // max hp healed by a perfect quarter (scaled by grade above par)
+      verdictDamage: 15,   // max hp damage from a zero-grade quarter (scaled by grade below par)
+      verdictFillBump: 0.5,// max added to fillMult by a zero-grade quarter (accelerates next quarter)
+    },
   },
 };
 

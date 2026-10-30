@@ -11,6 +11,7 @@
 // deep-merges the current shape so a partial save gains any missing fields.
 // ============================================================
 import { CFG } from "./config.js";
+import { createGame } from "./sim.js";
 
 // v5 clean-break namespace. v4 keys (grid-operator-live-v*) are left untouched and
 // are never read, so a returning player starts the persistent grid fresh.
@@ -61,4 +62,44 @@ export function loadProfile(){
 
 export function saveProfile(profile){
   try { localStorage.setItem(KEY, JSON.stringify(profile)); } catch (e) { /* ignore */ }
+}
+
+// v5.1 Phase 2 — bank the just-ended run's records into the profile (pure; no storage, no
+// grid creation), so the roguelite restart keeps what the run EARNED without touching the
+// banked ⚡/skills. Each record keeps its best; the ⚡ already banked quarterly (Phase 6)
+// stays in profile.currency untouched — the restart mints nothing new.
+export function bankRun(profile, S){
+  const days = Math.max(0, (S.day ?? 1) - (S.runStartDay ?? 1) + 1);
+  const peak = Math.round(S.quarterPeak ?? S.peak ?? 0);
+  const netWorth = Math.round(S.peakNetWorth ?? S.cash ?? 0);
+  const cleanShare = (S.servedMWh ?? 0) > 0 ? (S.cleanMWh ?? 0) / S.servedMWh : 0;
+  const spotKill = Math.round(S.bestSpotKill ?? 0);
+  const at = { year: S.calendar?.year ?? null, quarter: S.calendar?.quarter ?? null, day: S.day ?? null };
+
+  profile.best = profile.best || { days: 0, score: 0, peak: 0 };
+  profile.best.days = Math.max(profile.best.days || 0, days);
+  profile.best.peak = Math.max(profile.best.peak || 0, peak);
+
+  profile.records = profile.records || {};
+  const bump = (key, value) => {
+    const r = profile.records[key] || { value: 0, at: null };
+    if (value > (r.value || 0)){ r.value = value; r.at = at; }
+    profile.records[key] = r;
+  };
+  bump("longevity", days);
+  bump("netWorth", netWorth);
+  bump("cleanShare", Math.round(cleanShare * 1000) / 1000);
+  bump("spotKill", spotKill);
+  return profile;
+}
+
+// The roguelite restart: bank this run's records, persist the profile, and hand back a FRESH
+// grid (baseline demand, starting fleet/cash, S.over cleared) that carries the profile's
+// banked skills + unlocks + credit standing — exactly what a new run gets. No currency is
+// minted here (that is the quarterly KPIs' job, Phase 6); the restart only persists what was
+// already banked. The caller (main.js) re-seeds the live RNG streams + seasonal regime.
+export function restartRun(S, profile){
+  bankRun(profile, S);
+  saveProfile(profile);
+  return createGame(profile.skills, profile.researchUnlocked, [], profile.credit?.standing, profile.economyUnlocked);
 }

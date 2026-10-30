@@ -575,8 +575,10 @@ function insolvent(debt){
 {
   const g = createGame({}, {}, [], CFG.creditStart, { "runlen-1": true });
   check("createGame copies economyUnlocked onto state", g.economyUnlocked["runlen-1"] === true);
-  check("v5 state has no run-end fields (maxRunDays/won/over all absent)",
-    g.maxRunDays === undefined && g.won === undefined && g.over === undefined);
+  // v5.1 Phase 2: the fail-state RETURNS via the stability bar — S.over is real again (false
+  // at a fresh start), but the v4 finite-run fields (maxRunDays/won) stay retired.
+  check("v5.1 state: maxRunDays/won retired; S.over present and false at a fresh start",
+    g.maxRunDays === undefined && g.won === undefined && g.over === false);
 }
 {
   S = createGame(); S.running = true; S.day = 5; S.t = 23.9; const abs0 = S.calendar.absDay;
@@ -676,14 +678,20 @@ function insolvent(debt){
     S.calendar.absDay === abs0 + 1 && S.day === S.calendar.absDay, `absDay ${S.calendar.absDay}, day ${S.day}`);
 }
 
-// 64) No game-over anywhere: a chronically under-built grid degrades but never ends
+// 64) v5.1 Phase 2: the fail-state RETURNS — a sustained shortfall fills the grid-stability
+//     bar and ENDS the run (reverses the v5 no-game-over pillar). Seed the bar near the top so
+//     the integration check stays quick; the fill/drain RATES are pinned in stability.test.mjs.
 {
   S = createGame(); S.running = true; S.calm = true; S.peak = 5000; // demand ≫ capacity
   S.fleet.filter(u => u.kind === "renew").forEach(u => u.status = "off"); // deterministic deep shortfall
-  let everEnded = false;
-  for (let i = 0; i < 60; i++){ if (step(S, 0.5)) everEnded = true; }
-  check("chronic shortfall inflicts pain (strain pins) but NEVER ends the game",
-    !everEnded && S.over === undefined && S.brownout === true && S.strain >= 99, `strain ${S.strain.toFixed(0)}`);
+  S.stability.hp = S.stability.max - 1; // one shortfall tick from collapse
+  for (let i = 0; i < 40 && !S.over; i++) step(S, 0.5);
+  check("a sustained shortfall tops out the stability bar and ENDS the run",
+    S.over === true && S.reason === "grid-collapse" && S.brownout === true,
+    `hp ${S.stability.hp.toFixed(1)}, over ${S.over}`);
+  const t0 = S.t;
+  step(S, 0.5); // collapsed → step() must freeze the clock
+  check("once collapsed, step() freezes the run", S.t === t0);
 }
 
 // 65) Quarter-end flips to the Planning Office + auto-pauses; beginNextQuarter resumes
