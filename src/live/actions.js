@@ -6,7 +6,8 @@
 import { setTicker } from "./sim.js";
 import { CFG, salvageValue } from "./config.js";
 import { doResearch, researchById } from "./research.js";
-import { applyUpgrade, raiseCeiling, unlockPerk, upgradeCost, ceilingCost, PERKS } from "./progression.js";
+import { unlockPerk, upgradeCost, PERKS } from "./progression.js";
+import { queueUpgrade } from "./contractor.js";
 import { dailyBaseline } from "./market.js";
 import { contractPrice, expectedOutput, makeContract, creditRating } from "./finance.js";
 
@@ -37,29 +38,23 @@ export function pinUnit(S, id){
 // commitBuild / tickBuilds) — a plant produces nothing until it comes online quarters
 // later, so you build ahead of the steepening demand curve or the city browns you out.
 
-// v5 Phase 7: SPECIALIZE a thermal plant — spend cash to raise one KPI axis's attainable
-// max by a step (progression.applyUpgrade), steepening per step and toward the tech family's
-// hard ceiling. The four axes subsume the old Mk tier (cap/fail/spin all live on them now).
+// v5.1 Phase 3: UPGRADE a thermal plant — commit cash to buy the next tier on one KPI axis,
+// queued on the rolling CONTRACTOR line (contractor.queueUpgrade). The cash leaves now; the
+// tier (and the raised cap it unlocks) lands on the job's lead-time day — the fast capacity
+// channel between builds. One in-flight job per axis; refused at tier 9 / short on cash.
 export function specializeUnit(S, id, axis){
   const u = S.fleet.find(x => x.id === id); if (!u) return { ok:false };
-  if (!u.caps) return { ok:false, msg:"Only thermal plants can be specialized." };
-  const cost = upgradeCost(S, u, axis);
-  if (!applyUpgrade(S, id, axis)){
-    return { ok:false, msg: S.cash < cost ? "Not enough cash for that upgrade." : "That axis is at its hard ceiling — research lifts it." };
+  if (!u.tiers) return { ok:false, msg:"Only thermal plants can be upgraded." };
+  const cost = upgradeCost(u, axis, S.rmods);
+  const job = queueUpgrade(S, id, axis);
+  if (!job){
+    const maxed = (u.tiers[axis] ?? 0) >= CFG.v5_1.upgrade.tierMax;
+    const queued = (S.contractor || []).some(j => j.unitId === id && j.axis === axis);
+    return { ok:false, msg: maxed ? "That axis is already at tier 9 (the cap)."
+      : queued ? "An upgrade on that axis is already in the contractor queue."
+      : "Not enough cash for that upgrade." };
   }
-  setTicker(S, `✓ ${u.name} — ${axis} raised to ${u.caps[axis]} (−$${cost.toLocaleString()}).`);
-  return { ok:true };
-}
-
-// v5 Phase 7: spend RP to lift a WHOLE tech family's hard ceiling on an axis
-// (progression.raiseCeiling), up to CFG.v5.upgrade.axisMax — so a subsequent cash upgrade
-// can climb past baseCeiling. Keyed by the plant's tech, so it buffs every plant of that family.
-export function raiseAxisCeiling(S, tech, axis){
-  const cost = ceilingCost(S, tech, axis);
-  if (!raiseCeiling(S, tech, axis)){
-    return { ok:false, msg: (S.rp || 0) < cost ? "Not enough Research Points." : "That family axis is already at the absolute max." };
-  }
-  setTicker(S, `🔬 ${tech} ${axis} ceiling raised (−${cost} RP).`);
+  setTicker(S, `✓ ${u.name} — ${axis} upgrade to tier ${job.toTier} queued (−$${cost.toLocaleString()}, ${job.daysLeft}d).`);
   return { ok:true };
 }
 

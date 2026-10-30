@@ -10,7 +10,8 @@ import { TASKS, taskRestore } from "./maint.js";
 import { TRADES, tradeModifier } from "./crews.js";
 import { BUILDABLES, forecastDemand, concurrencySlip } from "./construct.js";
 import { CFG, BUILD_ORDER, BUILD_GATE, salvageValue } from "./config.js";
-import { AXES, upgradeCost, axisHardCeiling, canUpgrade, ceilingCost, canRaiseCeiling, PERKS, isAutomationUnlocked, automationTier, canUnlockPerk } from "./progression.js";
+import { AXES, upgradeCost, canUpgrade, axisTierValue, upgradeTierMax, PERKS, isAutomationUnlocked, automationTier, canUnlockPerk } from "./progression.js";
+import { contractorLoad } from "./contractor.js";
 import { loadShedTiers, canDemandRespond } from "./crisis.js";
 import { eraOf, cassLine } from "./world.js"; // v5 Phase 9: identity arc + C.A.S.S. voice (cosmetic)
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
@@ -598,38 +599,37 @@ function contractBook(S){
   </div>`;
 }
 
-// v5 Phase 7: the Development Office — the three growth lanes, built at the quarter review.
-// SPECIALIZE (cash) raises a thermal plant's per-axis cap; CEILINGS (RP) lift a whole tech
-// family's hard ceiling; PERKS (⚡) buy roster/branch unlocks and growth-tier-gated automation.
+// v5.1 Phase 3: the Development Office — per-plant UPGRADE LADDERS + the contractor queue.
+// Each thermal plant shows four axis chips: current tier, next-tier cost, and a "queue" button
+// that commits cash to the rolling contractor line (the tier lands on its lead-time day). The
+// in-flight queue is listed below. PERKS (⚡) keep their roster/branch/automation lane.
 const AXIS_LETTER = { reliability: "R", efficiency: "E", output: "O", flexibility: "F" };
 function progressionSection(S){
-  const thermal = S.fleet.filter(u => u.caps);
-  // --- specialization: per-plant axis upgrade chips ---
+  const thermal = S.fleet.filter(u => u.tiers);
+  const tierMax = upgradeTierMax, lead = CFG.v5_1.upgrade.leadDays;
+  // --- per-plant axis ladder chips (tier N/9 · next-tier cost) ---
   const specRows = thermal.map(u => {
     const chips = AXES.map(ax => {
-      const cap = u.caps[ax], ceil = axisHardCeiling(S, u.tech, ax);
-      if (cap >= ceil) return `<button class="spec-chip" disabled title="${ax} at ceiling ${ceil}">${AXIS_LETTER[ax]} ${cap}·max</button>`;
-      const cost = upgradeCost(S, u, ax), can = canUpgrade(S, u.id, ax);
+      const tier = u.tiers[ax] ?? 0;
+      const queued = (S.contractor || []).some(j => j.unitId === u.id && j.axis === ax);
+      if (tier >= tierMax) return `<button class="spec-chip" disabled title="${ax} at tier ${tierMax} (max cap ${axisTierValue(tierMax)})">${AXIS_LETTER[ax]} ${tier}/${tierMax}·max</button>`;
+      if (queued) return `<button class="spec-chip" disabled title="${ax} upgrade in the contractor queue">${AXIS_LETTER[ax]} ${tier}/${tierMax} · ⏳</button>`;
+      const cost = upgradeCost(u, ax, S.rmods), can = canUpgrade(S, u.id, ax);
       return `<button class="spec-chip" data-spec="${u.id}" data-spec-axis="${ax}" ${can ? "" : "disabled"}
-        title="${ax}: ${cap} → ${cap + CFG.v5.upgrade.step} (ceiling ${ceil})">${AXIS_LETTER[ax]} ${cap} · ${money(cost)}</button>`;
+        title="${ax}: tier ${tier} → ${tier + 1} (cap ${axisTierValue(tier)} → ${axisTierValue(tier + 1)}), ${lead}d">${AXIS_LETTER[ax]} ${tier}/${tierMax} · ${money(cost)}</button>`;
     }).join("");
     return `<div class="spec-row"><div class="spec-nm">${u.name}<small class="faint">${u.tech}</small></div>
       <div class="spec-chips">${chips}</div></div>`;
-  }).join("") || `<p class="faint">No thermal plants to specialize — renewables and storage grow by building more.</p>`;
+  }).join("") || `<p class="faint">No thermal plants to upgrade — renewables and storage grow by building more.</p>`;
 
-  // --- ceilings: per tech family (one row each), RP to lift the hard ceiling ---
-  const techs = [...new Set(thermal.map(u => u.tech))];
-  const ceilRows = techs.map(tech => {
-    const chips = AXES.map(ax => {
-      const ceil = axisHardCeiling(S, tech, ax);
-      if (ceil >= CFG.v5.upgrade.axisMax) return `<button class="spec-chip" disabled>${AXIS_LETTER[ax]} ${ceil}·max</button>`;
-      const cost = ceilingCost(S, tech, ax), can = canRaiseCeiling(S, tech, ax);
-      return `<button class="spec-chip ceil" data-ceil="${tech}" data-ceil-axis="${ax}" ${can ? "" : "disabled"}
-        title="${tech} ${ax} ceiling: ${ceil} → ${ceil + CFG.v5.upgrade.ceilingStep}">${AXIS_LETTER[ax]} →${ceil + CFG.v5.upgrade.ceilingStep} · ${cost}RP</button>`;
-    }).join("");
-    return `<div class="spec-row"><div class="spec-nm">${tech}<small class="faint">family ceiling</small></div>
-      <div class="spec-chips">${chips}</div></div>`;
-  }).join("") || "";
+  // --- the rolling contractor queue (in-flight upgrade jobs) ---
+  const jobRows = (S.contractor || []).map(j => {
+    const u = S.fleet.find(x => x.id === j.unitId);
+    return `<li><span>${u ? u.name : j.unitId} · ${j.axis} → tier ${j.toTier}</span><span class="faint">${Math.ceil(j.daysLeft)}d left</span></li>`;
+  }).join("");
+  const queueBlock = contractorLoad(S)
+    ? `<h4 class="dev-perk-h">🏗 Contractor queue <small class="faint">— ${contractorLoad(S)} in flight (own labor, parallel to crews)</small></h4><ul class="dev-queue">${jobRows}</ul>`
+    : "";
 
   // --- perks: roster / branch unlocks / growth-tier-gated automation ---
   const tier = automationTier(S);
@@ -643,11 +643,11 @@ function progressionSection(S){
   }).join("");
 
   return `<div class="pl-section">
-    <h3>Development Office <small class="faint">— specialize plants (cash) · lift family ceilings (RP) · perks (⚡)</small></h3>
+    <h3>Development Office <small class="faint">— upgrade plants on the rolling contractor line (cash) · perks (⚡)</small></h3>
     <div class="dev-grid">
-      <div class="dev-col"><h4>Specialize <small class="faint">R·E·O·F caps</small></h4>${specRows}</div>
-      ${ceilRows ? `<div class="dev-col"><h4>Family ceilings <small class="faint">RP lifts past ${CFG.v5.upgrade.baseCeiling}</small></h4>${ceilRows}</div>` : ""}
+      <div class="dev-col"><h4>Upgrade ladders <small class="faint">R·E·O·F · tier/${tierMax}</small></h4>${specRows}</div>
     </div>
+    ${queueBlock}
     <h4 class="dev-perk-h">⚡ Perks <small class="faint">— grid at automation tier ${tier}</small></h4>
     <div class="skill-list">${perkRows}</div>
   </div>`;
@@ -769,9 +769,8 @@ export function renderPlanning(S, actions){
   $("modal").querySelectorAll("[data-promote]").forEach(b => b.onclick = () => actions.promote(b.dataset.promote));
   $("modal").querySelectorAll("[data-hire]").forEach(b => b.onclick = () => actions.hire(b.dataset.hire));
   $("modal").querySelectorAll("[data-commit-build]").forEach(b => b.onclick = () => actions.commitBuild(b.dataset.commitBuild));
-  // v5 Phase 7: Development Office — specialize (cash), lift family ceilings (RP), buy perks (⚡)
+  // v5.1 Phase 3: Development Office — queue a cash upgrade (rolling contractor line), buy perks (⚡)
   $("modal").querySelectorAll("[data-spec]").forEach(b => b.onclick = () => actions.specialize(b.dataset.spec, b.dataset.specAxis));
-  $("modal").querySelectorAll("[data-ceil]").forEach(b => b.onclick = () => actions.raiseCeiling(b.dataset.ceil, b.dataset.ceilAxis));
   $("modal").querySelectorAll("[data-perk]").forEach(b => b.onclick = () => actions.perk(b.dataset.perk));
   $("beginQ").onclick = actions.begin;
 }

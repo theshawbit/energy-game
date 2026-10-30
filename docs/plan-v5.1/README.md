@@ -1,6 +1,6 @@
 # Grid Operator v5.1 — Rebalance & Rework (master index)
 
-> **Status: building (grill 2026-10-30). Phases 1–2 shipped 2026-10-30.** This is the engineering decomposition of the v5.1
+> **Status: building (grill 2026-10-30). Phases 1–3 shipped 2026-10-30.** This is the engineering decomposition of the v5.1
 > rebalance grill into seven independently shippable phases. v5 shipped all nine phases
 > ([`../plan-v5/`](../plan-v5/README.md)); a week of play exposed a structural flaw — **demand
 > (compounding +6%/day) outran the only capacity lever (quarter-end builds), dropping the player
@@ -37,7 +37,7 @@ own doc below. Order follows the dependency graph.
 | :-- | :--- | :--- | :--- | :--- |
 | 1 | **Demand curve** | [phase-1-demand-curve.md](phase-1-demand-curve.md) | `demand.js` (new, pure) + `sim.js` demand step | ✅ shipped 2026-10-30 |
 | 2 | **Fail-state & stability HP bar** | [phase-2-failstate-stability.md](phase-2-failstate-stability.md) | `stability.js` (new, pure) + restart path | ✅ shipped 2026-10-30 |
-| 3 | **Upgrade ladders & contractor queue** | [phase-3-upgrades-contractor.md](phase-3-upgrades-contractor.md) | reworks `progression.js`; new `contractor.js` | ☐ planned |
+| 3 | **Upgrade ladders & contractor queue** | [phase-3-upgrades-contractor.md](phase-3-upgrades-contractor.md) | reworks `progression.js`; new `contractor.js` | ✅ shipped 2026-10-30 |
 | 4 | **Rolling maintenance** | [phase-4-rolling-maintenance.md](phase-4-rolling-maintenance.md) | reworks `maint.js`, `crews.js` | ☐ planned |
 | 5 | **Daily Brief loop** | [phase-5-daily-brief.md](phase-5-daily-brief.md) | `brief.js` (new) + `sim.js` orchestrator | ☐ planned |
 | 6 | **KPI → currency economy** | [phase-6-kpi-currency.md](phase-6-kpi-currency.md) | `scorecard.js` (new, pure); `verdict.js`, `meta.js` | ☐ planned |

@@ -26,6 +26,7 @@ import { computeMutatorMods } from "./mutators.js";
 import { rollRegime, regimeMods } from "./events.js";
 import { tickCrisis, activeShedMW, activeDrShave } from "./crisis.js";
 import { freshStability, tickStability, applyVerdictToStability } from "./stability.js"; // v5.1 Phase 2: fail-state HP bar
+import { tickContractor } from "./contractor.js"; // v5.1 Phase 3: rolling upgrade queue
 import { exogenousBaseline, reserveMargin, spotPrice, swingCoeff, swingEarn } from "./market.js";
 import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
 import { forecastFog, forecastInputs } from "./forecast.js";
@@ -108,10 +109,11 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     crews: Array.from({ length: CFG.v5.crews.startCrews }, (_, i) => makeCrew(TRADES[i % TRADES.length], i + 1)),
     crewSeq: CFG.v5.crews.startCrews, tasks: [], taskSeq: 0,
     zap: 0, rosterCap: CFG.v5.crews.baseRoster,
-    // v5 Phase 7: progression. `capCeil` holds RP-raised hard-ceiling bonuses per tech+axis
-    // (empty = baseCeiling); `perks` holds unlocked ⚡ perks. Per-plant cash upgrades live on
-    // u.caps (seeded by freshCaps). See progression.js.
-    capCeil: {}, perks: {},
+    // v5 Phase 7 / v5.1 Phase 3: progression. `perks` holds unlocked ⚡ perks. Per-plant upgrades
+    // now live on u.tiers → u.caps (seeded by freshTiers/freshCaps) and resolve through the rolling
+    // `contractor` queue (contractor.js); contractorSeq ids the jobs. The RP family-ceiling lane
+    // (S.capCeil) is RETIRED — the 9-tier ladder defines the ceiling directly. See progression.js.
+    perks: {}, contractor: [], contractorSeq: 0,
     // v5 Phase 8: mid-quarter crisis tools (null = inactive) + the seasonal event regime
     // (null until main.js rolls Q1; the rollover re-rolls it each quarter). drCooldown ages
     // down in tickCrisis. S.mmods is driven by regimeMods once a regime is live.
@@ -583,6 +585,9 @@ export function step(S, dt){
   // v5 Phase 8: age the crisis tools (expire a finished shed/DR window, wind the DR
   // cooldown down) — they were consumed in the demand calc above, so age them now.
   tickCrisis(S, dtH);
+  // v5.1 Phase 3: age the rolling upgrade queue — lands a committed tier on its lead-time day
+  // (its own contractor labor; never touches the maintenance crew pool).
+  tickContractor(S, dtH);
 
   // insolvency (v4, Phase C): a second fail-path beside the blackout. Being in the
   // red with debt triggers a one-time default (credit cratered for the run); a
