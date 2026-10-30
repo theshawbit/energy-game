@@ -20,6 +20,7 @@ import { freshClock, tickClock, autoPause } from "./clock.js";
 import { applyDials, cycleCost } from "./dispatch.js";
 import { degradeKPIs, freshKPIs, heatRateMult } from "./kpi.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
+import { stepDemand, rollQuarterPeak } from "./demand.js"; // v5.1 Phase 1: hybrid demand curve
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
 import { rollRegime, regimeMods } from "./events.js";
@@ -63,7 +64,12 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     // ever ends, so there is no over/won/maxRunDays (failure is stagnation). S.day
     // stays as the monotonic demand clock and mirrors S.calendar.absDay.
     calendar:freshCalendar(), clock:freshClock(),
-    t:CFG.startHour, day:1, peak:CFG.startPeak, peakGrowth:effPeakGrowth(mods),
+    // v5.1 Phase 1: the hybrid demand curve. peak = live daily peak (baseline × daily noise);
+    // quarterPeak = the plannable baseline that steps at each rollover; peakGrowthMult carries the
+    // meta efficiency skill (≤1 slows growth) into the quarterly step. Day 1 peak == baseline.
+    t:CFG.startHour, day:1, peak:CFG.startPeak, quarterPeak:CFG.startPeak,
+    nextQuarterPeak:Math.round(CFG.startPeak * (1 + CFG.v5_1.demand.stepFrac * (mods.peakGrowthMult ?? 1))),
+    peakGrowthMult:mods.peakGrowthMult,
     cash:CFG.startCash + mods.startCashBonus, satisfaction:100, strain:0,
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
     rp:0, rdFunding:0, research:{}, rmods:computeResearchMods({}), // in-run research (v3)
@@ -180,11 +186,11 @@ export function surviveDay(S){
   // (the demand clock the economy reads). The grid never resets.
   const rolled = advanceCalendar(S);
   S.day = S.calendar.absDay;
-  // v5 Phase 6 stagnation: a quarter the overlord judged short stalls demand growth —
-  // the city stops expanding toward an operator who can't keep it lit. growthStall ∈
-  // [0,1] (0 = full growth; default) shaves the per-day growth STEP, never the base.
-  const stall = S.economy?.growthStall ?? 0;
-  S.peak = Math.round(S.peak * (1 + (S.peakGrowth - 1) * (1 - stall))); S.weather = freshWeather();
+  // v5.1 Phase 1: demand no longer compounds daily. The quarter baseline (S.quarterPeak)
+  // steps once per quarter in rollQuarterPeak (below); each day the live S.peak is set from
+  // that baseline × a bounded seasonal daily noise. Within a quarter the baseline holds, so
+  // the day only refreshes the weather + the wobble — the quarterly step is the real growth.
+  S.weather = freshWeather();
   S.strain = Math.max(0, S.strain - 30);
   expireContracts(S); // v4: age term contracts one day, drop the expired ones
   creditTick(S);      // v4 (C): a solvent day rebuilds credit toward the cap
@@ -222,6 +228,10 @@ export function surviveDay(S){
     S.quarterLog.wages = wages;
     const verdict = settleQuarter(S);
     applyVerdict(S, verdict);
+    // v5.1 Phase 1: step the plannable demand baseline for the NEW quarter (reads the
+    // growthStall applyVerdict just set), then set the new quarter's first live peak off it.
+    rollQuarterPeak(S);
+    S.peak = stepDemand(S);
     S.quarterLog = freshQuarterLog();
     // v5 Phase 8: deal the NEW quarter's seasonal event regime (the calendar already rolled
     // into it) and refresh the per-tick mods the sim reads. Only once a regime system is
@@ -242,9 +252,13 @@ export function surviveDay(S){
     setTicker(S, `◼ Quarter closed — ${notes.join(", ")}. Board review ready.`);
     return;
   }
+  // v5.1 Phase 1: a normal day within a quarter — refresh today's live peak off the
+  // (unchanged) quarter baseline × seasonal daily noise. The baseline itself only moves
+  // at the quarter rollover (above), so this is wobble, not growth.
+  S.peak = stepDemand(S);
   setTicker(S, firstCarbon
     ? `✓ Day ${S.day - 1} cleared — carbon pricing begins at $${Math.round(S.carbon)}/t. Dirty plants cost more now.`
-    : `✓ Day ${S.day - 1} cleared — demand rising to ${S.peak} MW peak.`);
+    : `✓ Day ${S.day - 1} cleared — ${S.quarterPeak} MW baseline, today peaking ${S.peak} MW.`);
 }
 
 // v5: leave the quarter-end board review and resume the live day. The calendar
