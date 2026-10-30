@@ -273,6 +273,34 @@ data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. Se
   pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
   deterministic headless run must pin the global RNG *before* calling it.)
 
+### Added — v5.1 Phase 5: daily brief loop (2026-10-30)
+
+Fifth phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). Reintroduces the pre-grill **daily
+summary** as a **blocking-but-skippable** beat — the one place you review the fleet and feed the two
+rolling queues (maintenance crews + contractor upgrades) — without the 22 forced pauses a quarter.
+
+- **`src/live/brief.js` (new, pure-ish).** `shouldInterrupt(S)` — the auto-advance gate: true when an
+  exception demands attention (a rolling maint/upgrade job landed this day, a crisis auto-pause, capacity
+  headroom gone tight, cash under a floor, or the stability bar in its danger band). `briefSummary(S)` —
+  a pure read returning the day recap, both queues with ETAs, demand vs capacity + the next-quarter
+  forecast, and the active alerts. `openBrief(S)` / `closeBrief(S)` flip `S.calendar.mode` + the clock.
+- **Auto-advance through quiet days.** At each day boundary `sim.surviveDay` opens the brief **unless**
+  the player has armed `S.autoAdvance` **and** nothing demands attention — quiet days are skipped and the
+  sim keeps running; the brief only *yanks you back* on an exception (and clears auto-advance until you
+  re-arm). Early game you're in it often; once in a groove it collapses.
+- **Gated on `S.briefEnabled`** (armed per session by `main.js`, like the seasonal regime) so headless
+  runs stay operating-only and deterministic. New `step` guard: the sim no-ops outside `"operating"`
+  (`"brief"` and `"planning"` freeze the loop — no double-stepping across a mode flip).
+- **Builds are surfaced, not committed here** — the brief lists in-flight construction + a forecast nudge,
+  but committing a new plant is still a quarter-review action.
+- **`config.js`** — `CFG.v5_1.brief` (the interrupt thresholds: headroom %, cash floor, stability danger
+  band). PLACEHOLDER — the most feel-dependent dial in v5.1, to be tuned against a prototype by play.
+- **`sim.js`** seeds `autoAdvance`/`jobsDone`/`briefEnabled` and tallies rolling completions (`tickContractor`
+  now returns its done count too); **`main.js`** handles the third mode in the frame loop and wires the
+  brief's quick-add buttons to `queueMaint`/`specializeUnit` + the advance / step-a-day controls;
+  **`render.js`** `renderBrief` draws the panel (Phase 7 restyles); **`index.html`** adds `#briefOverlay`.
+- New `brief` suite (6 spec tasks, 18 assertions) + `tickContractor` return extended. **All 31 suites green.**
+
 ### Changed — v5.1 Phase 4: rolling maintenance (2026-10-30)
 
 Fourth phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). **Reverses v5's quarter-end-only
