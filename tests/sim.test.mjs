@@ -3,8 +3,9 @@
 // feature work can't silently break pacing or the dispatch wiring.
 import { createGame, step, surviveDay, beginNextQuarter, unitOutput, totalCapacity, interp, tripHazard, dailyStrainProb } from "../src/live/sim.js";
 import { isQuarterEnd } from "../src/live/calendar.js";
-import { toggleUnit, upgradeUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
-import { CFG, UPGRADE, upgradeCost, salvageValue, makeUnit } from "../src/live/config.js";
+import { toggleUnit, specializeUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
+import { upgradeCost, axisHardCeiling } from "../src/live/progression.js";
+import { CFG, salvageValue, makeUnit } from "../src/live/config.js";
 // v5 Phase 5 retired the instant buildCapacity; this adds a unit directly for the
 // mechanics tests below (dispatch/storage/makeUnit params). Build GATING now lives in
 // tests/construct.test.mjs (commitBuild).
@@ -76,22 +77,26 @@ check("totalCapacity = Σ unitOutput", near(totalCapacity(S), byHand, 1e-9), Mat
 // 8–9) Construction (commitBuild/tickBuilds, incl. cash + research gates) is covered in
 // tests/construct.test.mjs — the v4 instant buildCapacity path was retired in Phase 5.
 
-// 10) Upgrade: tier up, capacity up, trip rate + standby cost down, cash spent
+// 10) v5 Phase 7: specialization raises an axis's cap + live KPI, charges the steepening
+// cash cost (the Mk ladder is retired; cap/fail/spin effects now live on the four axes).
 S = createGame();
 const nucU = S.fleet.find(u => u.id === "nuc");
-const cap0 = nucU.cap, fail0 = nucU.fail, spin0 = nucU.spin, before = S.cash;
-let res = upgradeUnit(S, "nuc");
-check("upgrade raises tier to 2", res.ok && nucU.tier === 2);
-check("upgrade raises capacity", nucU.cap > cap0, `${cap0}→${nucU.cap} MW`);
-check("upgrade lowers trip rate and standby cost", nucU.fail < fail0 && nucU.spin < spin0);
-check("upgrade charges the tier cost", near(before - S.cash, upgradeCost(1), 1e-6), "$" + (before - S.cash));
+const cap0 = nucU.caps.output, cost0 = upgradeCost(S, nucU, "output"), before = S.cash;
+let res = specializeUnit(S, "nuc", "output");
+check("specialize raises the axis cap by a step", res.ok && nucU.caps.output === cap0 + CFG.v5.upgrade.step, `${cap0}→${nucU.caps.output}`);
+check("specialize bumps the live KPI up to the new cap", nucU.kpis.output >= cap0, `output KPI ${nucU.kpis.output}`);
+check("specialize charges the axis cost", near(before - S.cash, cost0, 1e-6), "$" + (before - S.cash));
+check("each further upgrade on an axis costs more", upgradeCost(S, nucU, "output") > cost0, `$${cost0} → $${upgradeCost(S, nucU, "output")}`);
 
-// 11) Upgrade stops at max tier
+// 11) Specialization stops at the tech family's hard ceiling (cash alone reaches baseCeiling)
 S = createGame(); S.cash = 1e9;
 const pk = S.fleet.find(u => u.id === "pk1");
-while ((pk.tier || 1) < UPGRADE.maxTier) upgradeUnit(S, "pk1");
-res = upgradeUnit(S, "pk1");
-check("upgrade refused past max tier", !res.ok && pk.tier === UPGRADE.maxTier, "tier " + pk.tier);
+const ceil = axisHardCeiling(S, pk.tech, "flexibility");
+let guard = 0;
+while (pk.caps.flexibility < ceil && guard++ < 50) specializeUnit(S, "pk1", "flexibility");
+check("specialize reaches the hard ceiling", pk.caps.flexibility === ceil, `cap ${pk.caps.flexibility} / ceiling ${ceil}`);
+res = specializeUnit(S, "pk1", "flexibility");
+check("specialize refused past the hard ceiling", !res.ok && pk.caps.flexibility === ceil);
 
 // 12) v4.2.2: trip risk is tied to CONDITION via the tripOdds lookup. HARD RULE —
 // a plant at ≥85% NEVER trips (trips are now a rare neglect event, not a tax). Below
@@ -152,17 +157,10 @@ check("online plant wears down", nucW.condition < 100, nucW.condition.toFixed(1)
   check("pushing a plant harder wears it faster (style, not age)", dropFor(0, 1) > dropFor(0, 0.3) * 1.5,
     `−${dropFor(0, 1).toFixed(3)} (push 1.0) vs −${dropFor(0, 0.3).toFixed(3)} (push 0.3)`);
 }
-// Relief: upgrade knocks accumulated age down (but never to zero). (v5 Phase 4 retired
-// the mid-quarter service path; age relief from a service is gone — maintenance is
-// quarter-end only now and restores KPIs, not ageHours.)
-{
-  const Sr = createGame();
-  const u2 = Sr.fleet.find(x => x.id === "colB"); u2.ageHours = 200;
-  upgradeUnit(Sr, "colB");
-  check("upgrade relieves age (upgradeAgeRelief)",
-    near(u2.ageHours, 200 * CFG.upgradeAgeRelief, 1e-6),
-    `200gh → ${u2.ageHours.toFixed(1)}gh`);
-}
+// (v5 Phase 7) The Mk upgrade's age-relief is retired along with the Mk ladder —
+// specialization (progression.applyUpgrade) raises caps and does not touch ageHours.
+// Age wear is covered by the degradation tests above; see tests/progression.test.mjs
+// for the specialization/ceiling/perk mechanics.
 
 // (v5 Phase 4) The v4 mid-quarter service action is retired — maintenance is scheduled
 // at the quarter-end board review and worked by the crew pool. See tests/maint.test.mjs

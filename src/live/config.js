@@ -299,6 +299,51 @@ export const CFG = {
       growthStallThreshold: 0.92, // a quarter serving below this fraction of load stalls next quarter's growth …
       growthStallMax: 0.6,    // … removing up to this fraction of the demand-growth step (stagnation, not death)
     },
+    // Phase 7: per-axis SPECIALIZATION (cash) — retires the v4 Mk ladder. You spend cash
+    // to raise any of a thermal plant's four KPI attainable-maxes (`u.caps[axis]`) along a
+    // STEEPENING curve, so a plant drifts toward a shape with free development but no branch
+    // lock (spreading thin is costly, never forbidden). Cash alone pushes an axis to
+    // `baseCeiling`; RP (`raiseCeiling`) lifts a tech-family's hard ceiling further, up to
+    // `axisMax`. KPI effect curves (kpi.js) read values past 100, so a specialized axis is a
+    // real edge: Output → more MW, Efficiency → cheaper fuel, Flexibility → faster ramp,
+    // Reliability → near-immunity + full floor. Maintenance restores toward the raised cap.
+    upgrade: {
+      base:        100,       // every axis's attainable max starts here (a fresh plant)
+      step:        10,        // KPI points an axis's cap rises per cash upgrade
+      cost0:       28000,     // $ for the first upgrade on an axis (at base) …
+      costGrowth:  1.5,       // … and each further upgrade on that axis costs this much more
+      baseCeiling: 120,       // cash alone can push an axis this high (no research) …
+      axisMax:     150,       // … and nothing ever past here, even fully researched
+      ceilingStep: 15,        // RP raises a tech-family axis's hard ceiling by this many points
+      ceilingCost0: 55,       // RP for the first ceiling raise on a tech+axis …
+      ceilingGrowth: 1.5,     // … steepening per raise
+    },
+    // Phase 7: ⚡ PERKS — Guild Cred expands reach. Roster + control-room conveniences buy
+    // freely; AUTOMATION perks (auto-maintenance, dispatch assist) are deliberately gated to
+    // a late grid GROWTH TIER (fleet size × year), so you feel the clerical burden of scale
+    // before you earn the relief. automationTier(S) returns the highest tier whose fleet AND
+    // year thresholds are both met; a perk tagged with a higher tier is refused even with ⚡.
+    perks: {
+      list: {
+        roster:        { cost: 3, label: "Expand Roster",   kind: "roster", rosterBump: 1,
+                         desc: "Raise the crew roster ceiling by one." },
+        advgen:        { cost: 4, label: "Advanced Generation", kind: "research-branch", branch: "advgen",
+                         desc: "Unlock the Advanced Generation research branch (SMR · geo · CCS)." },
+        forecasting:   { cost: 3, label: "Forecasting Program", kind: "research-branch", branch: "forecasting",
+                         desc: "Unlock the Forecasting research branch (sharper spot outlook)." },
+        autoMaint:     { cost: 8, label: "Auto-Maintenance", kind: "automation", tier: 2,
+                         desc: "At each review, crews are auto-assigned to the neediest plants (you still pay)." },
+        dispatchAssist:{ cost: 6, label: "Dispatch Assist",  kind: "automation", tier: 2,
+                         desc: "Unpinned plants auto-trim their dials to the margin each tick (within legal bands)." },
+      },
+      // growth tiers: the highest index whose BOTH thresholds (fleet size, calendar year) are
+      // met is the grid's automation tier. A fresh grid (9 plants, Y1) sits at tier 0.
+      tiers: [
+        { fleet: 0,  year: 1 },  // tier 0 — the opening grid
+        { fleet: 12, year: 2 },  // tier 1 — a growing grid
+        { fleet: 15, year: 3 },  // tier 2 — a big grid that has earned automation
+      ],
+    },
   },
 };
 
@@ -369,16 +414,12 @@ const FIRM_PARAMS = {
   ccs_gas:  { spin:4, fail:0.0040, recover:[1.5, 3] },
 };
 
-// ---- upgrade tiers (Mk I→II→III): capacity up, trips down, standby cost down ----
-export const UPGRADE = {
-  maxTier: 3,
-  cost: 50000,       // base cost for Mk I→II
-  costGrowth: 1.8,   // each further tier costs this much more
-  capMult: 1.25,     // +25% capacity per tier
-  failMult: 0.6,     // trip rate down (more reliable → effective efficiency)
-  spinMult: 0.7,     // standby $/MW/h down (running cost)
-};
-export function upgradeCost(tier){ return Math.round(UPGRADE.cost * Math.pow(UPGRADE.costGrowth, (tier || 1) - 1)); }
+// v5 Phase 7: the v4 Mk I→II→III upgrade ladder is RETIRED. Progression is now per-axis
+// SPECIALIZATION — spend cash to raise a plant's four KPI attainable-maxes along a
+// steepening curve (progression.js: upgradeCost / applyUpgrade), RP to lift the hard
+// ceilings (raiseCeiling), ⚡ for perks + late-game automation. The four axes subsume the
+// old ladder's effects: Output → capacity (effectiveMax), Reliability → fewer trips,
+// Efficiency → cheaper fuel, Flexibility → faster ramp. Tuning lives in CFG.v5.upgrade.
 
 // ---- plant naming ----
 // Real grids name their iron after the place it stands on, not "Coal Plant A".
@@ -452,6 +493,7 @@ export function makeFleet() {
     u.dials = defaultDials(u);                       // Phase 2: Core+ dials on every unit
     if (u.condition != null){
       u.kpis = freshKPIs();                           // Phase 3: four KPI axes on mechanical plants
+      u.caps = freshCaps();                           // Phase 7: per-axis attainable-max (cash-upgraded)
       u.prevDials = dialSnapshot(u.dials);            // Phase 3: baseline for cycle (ramp/start) detection
     }
   }
@@ -460,6 +502,10 @@ export function makeFleet() {
 
 // A minimal dials snapshot the sim diffs each tick to spot ramps/starts (cycleCost).
 export function dialSnapshot(d){ return { commit: d.commit, bandMin: d.bandMin, bandMax: d.bandMax }; }
+
+// Phase 7: a fresh plant's per-axis attainable-max — the ceiling maintenance restores
+// toward and cash upgrades (progression.applyUpgrade) raise. Every axis starts at base 100.
+export function freshCaps(){ const b = CFG.v5.upgrade.base; return { reliability: b, efficiency: b, output: b, flexibility: b }; }
 
 // Factory for a unit added mid-run via the build catalogue. `n` numbers the
 // unit for display; `seq` makes its id unique.
@@ -471,7 +517,7 @@ export function makeUnit(tech, n, seq){
   const u = { id:`${tech}-${seq}`, name:plantName(tech, n), kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
               status: (kind === "gas" || kind === "battery") ? "off" : "online",
               ctrl: (kind === "gas" || kind === "battery"), key:null };
-  if (kind === "firm" || kind === "gas"){ u.condition = 100; u.ageHours = 0; u.kpis = freshKPIs(); } // mechanical plants wear (Phase 3 KPIs) & can be serviced
+  if (kind === "firm" || kind === "gas"){ u.condition = 100; u.ageHours = 0; u.kpis = freshKPIs(); u.caps = freshCaps(); } // mechanical plants wear (Phase 3 KPIs) & specialize (Phase 7 caps)
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
   if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
   if (kind === "firm"){ const p = FIRM_PARAMS[tech] || FIRM_PARAMS.coal; u.spin = p.spin; u.fail = p.fail; u.recover = [...p.recover]; }

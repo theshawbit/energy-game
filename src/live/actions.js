@@ -4,8 +4,9 @@
 // live, unpaused play.
 // ============================================================
 import { setTicker } from "./sim.js";
-import { CFG, UPGRADE, upgradeCost, salvageValue } from "./config.js";
+import { CFG, salvageValue } from "./config.js";
 import { doResearch, researchById } from "./research.js";
+import { applyUpgrade, raiseCeiling, unlockPerk, upgradeCost, ceilingCost, PERKS } from "./progression.js";
 import { dailyBaseline } from "./market.js";
 import { contractPrice, expectedOutput, makeContract, creditRating } from "./finance.js";
 
@@ -21,30 +22,55 @@ export function toggleUnit(S, id){
   }
 }
 
+// v5 Phase 7: pin/unpin a plant's dials against Dispatch Assist. A pinned plant is the
+// player's hand-tuned exception — the automation (progression.dispatchAssist) never touches
+// its band. Inert until the Dispatch Assist perk is owned, but always toggleable.
+export function pinUnit(S, id){
+  const u = S.fleet.find(x => x.id === id); if (!u || !u.dials) return { ok:false };
+  u.pin = !u.pin;
+  setTicker(S, u.pin ? `📌 ${u.name} pinned — Dispatch Assist will leave it alone.` : `${u.name} unpinned.`);
+  return { ok:true };
+}
+
 // v5 Phase 5: the v4 instant `buildCapacity` is retired. New plants are multi-quarter
 // lead-time capital projects committed at the quarter-end review (see construct.js:
 // commitBuild / tickBuilds) — a plant produces nothing until it comes online quarters
 // later, so you build ahead of the steepening demand curve or the city browns you out.
 
-// Upgrade one unit to the next Mk tier: +capacity, −trip rate, −standby cost.
-export function upgradeUnit(S, id){
-  if (S.over) return { ok:false };
+// v5 Phase 7: SPECIALIZE a thermal plant — spend cash to raise one KPI axis's attainable
+// max by a step (progression.applyUpgrade), steepening per step and toward the tech family's
+// hard ceiling. The four axes subsume the old Mk tier (cap/fail/spin all live on them now).
+export function specializeUnit(S, id, axis){
   const u = S.fleet.find(x => x.id === id); if (!u) return { ok:false };
-  if ((u.tier || 1) >= UPGRADE.maxTier) return { ok:false, msg:"Already at max tier." };
-  const cost = upgradeCost(u.tier || 1);
-  if (S.cash < cost) return { ok:false, msg:"Not enough cash to upgrade that." };
-  S.cash -= cost;
-  u.tier = (u.tier || 1) + 1;
-  // Research "Modular Upgrades" amplifies the capacity gain of every Mk tier.
-  const capMult = UPGRADE.capMult + (S.rmods?.upgradeCapBonus || 0);
-  u.cap = Math.round(u.cap * capMult);
-  if (u.kind === "battery") u.maxEnergy = Math.round(u.maxEnergy * capMult);
-  if (u.fail != null) u.fail *= UPGRADE.failMult;
-  if (u.spin != null) u.spin *= UPGRADE.spinMult;
-  // v4.2.1: an upgrade is a deep refit — it relieves most accumulated age (but age
-  // persists, so a long-serving plant never fully returns to new).
-  if (u.ageHours != null) u.ageHours *= CFG.upgradeAgeRelief;
-  setTicker(S, `✓ ${u.name} upgraded to Mk ${u.tier}.`);
+  if (!u.caps) return { ok:false, msg:"Only thermal plants can be specialized." };
+  const cost = upgradeCost(S, u, axis);
+  if (!applyUpgrade(S, id, axis)){
+    return { ok:false, msg: S.cash < cost ? "Not enough cash for that upgrade." : "That axis is at its hard ceiling — research lifts it." };
+  }
+  setTicker(S, `✓ ${u.name} — ${axis} raised to ${u.caps[axis]} (−$${cost.toLocaleString()}).`);
+  return { ok:true };
+}
+
+// v5 Phase 7: spend RP to lift a WHOLE tech family's hard ceiling on an axis
+// (progression.raiseCeiling), up to CFG.v5.upgrade.axisMax — so a subsequent cash upgrade
+// can climb past baseCeiling. Keyed by the plant's tech, so it buffs every plant of that family.
+export function raiseAxisCeiling(S, tech, axis){
+  const cost = ceilingCost(S, tech, axis);
+  if (!raiseCeiling(S, tech, axis)){
+    return { ok:false, msg: (S.rp || 0) < cost ? "Not enough Research Points." : "That family axis is already at the absolute max." };
+  }
+  setTicker(S, `🔬 ${tech} ${axis} ceiling raised (−${cost} RP).`);
+  return { ok:true };
+}
+
+// v5 Phase 7: unlock a ⚡ perk (progression.unlockPerk) — roster, research-branch, or a
+// growth-tier-gated automation. Refused if owned, short on ⚡, or (automation) below tier.
+export function buyPerk(S, perkId){
+  const p = PERKS[perkId]; if (!p) return { ok:false, msg:"Unknown perk." };
+  if (!unlockPerk(S, perkId)){
+    return { ok:false, msg: (S.zap || 0) < p.cost ? "Not enough ⚡ Guild Cred." : "Locked — your grid hasn't grown into that yet." };
+  }
+  setTicker(S, `⚡ Perk unlocked — ${p.label}.`);
   return { ok:true };
 }
 

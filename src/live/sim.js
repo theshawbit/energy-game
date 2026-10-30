@@ -13,6 +13,7 @@ import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, dialSnapshot } from "./config.js";
 import { makeCrew, wageBill, TRADES } from "./crews.js";
 import { resolveQuarterTasks } from "./maint.js";
+import { autoMaintenancePlan, dispatchAssist } from "./progression.js";
 import { tickBuilds } from "./construct.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
 import { freshClock, tickClock, autoPause } from "./clock.js";
@@ -94,6 +95,10 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     crews: Array.from({ length: CFG.v5.crews.startCrews }, (_, i) => makeCrew(TRADES[i % TRADES.length], i + 1)),
     crewSeq: CFG.v5.crews.startCrews, tasks: [], taskSeq: 0,
     zap: 0, rosterCap: CFG.v5.crews.baseRoster,
+    // v5 Phase 7: progression. `capCeil` holds RP-raised hard-ceiling bonuses per tech+axis
+    // (empty = baseCeiling); `perks` holds unlocked ⚡ perks. Per-plant cash upgrades live on
+    // u.caps (seeded by freshCaps). See progression.js.
+    capCeil: {}, perks: {},
     // v5 Phase 5: in-flight lead-time construction projects. Committed at the quarter
     // review; tickBuilds advances them at each rollover and lands a live unit on completion.
     builds: [], buildSeqV5: 0,
@@ -213,10 +218,15 @@ export function surviveDay(S){
     applyVerdict(S, verdict);
     S.quarterLog = freshQuarterLog();
     S.calendar.mode = "planning";
+    // v5 Phase 7: Auto-Maintenance perk — with the board review now open (planning mode),
+    // auto-assign free crews to the neediest plants before handing control back. It still
+    // pays and still books downtime; the player can cancel any of these in the review.
+    const autoTasks = S.perks?.autoMaint ? autoMaintenancePlan(S).length : 0;
     autoPause(S, "Quarter closed — board review");
     const notes = [];
     if (built.length) notes.push(`${built.length} new plant${built.length > 1 ? "s" : ""} online`);
     if (completed > 0) notes.push(`${completed} back from maintenance`);
+    if (autoTasks > 0) notes.push(`${autoTasks} auto-scheduled`);
     const money = verdict.bonus ? `+$${verdict.bonus.toLocaleString()} bonus` : verdict.fine ? `−$${verdict.fine.toLocaleString()} fine` : "rate held";
     notes.push(`board verdict: ${money}`);
     setTicker(S, `◼ Quarter closed — ${notes.join(", ")}. Board review ready.`);
@@ -242,6 +252,9 @@ export function step(S, dt){
   // is persistent, so it always returns false.
   const dtH = tickClock(S, dt);
   if (dtH <= 0) return false;
+  // v5 Phase 7: Dispatch Assist perk — open each unpinned committed thermal plant's band to
+  // its legal max each live tick, so output isn't left throttled. Pinned plants are untouched.
+  if (S.perks?.dispatchAssist) dispatchAssist(S);
   S.t += dtH;
   if (S.t >= 24){ S.t -= 24; surviveDay(S); }
 

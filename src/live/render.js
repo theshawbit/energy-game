@@ -9,7 +9,8 @@ import { applyDials } from "./dispatch.js";
 import { TASKS, taskRestore } from "./maint.js";
 import { TRADES, tradeModifier } from "./crews.js";
 import { BUILDABLES, forecastDemand, concurrencySlip } from "./construct.js";
-import { CFG, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, salvageValue } from "./config.js";
+import { CFG, BUILD_ORDER, BUILD_GATE, salvageValue } from "./config.js";
+import { AXES, upgradeCost, axisHardCeiling, canUpgrade, ceilingCost, canRaiseCeiling, PERKS, isAutomationUnlocked, automationTier, canUnlockPerk } from "./progression.js";
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
@@ -27,7 +28,6 @@ const css = v => _cssCache[v] !== undefined ? _cssCache[v]
   : (_cssCache[v] = getComputedStyle(document.documentElement).getPropertyValue(v).trim());
 function money(x){ const a = Math.abs(x), s = x < 0 ? "−" : ""; if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(2) + "M"; if (a >= 1e3) return s + "$" + (a / 1e3).toFixed(0) + "k"; return s + "$" + a.toFixed(0); }
 function clock(t){ const h = Math.floor(t), m = Math.floor((t - h) * 60); return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
-const roman = n => ["", "I", "II", "III", "IV", "V"][n] || String(n);
 
 // v5 Phase 3: the four KPI axes replace the single condition bar. Rendered as a
 // compact 2×2 cluster of labelled micro-bars (R·E·O·F), each banded by its own value.
@@ -236,13 +236,13 @@ export function buildUnits(S, onToggle){
   for (const u of S.fleet){
     const tr = document.createElement("tr");
     tr.className = "fu" + (u.ctrl ? " ctrl" : "");
-    const mk = (u.tier || 1) > 1 ? ` <span class="mk">Mk ${roman(u.tier)}</span>` : "";
+    const pin = u.pin ? ` <span class="pin-badge" title="pinned — Dispatch Assist leaves it alone">📌</span>` : "";
     const key = u.ctrl && u.key ? `<span class="fkey" title="shortcut">${u.key}</span>` : "";
     const condCell = u.kpis
       ? kpiClusterLive()
       : `<span class="faint">—</span>`;
     tr.innerHTML = `
-      <td class="fu-nm"><span class="nm">${u.name}${mk}</span>${key}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
+      <td class="fu-nm"><span class="nm">${u.name}${pin}</span>${key}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
       <td><span class="st" data-st>—</span></td>
       <td class="num"><b data-out>0</b><span class="faint">/${Math.round(u.cap)}</span></td>
       <td class="num fu-cond">${condCell}</td>
@@ -548,6 +548,61 @@ function contractBook(S){
     <ul class="bq-list">${rows}</ul>
   </div>`;
 }
+
+// v5 Phase 7: the Development Office — the three growth lanes, built at the quarter review.
+// SPECIALIZE (cash) raises a thermal plant's per-axis cap; CEILINGS (RP) lift a whole tech
+// family's hard ceiling; PERKS (⚡) buy roster/branch unlocks and growth-tier-gated automation.
+const AXIS_LETTER = { reliability: "R", efficiency: "E", output: "O", flexibility: "F" };
+function progressionSection(S){
+  const thermal = S.fleet.filter(u => u.caps);
+  // --- specialization: per-plant axis upgrade chips ---
+  const specRows = thermal.map(u => {
+    const chips = AXES.map(ax => {
+      const cap = u.caps[ax], ceil = axisHardCeiling(S, u.tech, ax);
+      if (cap >= ceil) return `<button class="spec-chip" disabled title="${ax} at ceiling ${ceil}">${AXIS_LETTER[ax]} ${cap}·max</button>`;
+      const cost = upgradeCost(S, u, ax), can = canUpgrade(S, u.id, ax);
+      return `<button class="spec-chip" data-spec="${u.id}" data-spec-axis="${ax}" ${can ? "" : "disabled"}
+        title="${ax}: ${cap} → ${cap + CFG.v5.upgrade.step} (ceiling ${ceil})">${AXIS_LETTER[ax]} ${cap} · ${money(cost)}</button>`;
+    }).join("");
+    return `<div class="spec-row"><div class="spec-nm">${u.name}<small class="faint">${u.tech}</small></div>
+      <div class="spec-chips">${chips}</div></div>`;
+  }).join("") || `<p class="faint">No thermal plants to specialize — renewables and storage grow by building more.</p>`;
+
+  // --- ceilings: per tech family (one row each), RP to lift the hard ceiling ---
+  const techs = [...new Set(thermal.map(u => u.tech))];
+  const ceilRows = techs.map(tech => {
+    const chips = AXES.map(ax => {
+      const ceil = axisHardCeiling(S, tech, ax);
+      if (ceil >= CFG.v5.upgrade.axisMax) return `<button class="spec-chip" disabled>${AXIS_LETTER[ax]} ${ceil}·max</button>`;
+      const cost = ceilingCost(S, tech, ax), can = canRaiseCeiling(S, tech, ax);
+      return `<button class="spec-chip ceil" data-ceil="${tech}" data-ceil-axis="${ax}" ${can ? "" : "disabled"}
+        title="${tech} ${ax} ceiling: ${ceil} → ${ceil + CFG.v5.upgrade.ceilingStep}">${AXIS_LETTER[ax]} →${ceil + CFG.v5.upgrade.ceilingStep} · ${cost}RP</button>`;
+    }).join("");
+    return `<div class="spec-row"><div class="spec-nm">${tech}<small class="faint">family ceiling</small></div>
+      <div class="spec-chips">${chips}</div></div>`;
+  }).join("") || "";
+
+  // --- perks: roster / branch unlocks / growth-tier-gated automation ---
+  const tier = automationTier(S);
+  const perkRows = Object.entries(PERKS).map(([id, p]) => {
+    const owned = !!S.perks?.[id];
+    const gated = p.kind === "automation" && !isAutomationUnlocked(S, id);
+    const btn = owned ? `<button disabled>Owned ✓</button>`
+      : gated ? `<button disabled title="reaches tier ${p.tier}; grid at tier ${tier}">🔒 Tier ${p.tier}</button>`
+      : `<button data-perk="${id}" ${canUnlockPerk(S, id) ? "" : "disabled"}>${p.cost} ⚡</button>`;
+    return `<div class="skill-row"><span class="sk-nm">${p.label}<br><small>${p.desc}</small></span>${btn}</div>`;
+  }).join("");
+
+  return `<div class="pl-section">
+    <h3>Development Office <small class="faint">— specialize plants (cash) · lift family ceilings (RP) · perks (⚡)</small></h3>
+    <div class="dev-grid">
+      <div class="dev-col"><h4>Specialize <small class="faint">R·E·O·F caps</small></h4>${specRows}</div>
+      ${ceilRows ? `<div class="dev-col"><h4>Family ceilings <small class="faint">RP lifts past ${CFG.v5.upgrade.baseCeiling}</small></h4>${ceilRows}</div>` : ""}
+    </div>
+    <h4 class="dev-perk-h">⚡ Perks <small class="faint">— grid at automation tier ${tier}</small></h4>
+    <div class="skill-list">${perkRows}</div>
+  </div>`;
+}
 export function renderPlanning(S, actions){
   const c = S.calendar;
   const closedQ = c.quarter === 1 ? CFG.v5.quartersPerYear : c.quarter - 1; // the quarter that just closed
@@ -640,6 +695,8 @@ export function renderPlanning(S, actions){
 
       ${buildSection(S)}
 
+      ${progressionSection(S)}
+
       ${contractBook(S)}
 
       <div class="end-btns">
@@ -663,6 +720,10 @@ export function renderPlanning(S, actions){
   $("modal").querySelectorAll("[data-promote]").forEach(b => b.onclick = () => actions.promote(b.dataset.promote));
   $("modal").querySelectorAll("[data-hire]").forEach(b => b.onclick = () => actions.hire(b.dataset.hire));
   $("modal").querySelectorAll("[data-commit-build]").forEach(b => b.onclick = () => actions.commitBuild(b.dataset.commitBuild));
+  // v5 Phase 7: Development Office — specialize (cash), lift family ceilings (RP), buy perks (⚡)
+  $("modal").querySelectorAll("[data-spec]").forEach(b => b.onclick = () => actions.specialize(b.dataset.spec, b.dataset.specAxis));
+  $("modal").querySelectorAll("[data-ceil]").forEach(b => b.onclick = () => actions.raiseCeiling(b.dataset.ceil, b.dataset.ceilAxis));
+  $("modal").querySelectorAll("[data-perk]").forEach(b => b.onclick = () => actions.perk(b.dataset.perk));
   $("beginQ").onclick = actions.begin;
 }
 
@@ -834,7 +895,7 @@ function recordsStrip(S){
 
 // --- fleet: the dense, sortable table that replaces the old card list ---
 function fleetRow(S, u){
-  const tier = u.tier || 1, mk = tier > 1 ? ` <span class="mk">Mk ${roman(tier)}</span>` : "";
+  const pin = u.pin ? ` <span class="pin-badge" title="pinned">📌</span>` : "";
   let stClass, stText;
   if (u.status === "maint"){ stClass = "st-service"; stText = "⚙ MAINT"; }
   else if (u.status === "strained"){ stClass = "st-strained"; stText = "⚠ STRAINING"; }
@@ -846,19 +907,22 @@ function fleetRow(S, u){
   const cond = u.kpis
     ? kpiClusterStatic(u.kpis)
     : `<span class="faint">—</span>`;
-  const max = tier >= UPGRADE.maxTier, uCost = upgradeCost(tier), canUp = !max && S.cash >= uCost;
-  const upBtn = `<button data-up="${u.id}" ${canUp ? "" : "disabled"}>${max ? "Max" : `→ Mk ${roman(tier + 1)} · ${money(uCost)}`}</button>`;
+  // v5 Phase 7: the Mk upgrade button is retired — plant specialization (per-axis caps)
+  // lives in the quarter-end Development Office. Here a dial-able plant gets a PIN toggle
+  // (shields its band from the Dispatch Assist perk); the badge shows when it's pinned.
+  const dialable = u.kind === "firm" || u.kind === "gas";
+  const pinBtn = dialable ? `<button class="pin-btn${u.pin ? " on" : ""}" data-pin="${u.id}">${u.pin ? "📌 Pinned" : "Pin"}</button>` : "";
   // v5 Phase 4: maintenance is scheduled in the quarter-end Planning Office, not here;
   // a plant booked for the shop shows a MAINT flag instead of a mid-quarter service button.
   const maintFlag = u.maintDown ? `<span class="svc-flag">⚙ booked</span>` : "";
   const lastBattery = u.kind === "battery" && S.fleet.filter(x => x.kind === "battery").length <= 1;
   const decBtn = `<button class="dec" data-dec="${u.id}" ${lastBattery ? "disabled" : ""}>Sell · ${money(salvageValue(u))}</button>`;
   const main = `<tr>
-    <td class="fl-nm">${u.name}${mk}<br><small class="faint">${Math.round(u.cap)} MW · ${u.kind}</small></td>
+    <td class="fl-nm">${u.name}${pin}<br><small class="faint">${Math.round(u.cap)} MW · ${u.kind}</small></td>
     <td><span class="st ${stClass}">${stText}</span></td>
     <td class="num">${out}/${u.cap}</td>
     <td class="num">${cond}</td>
-    <td><div class="fleet-acts">${upBtn}${maintFlag}${decBtn}</div></td></tr>`;
+    <td><div class="fleet-acts">${pinBtn}${maintFlag}${decBtn}</div></td></tr>`;
   return main + dialsRow(S, u);
 }
 
@@ -904,7 +968,7 @@ function fleetBody(S){
 }
 function wireFleet(S, actions){
   const m = $("menu");
-  m.querySelectorAll("[data-up]").forEach(b => b.onclick = () => actions.upgrade(b.dataset.up));
+  m.querySelectorAll("[data-pin]").forEach(b => b.onclick = () => actions.pin(b.dataset.pin));
   m.querySelectorAll("[data-dec]").forEach(b => b.onclick = () => actions.decommission(b.dataset.dec));
   // v5 Phase 2 dials: commit re-renders (band/push enable toggles); the sliders write
   // u.dials and patch their readout in-place (no re-render, so the drag isn't interrupted).

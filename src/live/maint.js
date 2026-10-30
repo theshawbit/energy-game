@@ -77,7 +77,10 @@ export function resolveQuarterTasks(S){
     const u = S.fleet.find(x => x.id === t.unitId);
     const crew = S.crews.find(c => c.id === t.crewId);
     if (u && u.kpis){
-      u.kpis[t.axis] = Math.min(100, u.kpis[t.axis] + taskRestore(TASKS[t.name], crew));
+      // v5 Phase 7: restore toward the axis's attainable max (u.caps), not a flat 100 — a
+      // specialized plant is maintained back up to its upgraded level, not erased to base.
+      const ceiling = u.caps?.[t.axis] ?? 100;
+      u.kpis[t.axis] = Math.min(ceiling, u.kpis[t.axis] + taskRestore(TASKS[t.name], crew));
       u.condition = Math.min(u.kpis.reliability, u.kpis.efficiency, u.kpis.output, u.kpis.flexibility);
     }
     if (crew){ crew.assignment = null; gainXP(crew, CFG.v5.crews.xpPerTask); } // crews level through use

@@ -3,8 +3,9 @@
 // is idempotent — so Phase B can build the four branches on a stable core.
 import { researchById, canResearch, doResearch, computeResearchMods } from "../src/live/research.js";
 import { createGame, step } from "../src/live/sim.js";
-import { setRdFunding, researchNode, upgradeUnit } from "../src/live/actions.js";
-import { CFG, UPGRADE } from "../src/live/config.js";
+import { setRdFunding, researchNode } from "../src/live/actions.js";
+import { upgradeCost } from "../src/live/progression.js";
+import { CFG } from "../src/live/config.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -25,11 +26,11 @@ Math.random = () => 0.5;
 
 // 1) Neutral mods when nothing is researched
 const n0 = computeResearchMods({});
-check("no research → neutral mods", n0.wearMult === 1 && n0.upgradeCapBonus === 0 && n0.smrUnlocked === false);
+check("no research → neutral mods", n0.wearMult === 1 && n0.upgradeDiscount === 0 && n0.smrUnlocked === false);
 
 // 2) Each node's effect lands in the mods
 check("buff-wear → −15% wear", computeResearchMods({ "buff-wear": true }).wearMult === 0.85);
-check("amp-upgrades → +10% upgrade cap bonus", computeResearchMods({ "amp-upgrades": true }).upgradeCapBonus === 0.10);
+check("amp-upgrades → 15% upgrade discount", computeResearchMods({ "amp-upgrades": true }).upgradeDiscount === 0.15);
 check("unlock-smr → SMR flag set", computeResearchMods({ "unlock-smr": true }).smrUnlocked === true);
 
 // 3) canResearch gates on RP
@@ -82,20 +83,15 @@ S = createGame(); S.rp = 1e6; S.over = true;
 r = researchNode(S, "buff-wear");
 check("research refused after the run ends", !r.ok && !S.research["buff-wear"]);
 
-// 11) the upgrade-amp node actually increases the capacity gain of a Mk upgrade
-S = createGame(); S.cash = 1e9;
-const baseUnit = S.fleet.find(u => u.id === "colA");
-const capBefore = baseUnit.cap;
-upgradeUnit(S, "colA"); // no research yet
-const plainGain = baseUnit.cap / capBefore;
-S = createGame(); S.cash = 1e9; S.research = { "amp-upgrades": true };
-S.rmods = computeResearchMods(S.research);
-const unit2 = S.fleet.find(u => u.id === "colA");
-const cap2 = unit2.cap;
-upgradeUnit(S, "colA");
-const ampedGain = unit2.cap / cap2;
-check("Modular Upgrades amplifies the Mk capacity gain", ampedGain > plainGain,
-  `${plainGain.toFixed(3)}× → ${ampedGain.toFixed(3)}× (base ${UPGRADE.capMult}×)`);
+// 11) v5 Phase 7: the Modular Upgrades node discounts the CASH cost of a specialization
+// upgrade (the Mk ladder it used to amplify is retired; progression.upgradeCost reads the mod).
+S = createGame();
+const specUnit = S.fleet.find(u => u.caps);           // any thermal plant has per-axis caps
+const plainCost = upgradeCost(S, specUnit, "output"); // no research yet
+S.research = { "amp-upgrades": true }; S.rmods = computeResearchMods(S.research);
+const discountedCost = upgradeCost(S, specUnit, "output");
+check("Modular Upgrades discounts specialization cost", discountedCost < plainCost,
+  `$${plainCost} → $${discountedCost} (−15%)`);
 
 // 12) researched wear buff slows condition loss vs. an unresearched run
 S = createGame(); const uA = S.fleet.find(u => u.id === "nuc"); uA.fail = 0;
