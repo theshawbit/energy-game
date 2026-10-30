@@ -21,10 +21,11 @@ import { degradeKPIs, freshKPIs, heatRateMult } from "./kpi.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
-import { exogenousBaseline, reserveMargin, spotPrice } from "./market.js";
+import { exogenousBaseline, reserveMargin, spotPrice, swingCoeff, swingEarn } from "./market.js";
 import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
 import { forecastFog, forecastInputs } from "./forecast.js";
-import { capacityPayment, capacityPenalty, rollCapacityCall } from "./capacity.js";
+import { capacityPayment, capacityPenalty, rollCapacityCall, floorEarn } from "./capacity.js";
+import { freshQuarterLog, freshEconomy, settleQuarter, applyVerdict } from "./verdict.js";
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -96,6 +97,12 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     // v5 Phase 5: in-flight lead-time construction projects. Committed at the quarter
     // review; tickBuilds advances them at each rollover and lands a live unit on completion.
     builds: [], buildSeqV5: 0,
+    // v5 Phase 6: the hybrid economy. `economy` holds the standing floor rate (ratcheted
+    // by the overlord's verdict), a running swing PnL mirror, the last verdict, and the
+    // stagnation lever; `quarterLog` accumulates the board review's inputs each tick and
+    // is reset at every rollover. Floor = availability pay on held reserve (Reliability);
+    // swing = spot PnL on pushed MW (Efficiency/Output/Flexibility).
+    economy: freshEconomy(), quarterLog: freshQuarterLog(),
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
@@ -162,7 +169,11 @@ export function surviveDay(S){
   // (the demand clock the economy reads). The grid never resets.
   const rolled = advanceCalendar(S);
   S.day = S.calendar.absDay;
-  S.peak = Math.round(S.peak * S.peakGrowth); S.weather = freshWeather();
+  // v5 Phase 6 stagnation: a quarter the overlord judged short stalls demand growth —
+  // the city stops expanding toward an operator who can't keep it lit. growthStall ∈
+  // [0,1] (0 = full growth; default) shaves the per-day growth STEP, never the base.
+  const stall = S.economy?.growthStall ?? 0;
+  S.peak = Math.round(S.peak * (1 + (S.peakGrowth - 1) * (1 - stall))); S.weather = freshWeather();
   S.strain = Math.max(0, S.strain - 30);
   expireContracts(S); // v4: age term contracts one day, drop the expired ones
   creditTick(S);      // v4 (C): a solvent day rebuilds credit toward the cap
@@ -191,15 +202,24 @@ export function surviveDay(S){
     // (Phase 6 folds this into settleQuarter's PnL). The player schedules NEXT
     // quarter's tasks during the planning session that follows.
     const completed = resolveQuarterTasks(S);
+    // v5 Phase 6 settlement — close the Phase 4/5 seams INTO the quarter's PnL. Crew
+    // wages are the standing cost (still deducted from cash here); build overruns were
+    // charged to cash as they slipped (tickBuilds) and are mirrored into the log. Then
+    // the overlord grades the quarter, banks the bonus/fine, and ratchets next quarter's
+    // floor rate; the stagnation lever is set from the serve rate.
     const wages = wageBill(S); S.cash -= wages;
+    S.quarterLog.wages = wages;
+    const verdict = settleQuarter(S);
+    applyVerdict(S, verdict);
+    S.quarterLog = freshQuarterLog();
     S.calendar.mode = "planning";
     autoPause(S, "Quarter closed — board review");
     const notes = [];
     if (built.length) notes.push(`${built.length} new plant${built.length > 1 ? "s" : ""} online`);
     if (completed > 0) notes.push(`${completed} back from maintenance`);
-    setTicker(S, notes.length
-      ? `◼ Quarter closed — ${notes.join(", ")}. Board review ready.`
-      : "◼ Quarter closed — the board review is ready.");
+    const money = verdict.bonus ? `+$${verdict.bonus.toLocaleString()} bonus` : verdict.fine ? `−$${verdict.fine.toLocaleString()} fine` : "rate held";
+    notes.push(`board verdict: ${money}`);
+    setTicker(S, `◼ Quarter closed — ${notes.join(", ")}. Board review ready.`);
     return;
   }
   setTicker(S, firstCarbon
@@ -375,17 +395,46 @@ export function step(S, dt){
     S.spotForecastFog = fog;
   }
 
+  // v5 Phase 6 — the HYBRID economy. Two income surfaces instead of one:
+  //  • SWING: contracts settle first at their locked price, the residual served load
+  //    clears at spot, scaled by the fleet's swing quality (generation-weighted
+  //    Efficiency/Output/Flexibility — a fresh fleet = 1.0, no change from v4).
+  //  • FLOOR: availability pay on the MW each committed thermal unit HOLDS back via
+  //    reserveHold, at the ratcheted floor rate, keyed to that unit's Reliability.
+  // Held reserve isn't offered to the merit order (applyDials shaves it), so it earns
+  // the floor, never the swing — the two never double-count. Both read only served
+  // load, so a shortfall is still never a windfall (the v4 invariant holds).
+  let swW = 0, swSum = 0, floorPerH = 0;
+  for (const u of S.fleet){
+    const mw = unitOutput(S, u);
+    if (mw > 0){ swW += mw; swSum += mw * swingCoeff(u.kpis); }
+    if ((u.kind === "firm" || u.kind === "gas") && (u.status === "online" || u.status === "strained"))
+      floorPerH += floorEarn(applyDials(u).held, u.kpis ? u.kpis.reliability : 100, S.economy.floorRate);
+  }
+  const fleetSwing = swW > 0 ? swSum / swW : 1;
   const { contractedMW, contractRevenue } = settleContracts(S.contracts, hr.served);
   S.contractedMW = contractedMW;                            // exposed for D's spot-kill track
   const residualMW = Math.max(0, hr.served - contractedMW); // never negative, never unserved
-  const revenue = contractRevenue + residualMW * spot;
+  const swingPerH = contractRevenue + swingEarn(residualMW, spot, fleetSwing); // $/h market swing
+  const revenue = swingPerH + floorPerH;                    // $/h top-line (swing + regulated floor)
   S.cash += (revenue - hr.varCost - effSurcharge - spin - fixedOM) * dtH;  // unserved load earns nothing; effSurcharge = Phase 3 efficiency-KPI fuel penalty
+
+  // accrue the quarter's board-review log (the overlord grades these at the rollover).
+  const qlog = S.quarterLog;
+  qlog.swingPay += swingPerH * dtH; qlog.floorPay += floorPerH * dtH;
+  qlog.servedMWh += hr.served * dtH; qlog.emissions += hr.emissions * dtH;
+  let kw = 0, kr = 0, ke = 0, ko = 0, kf = 0;
+  for (const u of S.fleet) if (u.kpis){ kw++; kr += u.kpis.reliability; ke += u.kpis.efficiency; ko += u.kpis.output; kf += u.kpis.flexibility; }
+  if (kw > 0){ qlog.kpiAccum.reliability += (kr / kw) * dtH; qlog.kpiAccum.efficiency += (ke / kw) * dtH;
+               qlog.kpiAccum.output += (ko / kw) * dtH; qlog.kpiAccum.flexibility += (kf / kw) * dtH; qlog.kpiWeight += dtH; }
+  S.economy.swingPnL += swingPerH * dtH;                    // running mirror for the HUD
 
   // v4.2 (CR-2): surface the existing hour's figures as read-only live readouts.
   // Not new mechanics — just the numbers already summed above, exposed as rates so
   // the status cluster can show cash flow ($/h), spot exposure, and blended price.
   S.served = hr.served;                                     // MW actually delivered
   S.contractRevenue = contractRevenue;                      // $/h locked at contract prices
+  S.floorPay = floorPerH;                                   // $/h regulated availability floor (v5 P6)
   let flowPerH = revenue - hr.varCost - effSurcharge - spin - fixedOM; // instantaneous net cash, $/game-hour
 
   // financing (v4, Phase C): interest on outstanding debt is the fixed obligation
@@ -403,7 +452,9 @@ export function step(S, dt){
   // by itself — only sustained insolvency ends a run). Firm reserve = firm+peaker
   // capacity not tripped or in service; renewables/batteries don't count.
   if (S.capacityObligation){
-    S.cash += capacityPayment(S.capacityObligation, dtH / 24);
+    const availPay = capacityPayment(S.capacityObligation, dtH / 24);
+    S.cash += availPay;
+    S.quarterLog.floorPay += availPay;                          // v5 P6: the obligation IS floor income
     flowPerH += capacityPayment(S.capacityObligation, 1 / 24);  // steady availability payment ($/h)
     const capHourNow = Math.floor(S.t);
     if (S.capHour !== capHourNow){
@@ -412,7 +463,7 @@ export function step(S, dt){
         S.capacityObligation.calledToday = true;
         const deliverable = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "gas") && u.status !== "tripped" && u.status !== "service") ? u.cap : 0), 0);
         const fine = capacityPenalty(S.capacityObligation, deliverable);
-        if (fine > 0){ S.cash -= fine; setTicker(S, `⚠ Capacity call — short ${Math.round(S.capacityObligation.reserveMW - deliverable)} MW, fined $${Math.round(fine).toLocaleString()}.`); }
+        if (fine > 0){ S.cash -= fine; S.quarterLog.breaches += 1; S.quarterLog.breachFines += fine; setTicker(S, `⚠ Capacity call — short ${Math.round(S.capacityObligation.reserveMW - deliverable)} MW, fined $${Math.round(fine).toLocaleString()}.`); }
         else setTicker(S, `✓ Capacity call met — reserve delivered.`);
       }
     }
@@ -463,6 +514,7 @@ export function step(S, dt){
     S.strain = Math.min(100, S.strain + sev * CFG.strainRate * dt);
     S.satisfaction = Math.max(0, S.satisfaction - sev * CFG.satDrain * dt);
     S.cash -= shortfall * CFG.unservedPenalty * dtH; // lost sales already sting; this adds fines / emergency buys
+    S.quarterLog.shortfallMWh += shortfall * dtH;    // v5 P6: the board's serve-rate reads this vs servedMWh
   } else {
     S.brownout = false; S.upAcc += dt;
     S.strain = Math.max(0, S.strain - CFG.strainRecover * dt);

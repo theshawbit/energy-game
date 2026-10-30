@@ -105,7 +105,11 @@ const firm = S => S.fleet.find(u => u.kind === "firm");
   surviveDay(S);
   check("the quarter rollover re-enters planning", S.calendar.mode === "planning");
   check("the rollover resolves the booked maintenance", u.maintDown === false && u.kpis.reliability > 40 && (S.tasks || []).length === 0);
-  check("the rollover deducts N × wage at settlement", near(cashBefore - S.cash, expWages), `$${cashBefore - S.cash} vs $${expWages}`);
+  // v5 Phase 6: the rollover now also settles the overlord's verdict, so the cash move
+  // is wages MINUS the verdict's net bonus (the wage bill itself is booked into PnL).
+  const v = S.economy.lastVerdict;
+  check("the rollover books N × wage into the quarter settlement",
+    near(cashBefore - S.cash, expWages - (v.bonus - v.fine)), `$${cashBefore - S.cash} vs wages $${expWages} net verdict $${v.bonus - v.fine}`);
 }
 
 // 7) Cancel refunds and frees the plant + crew before resolution.

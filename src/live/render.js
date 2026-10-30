@@ -500,6 +500,54 @@ function buildSection(S){
     <div class="build-grid pl-build">${btns}</div>
   </div>`;
 }
+
+// v5 Phase 6: the overlord's board verdict — KPI grade, the floor-vs-swing earnings
+// split, the rate ratchet, the bonus/fine, and a barbed one-liner. Reads the last
+// settled Verdict (the quarterLog is already reset for the new quarter by now).
+function verdictCard(S){
+  const v = S.economy?.lastVerdict;
+  if (!v) return `<div class="pl-section verdict-card first">
+    <div class="pl-kicker">Board Review</div>
+    <p class="faint">No verdict yet — the overlord grades your first full quarter at its close.
+      Keep the city lit, your iron healthy, and your smokestacks quiet.</p></div>`;
+  const gradePct = Math.round(v.grade * 100);
+  const band = v.grade >= 0.75 ? "ok" : v.grade >= CFG.v5.econ.gradeNeutral ? "warn" : "bad";
+  const settle = v.bonus ? `<span class="v-bonus">+${money(v.bonus)}</span>`
+    : v.fine ? `<span class="v-fine">−${money(v.fine)}</span>` : `<span class="faint">—</span>`;
+  const rateDir = v.floorRateNext > v.floorRate ? "up" : v.floorRateNext < v.floorRate ? "down" : "flat";
+  const arrow = rateDir === "up" ? "▲" : rateDir === "down" ? "▼" : "→";
+  return `<div class="pl-section verdict-card ${band}">
+    <div class="pl-kicker">Board Review — Y${v.year} · Q${v.quarter}</div>
+    <div class="v-grid">
+      <div class="v-grade"><b>${gradePct}</b><small>grade</small></div>
+      <ul class="v-stats">
+        <li><span>KPI average</span><span>${v.kpiScore}</span></li>
+        <li><span>Load served</span><span>${Math.round(v.serveRate * 100)}%</span></li>
+        <li><span>Clean standing</span><span>${Math.round(v.cleanScore * 100)}%</span></li>
+        <li><span>Floor income</span><span>${money(v.floorPay)}</span></li>
+        <li><span>Swing income</span><span>${money(v.swingPay)}</span></li>
+        <li><span>Quarter PnL</span><span class="${v.pnl < 0 ? "short" : ""}">${money(v.pnl)}</span></li>
+        <li><span>Floor rate next</span><span class="rate-${rateDir}">${v.floorRate.toFixed(1)} ${arrow} ${v.floorRateNext.toFixed(1)}</span></li>
+        <li><span>Settlement</span><span>${settle}</span></li>
+      </ul>
+    </div>
+    <p class="v-note">“${v.note}”</p>
+  </div>`;
+}
+
+// v5 Phase 6: the contract book — the hedge legs smoothing your swing, shown read-only
+// at the review (they're signed/cancelled at the Desk during the live day).
+function contractBook(S){
+  const cs = S.contracts || [];
+  const rows = cs.length
+    ? cs.map(c => `<li><span>${c.mw} MW @ ${money(c.price)}/MWh</span><span class="faint">${c.remaining}d left · ${c.origin === "dial" ? "hedge" : c.buyer || c.origin}</span></li>`).join("")
+    : `<li class="faint">No hedges on the book — your served load rides the spot swing unsmoothed.</li>`;
+  const floorRate = (S.economy?.floorRate ?? CFG.v5.econ.floorRateStart).toFixed(1);
+  return `<div class="pl-section">
+    <h3>The book <small class="faint">— floor rate ${floorRate} $/MW·h · contracts hedge the swing</small></h3>
+    <ul class="bq-list">${rows}</ul>
+  </div>`;
+}
 export function renderPlanning(S, actions){
   const c = S.calendar;
   const closedQ = c.quarter === 1 ? CFG.v5.quartersPerYear : c.quarter - 1; // the quarter that just closed
@@ -564,10 +612,13 @@ export function renderPlanning(S, actions){
     <div class="planning planning-wide">
       <div class="pl-kicker">Planning Office</div>
       <h2>Quarter Review</h2>
-      <p class="pl-lead">Y${closedY} · Q${closedQ} has closed. Triage the quarter's wear: assign crews to
-        per-KPI jobs now and they resolve over Y${c.year} · Q${c.quarter} — with the plant offline while it's in
-        the shop. There's no mid-quarter buy-out, so repair what will hurt most. <span class="faint">(The overlord's
-        verdict, build queue and ⚡ perks arrive in later phases.)</span></p>
+      <p class="pl-lead">Y${closedY} · Q${closedQ} has closed. The board has graded the quarter — settle the
+        verdict below, then triage the fleet's wear: assign crews to per-KPI jobs that resolve over Y${c.year} ·
+        Q${c.quarter}, with the plant offline while it's in the shop. There's no mid-quarter buy-out, so repair
+        what will hurt most and build ahead of the curve.</p>
+
+      ${verdictCard(S)}
+
       <ul class="pl-stats">
         <li><span>Cash</span><span>${money(S.cash)}</span></li>
         <li><span>⚡ Guild Cred</span><span>${S.zap || 0}</span></li>
@@ -588,6 +639,8 @@ export function renderPlanning(S, actions){
       </div>
 
       ${buildSection(S)}
+
+      ${contractBook(S)}
 
       <div class="end-btns">
         <button class="btn-primary" id="beginQ">Begin Y${c.year} · Q${c.quarter} ▸</button>

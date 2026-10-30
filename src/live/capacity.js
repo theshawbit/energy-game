@@ -7,6 +7,18 @@
 // ============================================================
 import { CFG } from "./config.js";
 
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// v5 Phase 6 — the regulated FLOOR. Availability pay ($/h rate) for a block of
+// reserve MW a unit holds ready (via the Phase 2 reserveHold dial), at the current
+// floor rate ($/MW/h, ratcheted by the overlord's verdict), keyed to the unit's
+// RELIABILITY — a worn plant's "ready" reserve is worth less to the regulator, so a
+// high-reliability fleet earns the full floor and a neglected one earns less. A unit
+// with no KPIs (renewable / battery) holds no dial-reserve, so this is thermal-only.
+export function floorEarn(reserveMW, reliability, floorRate){
+  return Math.max(0, reserveMW) * floorRate * clamp(reliability ?? 100, 0, 100) / 100;
+}
+
 // Availability payment ($) for an obligation over a slice of `dtDays` game-days.
 export function capacityPayment(obligation, dtDays){
   if (!obligation) return 0;

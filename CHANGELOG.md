@@ -142,6 +142,40 @@ more instant capacity. This retires the v4 instant `buildCapacity` path. See
 - New `construct` suite (10 tasks, deterministic via an injected rng); v4 `buildCapacity` tests
   ported to a direct `addUnit` helper or moved into `construct.test`; all 21 suites green.
 
+### Added — v5 Phase 6: hybrid economy & the overlord's verdict (2026-10-30)
+
+The loop now settles on a **regulated capacity floor + a market swing + a quarterly board
+verdict** — the KPI→revenue mapping goes live, and failure becomes **stagnation, never a
+game-over**. This **revives** (does not delete) the shipped `market.js`/`finance.js`/`capacity.js`.
+See [`docs/plan-v5/phase-6-hybrid-economy.md`](docs/plan-v5/phase-6-hybrid-economy.md).
+
+- **Two income surfaces.** The **floor** (`capacity.floorEarn`) pays availability on the MW each
+  committed thermal unit holds back via `reserveHold`, at the ratcheted floor rate, keyed to that
+  unit's **Reliability**. The **swing** (`market.swingEarn`/`swingCoeff`) is the residual served
+  load clearing at spot, scaled by the fleet's **Output/Flexibility** capture quality. Held reserve
+  earns the floor, pushed MW earns the swing — the two never double-count, and a fresh fleet's swing
+  equals the raw v4 spot revenue (no regression). Efficiency stays on the fuel-cost side (the Phase 3
+  `effSurcharge`), so it isn't double-charged.
+- **`verdict.js` (new, pure)** — `settleQuarter(S) → Verdict` grades the quarter from `S.quarterLog`
+  alone (fleet KPI average · serve rate · clean standing) into a 0..1 grade, ratchets next quarter's
+  floor rate, and hands a bonus or fine with a barbed one-liner; `applyVerdict(S, v)` banks it and
+  sets the **stagnation lever**. `freshQuarterLog`/`freshEconomy` seed the new `S.quarterLog`/
+  `S.economy` state, accrued each tick and reset at every rollover.
+- **Stagnation, not death.** A quarter that serves below the threshold stalls the *next* quarter's
+  demand growth (never the base), and insolvency keeps its v4 teeth (a default still craters credit)
+  but is **never** a game-over — `S.over` is never set; recovery must be earned.
+- **Seams closed.** Crew wages (Phase 4) and build overruns (Phase 5) now settle into the quarter's
+  PnL at `settleQuarter`.
+- **180s-day re-tune.** `strainRate`/`strainRecover`/`satDrain`/`bankruptcyGrace` were still sized for
+  the old 48s day; scaled for the 180s day so a brownout's strain escalates over a real stretch of a
+  shortfall rather than pinning instantly. `bankruptcyGrace` now gates *pain onset*, not death.
+- **Planning Office** gains the **board review**: the overlord's verdict card (grade, KPI/serve/clean,
+  floor-vs-swing split, rate ratchet, bonus/fine, the barbed note) and a read-only contract book.
+- New `economy` (14 checks) + `verdict` (18 checks) suites; `guards`/`maint` re-based on the new
+  settlement; all **23 suites green**.
+- **Still deferred:** the steep `peakGrowth` demand *cadence* (per-day compounding) is a dedicated
+  balance pass, not this phase; `tools/balance.mjs` remains stale.
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a

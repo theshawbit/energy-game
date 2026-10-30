@@ -15,8 +15,32 @@
 // ============================================================
 import { DEMAND_SHAPE } from "../constants.js";
 import { CFG } from "./config.js";
+import { revenueCoeffs } from "./kpi.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// v5 Phase 6 — the SWING quality coefficient (0..1): how well a unit CAPTURES the
+// market swing, blending the Output (volume) and Flexibility (capture) KPI coeffs.
+// Efficiency's revenue effect is the EXTRA FUEL a low-efficiency plant burns, already
+// charged on the cost side (Phase 3 effSurcharge) — folding it in here too would
+// double-count it, so the swing scale leaves it out. Reliability earns the FLOOR, not
+// the swing (capacity.floorEarn). A unit with no KPIs (renewable / battery) never
+// degrades → full swing (1.0); a fresh thermal plant = 1.0 too, so a healthy grid's
+// swing equals the raw spot revenue (no regression from v4, and the book-conservation
+// guard stays exact — Output/Flexibility don't wear on a covered, non-cycling tick).
+export function swingCoeff(kpis){
+  if (!kpis) return 1;
+  const c = revenueCoeffs(kpis);
+  return (c.volume + c.capture) / 2;
+}
+
+// Market-swing revenue ($/h rate) for a block of residual (spot-cleared) MW at a
+// given spot price, scaled by the fleet's swing quality. residualMW is already the
+// SERVED load net of contracts and net of reserve-held MW (that earns the floor), so
+// a shortfall never earns here — the two surfaces never double-count.
+export function swingEarn(residualMW, spot, coeff = 1){
+  return Math.max(0, residualMW) * spot * clamp(coeff, 0, 1);
+}
 
 // local linear interp over the 24h demand shape (kept here so market.js imports
 // nothing from sim.js — avoids an import cycle, since sim.js imports this module)

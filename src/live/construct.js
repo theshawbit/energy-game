@@ -61,7 +61,9 @@ export function tickBuilds(S, rng = Math.random){
   for (const b of builds){
     if (b.slipRisk > 0 && rng() < b.slipRisk){
       b.slips += 1;
-      S.cash -= Math.round(b.cost * CFG.v5.build.overrunRate);  // the overrun bites
+      const overrun = Math.round(b.cost * CFG.v5.build.overrunRate);
+      S.cash -= overrun;                                         // the overrun bites
+      if (S.quarterLog) S.quarterLog.overruns += overrun;        // v5 P6: settles into the quarter's PnL
     } else {
       b.quartersLeft -= 1;                                       // a clean quarter of progress
     }
@@ -79,7 +81,8 @@ export function tickBuilds(S, rng = Math.random){
 
 // Project the steepening peak demand `quartersAhead` quarters out — the honest forecast
 // the build panel reads to warn "you'll be short in Q+N". Pure read of peakGrowth +
-// the calendar's quarter length. (The absurd daily-growth constant is retuned in Phase 6.)
+// the calendar's quarter length. (The steep daily-growth constant is a standing balance
+// item — a dedicated demand-cadence pass, not Phase 6; the forecast still flags the trend.)
 export function forecastDemand(S, quartersAhead){
   const days = quartersAhead * CFG.v5.daysPerQuarter;
   return Math.round(S.peak * Math.pow(S.peakGrowth, days));
