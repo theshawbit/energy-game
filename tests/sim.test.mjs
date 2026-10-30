@@ -1,10 +1,10 @@
 // Unit tests for the live simulation (no DOM). Run: `npm test`.
 // These pin the real-time loop's state machine and economics so the Phase B+
 // feature work can't silently break pacing or the dispatch wiring.
-import { createGame, step, surviveDay, beginNextQuarter, unitOutput, totalCapacity, interp, tripHazard, dailyStrainProb, autoService } from "../src/live/sim.js";
+import { createGame, step, surviveDay, beginNextQuarter, unitOutput, totalCapacity, interp, tripHazard, dailyStrainProb } from "../src/live/sim.js";
 import { isQuarterEnd } from "../src/live/calendar.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
-import { CFG, UPGRADE, upgradeCost, serviceCost, serviceTimeFor, salvageValue } from "../src/live/config.js";
+import { toggleUnit, buildCapacity, upgradeUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
+import { CFG, UPGRADE, upgradeCost, salvageValue } from "../src/live/config.js";
 import { computeResearchMods } from "../src/live/research.js";
 import { computeMutatorMods } from "../src/live/mutators.js";
 
@@ -159,52 +159,21 @@ check("online plant wears down", nucW.condition < 100, nucW.condition.toFixed(1)
   check("pushing a plant harder wears it faster (style, not age)", dropFor(0, 1) > dropFor(0, 0.3) * 1.5,
     `−${dropFor(0, 1).toFixed(3)} (push 1.0) vs −${dropFor(0, 0.3).toFixed(3)} (push 0.3)`);
 }
-// Relief: service and upgrade knock accumulated age down (but never to zero).
+// Relief: upgrade knocks accumulated age down (but never to zero). (v5 Phase 4 retired
+// the mid-quarter service path; age relief from a service is gone — maintenance is
+// quarter-end only now and restores KPIs, not ageHours.)
 {
-  const Sr = createGame(); const u = Sr.fleet.find(x => x.id === "colA");
-  u.condition = 60; u.ageHours = 200; const aged = u.ageHours;
-  serviceUnit(Sr, "colA"); u.serviceTimer = 0.01; step(Sr, 0.1);
-  // relieved to aged×serviceAgeRelief, then it runs for the rest of the tick and
-  // accrues a sliver back — so check it landed at the relief floor (+ <1gh), not 0.
-  check("service relieves age by serviceAgeRelief (not a full reset)",
-    near(u.ageHours, aged * CFG.serviceAgeRelief, 0.2) && u.ageHours > 0,
-    `${aged}gh → ${u.ageHours.toFixed(1)}gh`);
+  const Sr = createGame();
   const u2 = Sr.fleet.find(x => x.id === "colB"); u2.ageHours = 200;
   upgradeUnit(Sr, "colB");
-  check("upgrade relieves age deeper (upgradeAgeRelief)",
+  check("upgrade relieves age (upgradeAgeRelief)",
     near(u2.ageHours, 200 * CFG.upgradeAgeRelief, 1e-6),
     `200gh → ${u2.ageHours.toFixed(1)}gh`);
 }
 
-// 14) Service: pulls offline, costs cash, then restores condition
-S = createGame();
-const colA = S.fleet.find(u => u.id === "colA"); colA.condition = 40;
-const cashA = S.cash, expCost = serviceCost(colA);
-let sres = serviceUnit(S, "colA");
-check("service pulls the unit offline and charges cash", sres.ok && colA.status === "service" && near(cashA - S.cash, expCost, 1e-6),
-  "$" + (cashA - S.cash) + " for a 40% plant");
-colA.serviceTimer = 0.05; // nearly done
-step(S, 0.5); // ~0.067 game-hours at the v5 180s day — enough to finish the 0.05gh service
-check("service completes at 100% condition, back online", colA.condition > 99 && colA.status === "online",
-  colA.condition.toFixed(1) + "% / " + colA.status);
-
-// 14b) v4.2.1 overhaul tier: below tripOverhaul a service becomes a costly, slower overhaul
-{
-  const S2 = createGame(); const u = S2.fleet.find(x => x.id === "colB");
-  u.condition = CFG.tripOverhaul + 1; const normalCost = serviceCost(u), normalTime = serviceTimeFor(u);
-  u.condition = CFG.tripOverhaul - 1; const overhaulCost = serviceCost(u), overhaulTime = serviceTimeFor(u);
-  check("crossing below tripOverhaul jumps the service cost (premium)", overhaulCost > normalCost * (CFG.overhaulCostMult - 1),
-    `$${normalCost} → $${overhaulCost}`);
-  check("a routine service runs the base time; an overhaul runs longer",
-    normalTime === CFG.serviceTime && near(overhaulTime, CFG.serviceTime * CFG.overhaulTimeMult, 1e-9),
-    `${normalTime}h → ${overhaulTime}h`);
-}
-
-// 15) Service is gated by cash
-S = createGame(); S.cash = 0;
-const colB = S.fleet.find(u => u.id === "colB"); colB.condition = 20;
-sres = serviceUnit(S, "colB");
-check("service refused without cash", !sres.ok && colB.status === "online");
+// (v5 Phase 4) The v4 mid-quarter service action is retired — maintenance is scheduled
+// at the quarter-end board review and worked by the crew pool. See tests/maint.test.mjs
+// and tests/crews.test.mjs for the replacement. No live service path remains to test here.
 
 // ---- Phase C meta: scoring, milestones, skills, modifiers ----
 const meta = await import("../src/live/meta.js");
@@ -256,24 +225,9 @@ check("decommission removes the unit and refunds salvage", dres.ok && S.fleet.le
 dres = decommissionUnit(S, "bat");
 check("battery cannot be decommissioned", !dres.ok && S.fleet.some(u => u.id === "bat"));
 
-// 22) Service Manager modifier is off without the skill, on with it
-check("no Service Manager by default", meta.computeMods({}).autoServiceAt === 0);
-check("Service Manager unlocks an auto-service threshold", meta.computeMods({ servicemgr: 2 }).autoServiceAt > 0);
-
-// 23) autoService pulls a worn OFFLINE plant without risking capacity
-S = createGame({ servicemgr: 3 }); S.cash = 1e6;
-const pkR = S.fleet.find(u => u.id === "pk1"); // a reserve peaker, offline
-pkR.condition = 20;                            // well below the lvl-3 threshold (70)
-S.autoSvcAcc = 5;                              // force the once-per-hour check to fire
-autoService(S, 1);
-check("Service Manager auto-services a worn reserve plant", pkR.status === "service", pkR.status);
-
-// 24) autoService won't pull an online plant when it would cause a shortfall
-S = createGame({ servicemgr: 3 }); S.cash = 1e6;
-const nucS = S.fleet.find(u => u.id === "nuc"); nucS.condition = 10;
-S.capacity = 600; S.demand = 590; S.autoSvcAcc = 5; // only 10 MW margin, nuclear is 250 MW
-autoService(S, 1);
-check("Service Manager won't pull an online plant into a shortfall", nucS.status === "online", nucS.status);
+// (v5 Phase 4) The Service Manager meta skill + its autoService live path are retired
+// — maintenance is quarter-end crew work now (tests/maint.test.mjs). The `servicemgr`
+// skill is inert in v5 (Phase 7's progression rework revisits the meta roster).
 
 // 25) Fresh game carries neutral research state (v3)
 S = createGame();

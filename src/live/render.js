@@ -6,7 +6,9 @@
 import { unitOutput, clamp } from "./sim.js";
 import { quarterLabel } from "./calendar.js";
 import { applyDials } from "./dispatch.js";
-import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
+import { TASKS, taskRestore } from "./maint.js";
+import { TRADES, tradeModifier } from "./crews.js";
+import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, salvageValue } from "./config.js";
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
@@ -264,7 +266,7 @@ function updateUnits(S, tick = true){
     const out = Math.round(unitOutput(S, u));
     // state → status pill + row accent class
     let stClass, stText, rowState;
-    if (u.status === "service"){ stClass = "st-service"; stText = "SERVICE"; rowState = "service"; }
+    if (u.status === "maint"){ stClass = "st-service"; stText = "⚙ MAINT"; rowState = "service"; }
     else if (u.status === "strained"){ stClass = "st-strained"; stText = "⚠ STRAIN"; rowState = "strained"; }
     else if (u.status === "online" || u.status === "discharge"){ stClass = "st-online"; stText = u.kind === "battery" ? "DISCHG" : "ONLINE"; rowState = "live"; }
     else if (u.status === "starting"){ stClass = "st-starting"; stText = "STARTING"; rowState = "starting"; }
@@ -299,7 +301,7 @@ function updateUnits(S, tick = true){
     // contextual sub-note: strain/spin/service/charge callout, else cap · running $/MWh
     let sub;
     if (u.status === "strained") sub = u.ctrl ? "about to trip — stand down / back up" : "about to trip — fire reserves";
-    else if (u.status === "service") sub = `maintenance · ${clock(Math.max(0, u.serviceTimer || 0))} left`;
+    else if (u.status === "maint") sub = `in the shop — back next quarter`;
     else if (u.status === "starting") sub = `spin-up · ${clock(Math.max(0, u.startTimer || 0))}`;
     else if (u.kind === "battery") sub = `charge ${Math.round(u.energy)}/${Math.round(u.maxEnergy * (S.rmods?.battEnergyMult ?? 1))} MWh${u.ctrl ? ` · tap ${u.key}` : ""}`;
     else if (u.kind === "renew") sub = `${Math.round(u.cap)} MW · $0/MWh`;
@@ -439,29 +441,119 @@ function line(ctx, data, x, y, key, color, lw){
 // The grid never ends; completing a quarter pauses here. Phase 6 fills this with
 // the overlord's KPI verdict, maintenance triage, build queue, research and ⚡
 // perks. For now it reports the close and hands control back to the next quarter.
+// The axes a plant still has to repair (KPI below full), each with its task + cost.
+function kpiDeficits(u){
+  return KPI_AXES
+    .map(([axis, letter]) => ({ axis, letter, deficit: Math.round(100 - u.kpis[axis]), task: Object.values(TASKS).find(t => t.axis === axis) }))
+    .filter(d => d.deficit > 0 && d.task);
+}
 export function renderPlanning(S, actions){
   const c = S.calendar;
   const closedQ = c.quarter === 1 ? CFG.v5.quartersPerYear : c.quarter - 1; // the quarter that just closed
   const closedY = c.quarter === 1 ? c.year - 1 : c.year;
+  const crews = S.crews || [], tasks = S.tasks || [], freeCrews = crews.filter(cr => !cr.assignment);
+  const cc = CFG.v5.crews;
+
+  // ---- maintenance triage: plants with KPI deficits not already in the shop ----
+  const needy = S.fleet.filter(u => u.kpis && !u.maintDown && kpiDeficits(u).length > 0);
+  const crewOpts = (axis) => freeCrews.map(cr => {
+    const edge = tradeModifier(cr, axis) === 1 ? "on-trade" : "off-trade";
+    return `<option value="${cr.id}">${cr.name} · ${cr.trade.slice(0,3)} Lv${cr.level} (${edge})</option>`;
+  }).join("");
+  const triageRows = needy.map(u => {
+    const defs = kpiDeficits(u);
+    const axisOpts = defs.map(d => `<option value="${d.axis}">${d.task.label} · ${d.letter} −${d.deficit} · ${money(d.task.cost)}</option>`).join("");
+    const firstAxis = defs[0].axis;
+    const canAssign = freeCrews.length > 0 && S.cash >= defs[0].task.cost;
+    return `<div class="tri-row" data-tri="${u.id}">
+      <div class="tri-nm">${u.name}<small class="faint">${Math.round(u.cap)} MW · ${u.kind}</small></div>
+      ${kpiClusterStatic(u.kpis)}
+      <select class="tri-axis" data-tri-axis="${u.id}">${axisOpts}</select>
+      <select class="tri-crew" data-tri-crew="${u.id}" ${freeCrews.length ? "" : "disabled"}>${crewOpts(firstAxis) || `<option>— no free crew —</option>`}</select>
+      <button class="tri-go" data-tri-go="${u.id}" ${canAssign ? "" : "disabled"}>Schedule</button>
+    </div>`;
+  }).join("") || `<p class="faint tri-empty">No plant needs maintenance — the fleet is in good health.</p>`;
+
+  // ---- scheduled tasks (resolve next quarter, with downtime) ----
+  const schedRows = tasks.map(t => {
+    const u = S.fleet.find(x => x.id === t.unitId), cr = crews.find(x => x.id === t.crewId);
+    const task = TASKS[t.name], pts = Math.round(taskRestore(task, cr));
+    return `<li><span>${u ? u.name : t.unitId} — ${task ? task.label : t.name} (+${pts} ${t.axis.slice(0,3)}, ${cr ? cr.name : "?"})</span>
+      <button class="tri-cancel" data-cancel="${t.id}">Cancel</button></li>`;
+  }).join("");
+  const schedBlock = tasks.length
+    ? `<div class="pl-sched"><h4>Scheduled next quarter <small class="faint">— these plants are offline while worked</small></h4><ul>${schedRows}</ul></div>`
+    : "";
+
+  // ---- crew roster: trade, level, assignment; promote with ⚡, hire with cash ----
+  const crewRows = crews.map(cr => {
+    const busy = cr.assignment ? S.fleet.find(u => (S.tasks || []).some(t => t.id === cr.assignment && t.unitId === u.id)) : null;
+    const xpPct = Math.round(Math.min(1, cr.xp / cc.xpCurve) * 100);
+    const canPromote = cr.levelCap < cc.maxLevel && (S.zap || 0) >= cc.promoteCost;
+    const promoteBtn = cr.levelCap < cc.maxLevel
+      ? `<button class="cr-promote" data-promote="${cr.id}" ${canPromote ? "" : "disabled"}>Promote · ${cc.promoteCost} ⚡</button>`
+      : `<span class="faint">maxed</span>`;
+    return `<div class="cr-row">
+      <div class="cr-id"><b>${cr.name}</b><small class="faint">${cr.trade} · Lv ${cr.level}/${cr.levelCap}</small></div>
+      <span class="cr-xp" title="${cr.xp}/${cc.xpCurve} XP"><i style="width:${xpPct}%"></i></span>
+      <span class="cr-assign ${cr.assignment ? "busy" : "free"}">${cr.assignment ? "→ " + (busy ? busy.name : "assigned") : "free"}</span>
+      ${promoteBtn}
+    </div>`;
+  }).join("");
+  const rosterFull = crews.length >= (S.rosterCap ?? cc.baseRoster);
+  const hireBtns = TRADES.map(tr => {
+    const can = !rosterFull && S.cash >= cc.hireCost;
+    return `<button class="cr-hire" data-hire="${tr}" ${can ? "" : "disabled"}>+ ${tr.slice(0,4)} · ${money(cc.hireCost)}</button>`;
+  }).join("");
+
   $("vignette").style.opacity = "0";
   $("modal").innerHTML = `
-    <div class="planning">
+    <div class="planning planning-wide">
       <div class="pl-kicker">Planning Office</div>
       <h2>Quarter Review</h2>
-      <p class="pl-lead">Y${closedY} · Q${closedQ} has closed. The board review — the overlord's KPI
-        verdict, maintenance triage, the build queue, research and ⚡ perks — arrives in a later phase.
-        For now, the grid rolls on.</p>
+      <p class="pl-lead">Y${closedY} · Q${closedQ} has closed. Triage the quarter's wear: assign crews to
+        per-KPI jobs now and they resolve over Y${c.year} · Q${c.quarter} — with the plant offline while it's in
+        the shop. There's no mid-quarter buy-out, so repair what will hurt most. <span class="faint">(The overlord's
+        verdict, build queue and ⚡ perks arrive in later phases.)</span></p>
       <ul class="pl-stats">
-        <li><span>Day</span><span>${S.day}</span></li>
-        <li><span>Peak demand</span><span>${S.peak} MW</span></li>
         <li><span>Cash</span><span>${money(S.cash)}</span></li>
-        <li><span>Satisfaction</span><span>${Math.round(S.satisfaction)}%</span></li>
+        <li><span>⚡ Guild Cred</span><span>${S.zap || 0}</span></li>
+        <li><span>Crews</span><span>${crews.length}/${S.rosterCap ?? cc.baseRoster}</span></li>
+        <li><span>Wage bill / Q</span><span>${money(crews.length * cc.wage)}</span></li>
       </ul>
+
+      <div class="pl-section">
+        <h3>Maintenance triage</h3>
+        <div class="tri-list">${triageRows}</div>
+        ${schedBlock}
+      </div>
+
+      <div class="pl-section">
+        <h3>Crew roster <small class="faint">— levels with use; ⚡ promotes standouts</small></h3>
+        <div class="cr-list">${crewRows}</div>
+        <div class="cr-hire-row"><span class="faint">Hire${rosterFull ? " — roster full" : ""}:</span> ${hireBtns}</div>
+      </div>
+
       <div class="end-btns">
         <button class="btn-primary" id="beginQ">Begin Y${c.year} · Q${c.quarter} ▸</button>
       </div>
     </div>`;
   $("overlay").classList.add("on");
+
+  // repopulate the crew select when the axis changes (on/off-trade hint tracks the axis)
+  $("modal").querySelectorAll("[data-tri-axis]").forEach(sel => sel.onchange = () => {
+    const id = sel.dataset.triAxis, crewSel = $("modal").querySelector(`[data-tri-crew="${id}"]`);
+    if (crewSel) crewSel.innerHTML = crewOpts(sel.value) || `<option>— no free crew —</option>`;
+  });
+  $("modal").querySelectorAll("[data-tri-go]").forEach(b => b.onclick = () => {
+    const id = b.dataset.triGo;
+    const axis = $("modal").querySelector(`[data-tri-axis="${id}"]`)?.value;
+    const crewId = $("modal").querySelector(`[data-tri-crew="${id}"]`)?.value;
+    if (axis && crewId) actions.schedule(id, axis, crewId);
+  });
+  $("modal").querySelectorAll("[data-cancel]").forEach(b => b.onclick = () => actions.cancelTask(b.dataset.cancel));
+  $("modal").querySelectorAll("[data-promote]").forEach(b => b.onclick = () => actions.promote(b.dataset.promote));
+  $("modal").querySelectorAll("[data-hire]").forEach(b => b.onclick = () => actions.hire(b.dataset.hire));
   $("beginQ").onclick = actions.begin;
 }
 
@@ -636,7 +728,7 @@ function recordsStrip(S){
 function fleetRow(S, u){
   const tier = u.tier || 1, mk = tier > 1 ? ` <span class="mk">Mk ${roman(tier)}</span>` : "";
   let stClass, stText;
-  if (u.status === "service"){ stClass = "st-service"; stText = "SERVICE"; }
+  if (u.status === "maint"){ stClass = "st-service"; stText = "⚙ MAINT"; }
   else if (u.status === "strained"){ stClass = "st-strained"; stText = "⚠ STRAINING"; }
   else if (u.status === "online" || u.status === "discharge"){ stClass = "st-online"; stText = u.kind === "battery" ? "DISCHARGE" : "ONLINE"; }
   else if (u.status === "starting"){ stClass = "st-starting"; stText = "STARTING"; }
@@ -648,12 +740,9 @@ function fleetRow(S, u){
     : `<span class="faint">—</span>`;
   const max = tier >= UPGRADE.maxTier, uCost = upgradeCost(tier), canUp = !max && S.cash >= uCost;
   const upBtn = `<button data-up="${u.id}" ${canUp ? "" : "disabled"}>${max ? "Max" : `→ Mk ${roman(tier + 1)} · ${money(uCost)}`}</button>`;
-  let svcBtn = "";
-  if (u.condition != null){
-    const inSvc = u.status === "service", sCost = Math.round(serviceCost(u) * (S.mods?.repairMult ?? 1)), canSvc = !inSvc && S.cash >= sCost;
-    const overhaul = u.condition < CFG.tripOverhaul, svcLabel = overhaul ? "Overhaul" : "Service";
-    svcBtn = `<button class="svc${overhaul ? " overhaul" : ""}" data-svc="${u.id}" ${canSvc ? "" : "disabled"}>${inSvc ? "In service…" : `${svcLabel} · ${money(sCost)}`}</button>`;
-  }
+  // v5 Phase 4: maintenance is scheduled in the quarter-end Planning Office, not here;
+  // a plant booked for the shop shows a MAINT flag instead of a mid-quarter service button.
+  const maintFlag = u.maintDown ? `<span class="svc-flag">⚙ booked</span>` : "";
   const lastBattery = u.kind === "battery" && S.fleet.filter(x => x.kind === "battery").length <= 1;
   const decBtn = `<button class="dec" data-dec="${u.id}" ${lastBattery ? "disabled" : ""}>Sell · ${money(salvageValue(u))}</button>`;
   const main = `<tr>
@@ -661,7 +750,7 @@ function fleetRow(S, u){
     <td><span class="st ${stClass}">${stText}</span></td>
     <td class="num">${out}/${u.cap}</td>
     <td class="num">${cond}</td>
-    <td><div class="fleet-acts">${upBtn}${svcBtn}${decBtn}</div></td></tr>`;
+    <td><div class="fleet-acts">${upBtn}${maintFlag}${decBtn}</div></td></tr>`;
   return main + dialsRow(S, u);
 }
 
@@ -692,8 +781,9 @@ function dialsRow(S, u){
   </div></td></tr>`;
 }
 function fleetBody(S){
-  const svcNote = S.mods?.autoServiceAt
-    ? `<p class="svc-note">⚙ Service Manager active — auto-servicing worn plants below ${S.mods.autoServiceAt}%.</p>` : "";
+  // v5 Phase 4: maintenance moved to the quarter-end Planning Office; a short note
+  // points the player there instead of offering mid-quarter service.
+  const svcNote = `<p class="svc-note faint">⚙ Maintenance is scheduled at the quarter-end board review — nurse a broken plant to the quarter close.</p>`;
   const cmp = makeFleetComparator(fleetSort.col, fleetSort.dir, u => unitOutput(S, u));
   const rows = [...S.fleet].sort(cmp).map(u => fleetRow(S, u)).join("");
   const arr = c => fleetSort.col === c ? (fleetSort.dir > 0 ? " ▲" : " ▼") : "";
@@ -707,7 +797,6 @@ function fleetBody(S){
 function wireFleet(S, actions){
   const m = $("menu");
   m.querySelectorAll("[data-up]").forEach(b => b.onclick = () => actions.upgrade(b.dataset.up));
-  m.querySelectorAll("[data-svc]").forEach(b => b.onclick = () => actions.service(b.dataset.svc));
   m.querySelectorAll("[data-dec]").forEach(b => b.onclick = () => actions.decommission(b.dataset.dec));
   // v5 Phase 2 dials: commit re-renders (band/push enable toggles); the sliders write
   // u.dials and patch their readout in-place (no re-render, so the drag isn't interrupted).

@@ -10,7 +10,9 @@
 // ============================================================
 import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
-import { CFG, makeFleet, serviceCost, serviceTimeFor, dialSnapshot } from "./config.js";
+import { CFG, makeFleet, dialSnapshot } from "./config.js";
+import { makeCrew, wageBill, TRADES } from "./crews.js";
+import { resolveQuarterTasks } from "./maint.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
 import { freshClock, tickClock, autoPause } from "./clock.js";
 import { applyDials, cycleCost } from "./dispatch.js";
@@ -84,35 +86,21 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     // opt-in via economy unlocks. (v5 retired the finite-run win.) ----
     economyUnlocked: { ...economyUnlocked }, // v5: grid is persistent (maxRunDays/won retired)
     capacityObligation:null, capHour:-1,
+    // ---- v5 Phase 4: maintenance & crews. The crew pool seeds one per core trade;
+    // ⚡ (zap) promotes standouts + raises the roster ceiling; tasks are scheduled at
+    // the quarter-end review and resolve over the next quarter with downtime. ----
+    crews: Array.from({ length: CFG.v5.crews.startCrews }, (_, i) => makeCrew(TRADES[i % TRADES.length], i + 1)),
+    crewSeq: CFG.v5.crews.startCrews, tasks: [], taskSeq: 0,
+    zap: 0, rosterCap: CFG.v5.crews.baseRoster,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
 }
 
-// Service Manager (meta skill): once per game-hour, pull the single most-worn
-// plant below the unlocked threshold for service — but only when it's safe
-// (an offline plant has no downtime cost; an online one only if the reserve
-// margin stays positive without it) and affordable. Paid automatically.
-export function autoService(S, dtH){
-  const at = S.mods?.autoServiceAt || 0;
-  if (!at) return;
-  S.autoSvcAcc += dtH;
-  if (S.autoSvcAcc < 1) return;
-  S.autoSvcAcc = 0;
-  const cands = S.fleet
-    .filter(u => u.condition != null && u.status !== "service" && u.condition < at)
-    .sort((a, b) => a.condition - b.condition);
-  for (const u of cands){
-    const cost = Math.round(serviceCost(u) * (S.mods.repairMult ?? 1));
-    if (S.cash < cost) break;
-    const offline = u.kind === "battery" ? u.status !== "discharge" : u.status !== "online";
-    if (!offline && (S.capacity - S.demand) <= u.cap * 1.1) continue; // would risk a shortfall
-    const overhaul = u.condition < CFG.tripOverhaul;
-    S.cash -= cost; u.status = "service"; u.serviceTimer = serviceTimeFor(u);
-    setTicker(S, `⚙ Service Manager: ${u.name} pulled for ${overhaul ? "an overhaul" : "maintenance"}.`);
-    break; // at most one per interval, to spread downtime
-  }
-}
+// v5 Phase 4: the v4 live service path (manual `serviceUnit` + the Service Manager
+// `autoService`) is retired — maintenance is now QUARTER-END ONLY (maint.js), worked
+// by the crew pool, with downtime. There is no mid-quarter repair. The `servicemgr`
+// meta skill is inert in v5 (Phase 7's progression rework revisits the meta roster).
 
 export function setTicker(S, msg){ S.ticker = msg; S.tickerT = 3.5; }
 
@@ -189,9 +177,18 @@ export function surviveDay(S){
   // Office (the quarter-end board review). This is a BEAT, not an ending — the
   // grid is persistent; nothing is ever lost. Phase 6 fills the review.
   if (rolled.rolledQuarter){
+    // v5 Phase 4: settle the quarter's maintenance BEFORE the review — finished tasks
+    // restore their KPI axis + free their crew (and the crew levels for the work),
+    // in-flight ones advance, and downtime lifts. Then pay the standing wage bill
+    // (Phase 6 folds this into settleQuarter's PnL). The player schedules NEXT
+    // quarter's tasks during the planning session that follows.
+    const completed = resolveQuarterTasks(S);
+    const wages = wageBill(S); S.cash -= wages;
     S.calendar.mode = "planning";
     autoPause(S, "Quarter closed — board review");
-    setTicker(S, "◼ Quarter closed — the board review is ready.");
+    setTicker(S, completed > 0
+      ? `◼ Quarter closed — ${completed} plant${completed > 1 ? "s" : ""} back from maintenance. Board review ready.`
+      : "◼ Quarter closed — the board review is ready.");
     return;
   }
   setTicker(S, firstCarbon
@@ -238,6 +235,13 @@ export function step(S, dt){
 
   // unit state machines
   for (const u of S.fleet){
+    // v5 Phase 4: a plant in the shop for quarter-end maintenance is offline for the
+    // whole quarter (the downtime teeth). It holds "maint", takes no commit/spin-up,
+    // never trips, and doesn't wear — resolveQuarterTasks lifts it at the rollover.
+    if (u.maintDown){
+      if (u.status !== "maint"){ u.status = "maint"; u.strainTimer = 0; }
+      continue;
+    }
     // v5 Phase 2: the COMMIT dial drives online/offline for dial-able thermal (firm/gas).
     // The dial is the desire; status is the physical state. A committed gas unit spins
     // up (startTime); standing one down (or uncommitting) takes it offline and clears
@@ -435,8 +439,6 @@ export function step(S, dt){
     S.cash -= spend;
     S.rp += spend * CFG.rpPerDollar;
   }
-
-  autoService(S, dtH); // Service Manager skill (no-op unless owned)
 
   // reserve margin, brownout, strain
   const shortfall = S.demand - S.capacity;

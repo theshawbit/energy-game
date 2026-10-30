@@ -4,7 +4,7 @@
 // live, unpaused play.
 // ============================================================
 import { setTicker } from "./sim.js";
-import { CFG, BUILD, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, serviceTimeFor, salvageValue, makeUnit } from "./config.js";
+import { CFG, BUILD, BUILD_GATE, UPGRADE, upgradeCost, salvageValue, makeUnit } from "./config.js";
 import { doResearch, researchById } from "./research.js";
 import { dailyBaseline } from "./market.js";
 import { contractPrice, expectedOutput, makeContract, creditRating } from "./finance.js";
@@ -61,22 +61,9 @@ export function upgradeUnit(S, id){
   return { ok:true };
 }
 
-// Pull a unit for scheduled service: it goes offline for CFG.serviceTime
-// game-hours (the downtime cost), then returns at 100% condition. Costs cash
-// scaled by how worn it is. The gamble is losing that capacity now vs. a trip
-// at the worst moment later.
-export function serviceUnit(S, id){
-  if (S.over) return { ok:false };
-  const u = S.fleet.find(x => x.id === id); if (!u || u.condition == null) return { ok:false, msg:"Nothing to service." };
-  if (u.status === "service") return { ok:false, msg:"Already in service." };
-  const cost = Math.round(serviceCost(u) * (S.mods?.repairMult ?? 1));
-  if (S.cash < cost) return { ok:false, msg:"Not enough cash to service." };
-  const overhaul = u.condition < CFG.tripOverhaul, time = serviceTimeFor(u);
-  S.cash -= cost;
-  u.status = "service"; u.serviceTimer = time;
-  setTicker(S, `${u.name} pulled for ${overhaul ? "an overhaul" : "service"} — back in ${time}h.`);
-  return { ok:true };
-}
+// v5 Phase 4: mid-quarter `serviceUnit` is retired. Maintenance is scheduled only at
+// the quarter-end board review and worked by the crew pool (see maint.js /
+// crews.js) — a plant that breaks mid-quarter is operated around, no buy-out.
 
 // Decommission a unit and recover salvage cash. Lets the player transition the
 // fleet mix (e.g. retire early coal for nuclear/peakers). The battery is kept

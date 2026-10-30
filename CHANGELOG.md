@@ -89,6 +89,32 @@ which one decays — the degradation keystone the dials were built for. See
   both the live fleet rail and Manage ▸ Fleet (the "Health" column), each bar banded by its value.
 - New `kpi` suite (10 tasks); the stale v4 age-wear test is re-pointed at the new style model; all 18 green.
 
+### Added — v5 Phase 4: maintenance & crews (2026-10-29)
+
+Repair becomes **cut-throat and quarter-end-only**, worked by a **soft-specialized, levelling
+crew pool**. This retires the v4 mid-quarter service path wholesale. See
+[`docs/plan-v5/phase-4-maintenance-crews.md`](docs/plan-v5/phase-4-maintenance-crews.md).
+
+- **`maint.js` (new, pure)** — the per-KPI task catalogue (`overhaul→reliability`,
+  `retune→efficiency`, `uprate→output`, `recalibrate→flexibility`), `scheduleTask` (quarter-end
+  only — refused in operating), `taskRestore` (base × crew level × on/off-trade), `cancelTask`,
+  and `resolveQuarterTasks` (runs at the quarter rollover: completes finished jobs, restores the
+  KPI axis, lifts downtime, awards crew XP).
+- **`crews.js` (new, pure)** — the crew pool: `makeCrew`, `tradeModifier` (1.0 on-trade, a penalty
+  off-trade — never 0, so fungible), `gainXP` (passive levelling), `promote` (spends ⚡, raises the
+  crew's level ceiling), `hireCrew` (cash, gated by the roster ceiling), `wageBill`.
+- **Downtime is the teeth.** A booked plant sits in **MAINT** — offline for the whole next quarter
+  — so triage trades off against serving a rising demand curve. There is **no mid-quarter buy-out**:
+  a plant that breaks on day 5 is yours to nurse to the review.
+- **Standing costs.** Wages (`N × wage`) are deducted at the quarter rollover (the seam Phase 6
+  moves into `settleQuarter`'s PnL). ⚡ ("Guild Cred") promotes standouts; the roster ceiling bites.
+- **Planning Office** gains the **maintenance triage** (per-plant KPI deficits + task/crew assign)
+  and a **crew roster** (trades, levels, XP, promote/hire). The live fleet shows a MAINT status; the
+  Manage ▸ Fleet Service/Overhaul button is gone, replaced by a pointer to the board review.
+- **Seams noted:** the `servicemgr` meta skill is now **inert** in v5 (Phase 7's progression rework
+  revisits the meta roster); wage deduction moves to `settleQuarter` in Phase 6.
+- New `maint` + `crews` suites (10 tasks); v4 service tests retired from `sim.test`; all 20 green.
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a
