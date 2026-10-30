@@ -3,8 +3,12 @@
 // feature work can't silently break pacing or the dispatch wiring.
 import { createGame, step, surviveDay, beginNextQuarter, unitOutput, totalCapacity, interp, tripHazard, dailyStrainProb } from "../src/live/sim.js";
 import { isQuarterEnd } from "../src/live/calendar.js";
-import { toggleUnit, buildCapacity, upgradeUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
-import { CFG, UPGRADE, upgradeCost, salvageValue } from "../src/live/config.js";
+import { toggleUnit, upgradeUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
+import { CFG, UPGRADE, upgradeCost, salvageValue, makeUnit } from "../src/live/config.js";
+// v5 Phase 5 retired the instant buildCapacity; this adds a unit directly for the
+// mechanics tests below (dispatch/storage/makeUnit params). Build GATING now lives in
+// tests/construct.test.mjs (commitBuild).
+function addUnit(S, tech){ const n = (S.techCount[tech] = (S.techCount[tech] || 0) + 1); const u = makeUnit(tech, n, S.buildSeq++); S.fleet.push(u); return u; }
 import { computeResearchMods } from "../src/live/research.js";
 import { computeMutatorMods } from "../src/live/mutators.js";
 
@@ -69,25 +73,14 @@ S = createGame(); S.t = 18; S.weather = { sun: 1, wind: 1 };
 const byHand = S.fleet.reduce((a, u) => a + unitOutput(S, u), 0);
 check("totalCapacity = Σ unitOutput", near(totalCapacity(S), byHand, 1e-9), Math.round(totalCapacity(S)) + " MW");
 
-// 8) Build capacity: spends cash, grows the fleet, adds the block's MW
-S = createGame();
-const fleet0 = S.fleet.length, cash0 = S.cash;
-let res = buildCapacity(S, "coal");
-check("build adds a unit and charges cash", res.ok && S.fleet.length === fleet0 + 1 && S.cash < cash0,
-  `fleet ${fleet0}→${S.fleet.length}, cash ${cash0}→${S.cash}`);
-const built = S.fleet[S.fleet.length - 1];
-check("built unit carries tech, tier 1, online", built.tech === "coal" && built.tier === 1 && built.status === "online");
-
-// 9) Build is gated by cash
-S = createGame(); S.cash = 0;
-res = buildCapacity(S, "nuclear");
-check("build refused without cash", !res.ok && S.fleet.length === 9);
+// 8–9) Construction (commitBuild/tickBuilds, incl. cash + research gates) is covered in
+// tests/construct.test.mjs — the v4 instant buildCapacity path was retired in Phase 5.
 
 // 10) Upgrade: tier up, capacity up, trip rate + standby cost down, cash spent
 S = createGame();
 const nucU = S.fleet.find(u => u.id === "nuc");
 const cap0 = nucU.cap, fail0 = nucU.fail, spin0 = nucU.spin, before = S.cash;
-res = upgradeUnit(S, "nuc");
+let res = upgradeUnit(S, "nuc");
 check("upgrade raises tier to 2", res.ok && nucU.tier === 2);
 check("upgrade raises capacity", nucU.cap > cap0, `${cap0}→${nucU.cap} MW`);
 check("upgrade lowers trip rate and standby cost", nucU.fail < fail0 && nucU.spin < spin0);
@@ -243,19 +236,18 @@ check("step accrues RP from R&D funding", S.rp > rpBefore, `+${(S.rp - rpBefore)
 
 // ---- v3 multi-storage (B2): the single-battery assumption is lifted ----
 
-// 27) Batteries are buildable now, and a built one is a proper storage unit
+// 27) A second battery is a proper storage unit (makeUnit storage params)
 S = createGame();
 const nBat0 = S.fleet.filter(u => u.kind === "battery").length;
-let bres = buildCapacity(S, "battery");
-check("battery is buildable from the catalogue", bres.ok && S.fleet.filter(u => u.kind === "battery").length === nBat0 + 1);
-const built2 = S.fleet[S.fleet.length - 1];
+const built2 = addUnit(S, "battery");
+check("a built battery grows the storage count", S.fleet.filter(u => u.kind === "battery").length === nBat0 + 1);
 check("built battery is storage: off, controllable, no condition, has energy",
   built2.kind === "battery" && built2.status === "off" && built2.ctrl === true && built2.condition == null && built2.maxEnergy > 0 && built2.energy === built2.maxEnergy,
   `${built2.energy}/${built2.maxEnergy} MWh`);
 
 // 28) Two discharging batteries drain in proportion to stored energy, none below 0
 S = createGame(); S.running = true;
-buildCapacity(S, "battery");
+addUnit(S, "battery");
 const bats = S.fleet.filter(u => u.kind === "battery");
 S.t = 0; // midnight: no solar
 for (const u of S.fleet){ if (u.kind !== "battery"){ if (u.kind === "renew") u.cap = 0; else u.status = "off"; } } // batteries are the only dispatchable supply
@@ -269,7 +261,7 @@ check("both batteries discharged and neither went negative", d0 > 0 && d1 > 0 &&
 check("drain splits in proportion to stored energy (100:200 → 1:2)", near(d1 / d0, e1 / e0, 0.02), (d1 / d0).toFixed(3) + "×");
 
 // 29) Decommission a battery when there are two; refuse the last one
-S = createGame(); buildCapacity(S, "battery");
+S = createGame(); addUnit(S, "battery");
 const firstBat = S.fleet.find(u => u.kind === "battery");
 let dr = decommissionUnit(S, firstBat.id);
 check("a battery can be decommissioned when another remains", dr.ok && S.fleet.filter(u => u.kind === "battery").length === 1);
@@ -308,21 +300,11 @@ check("the last battery can't be decommissioned", !dr.ok && S.fleet.some(u => u.
 
 // ---- B4: advanced-gen build gating + transmission effects ----
 
-// 33) Advanced-gen builds are gated by their research unlock
-S = createGame(); S.cash = 1e9;
-let g = buildCapacity(S, "smr");
-check("SMR build refused before research", !g.ok && !S.fleet.some(u => u.tech === "smr"));
-S.rmods = computeResearchMods({ "unlock-smr": true });
-g = buildCapacity(S, "smr");
-check("SMR buildable once unlocked", g.ok && S.fleet.some(u => u.tech === "smr"));
-const smrU = S.fleet.find(u => u.tech === "smr");
+// 33) A built SMR is clean firm with its own params (makeUnit). Build GATING is now
+//     tested via commitBuild in tests/construct.test.mjs.
+S = createGame();
+const smrU = addUnit(S, "smr");
 check("built SMR is clean firm with its own params", smrU.kind === "firm" && smrU.condition === 100 && smrU.spin === 2 && smrU.fail === 0.0020);
-
-// 34) One Carbon Capture unlock enables both CCS variants; geo stays gated
-S = createGame(); S.cash = 1e9; S.rmods = computeResearchMods({ "unlock-ccs": true });
-const gc = buildCapacity(S, "ccs_coal"), gg = buildCapacity(S, "ccs_gas"), gq = buildCapacity(S, "geo");
-check("Carbon Capture unlocks both coal+CCS and gas+CCS", gc.ok && gg.ok && S.fleet.some(u => u.tech === "ccs_coal") && S.fleet.some(u => u.tech === "ccs_gas"));
-check("geo stays gated under a CCS-only unlock", !gq.ok && !S.fleet.some(u => u.tech === "geo"));
 
 // 35) fast-ramp research shortens a gas unit's spin-up time. v5 Phase 2: toggleUnit
 // now flips the commit dial; the spin-up (startTimer) is set in step()'s reconciliation,
@@ -381,7 +363,7 @@ check("fast-ramp cuts gas spin-up 20%", near(t2, t1 * 0.80, 1e-2) && t2 < t1, `$
 // 41) BUILT solar uses solar weather (tech-based), not wind — the latent id==="sol" fix
 {
   S = createGame(); S.cash = 1e9; S.t = 12; S.weather = { sun: 1, wind: 0 };
-  buildCapacity(S, "solar");
+  addUnit(S, "solar");
   const builtSolar = S.fleet.find(u => u.tech === "solar" && u.id !== "sol");
   check("a built solar farm follows sun weather, not wind", unitOutput(S, builtSolar) > 0, `${unitOutput(S, builtSolar).toFixed(0)} MW at sun=1,wind=0`);
 }

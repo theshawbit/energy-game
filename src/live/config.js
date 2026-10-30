@@ -256,6 +256,23 @@ export const CFG = {
         recalibrate: { axis:"flexibility", label:"Recalibrate", restore:35, quarters:1, cost:5000 },
       },
     },
+    // Phase 5: construction. A new plant is a multi-quarter capital project committed at
+    // the quarter-end review — it produces NOTHING until it comes online (gas fast,
+    // nuclear slow). There's no hard cap on concurrent builds, but push past `comfortable`
+    // and projects SLIP: each quarter a crowded build may fail to progress and pay an
+    // overrun. Under a steepening demand curve a delayed plant is a brownout, so the
+    // forecast makes building ahead a real planning skill. Capital cost = BUILD[tech].cost.
+    build: {
+      leadTimes: {            // quarters from commit to first MW — gas short, nuclear long
+        solar: 1, wind: 1, battery: 1, peaker: 1,
+        coal: 2, ccs_coal: 2, ccs_gas: 2,
+        geo: 3, nuclear: 4, smr: 4,
+      },
+      comfortable:  2,        // concurrent builds you can run with ~no slip
+      slipPerExtra: 0.18,     // +slip probability per build beyond `comfortable`
+      slipMaxProb:  0.6,      // slip probability never exceeds this (even a huge queue finishes)
+      overrunRate:  0.12,     // a slipped quarter charges this fraction of the capital cost
+    },
   },
 };
 

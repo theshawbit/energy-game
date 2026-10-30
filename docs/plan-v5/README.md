@@ -1,6 +1,6 @@
 # Grid Operator v5 — Implementation Plan (master index)
 
-> **Status: building. Phases 1–2 shipped (2026-10-29); Phases 3–9 planned.** This is the
+> **Status: building. Phases 1–5 shipped (2026-10-29); Phases 6–9 planned.** This is the
 > engineering decomposition of [`docs/ROADMAP-v5.md`](../ROADMAP-v5.md) (the program spec)
 > into nine independently shippable phases. The ROADMAP is *what and why*; this folder is
 > *how and in what order*. `engine.js` stays **sacred** throughout — `dispatchHour()` +
@@ -25,7 +25,7 @@ section) is what actually gates them.
 | 2 | **Dial-able dispatch** | [phase-2-dispatch-dials.md](phase-2-dispatch-dials.md) | `dispatch.js` | ✅ shipped 2026-10-29 |
 | 3 | **KPIs & degradation** | [phase-3-kpis-degradation.md](phase-3-kpis-degradation.md) | `kpi.js` | ✅ shipped 2026-10-29 |
 | 4 | **Maintenance & crews** | [phase-4-maintenance-crews.md](phase-4-maintenance-crews.md) | `crews.js`, `maint.js` | ✅ shipped 2026-10-29 |
-| 5 | **Construction** | [phase-5-construction.md](phase-5-construction.md) | `construct.js` | ☐ planned |
+| 5 | **Construction** | [phase-5-construction.md](phase-5-construction.md) | `construct.js` | ✅ shipped 2026-10-29 |
 | 6 | **Hybrid economy** | [phase-6-hybrid-economy.md](phase-6-hybrid-economy.md) | revives `market.js`/`finance.js`/`capacity.js`, `verdict.js` | ☐ planned |
 | 7 | **Progression** | [phase-7-progression.md](phase-7-progression.md) | `progression.js` | ☐ planned |
 | 8 | **Crisis toolkit & events** | [phase-8-crisis-events.md](phase-8-crisis-events.md) | `crisis.js`, `events.js` | ☐ planned |

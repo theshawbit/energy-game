@@ -115,6 +115,33 @@ crew pool**. This retires the v4 mid-quarter service path wholesale. See
   revisits the meta roster); wage deduction moves to `settleQuarter` in Phase 6.
 - New `maint` + `crews` suites (10 tasks); v4 service tests retired from `sim.test`; all 20 green.
 
+### Added — v5 Phase 5: lead-time construction (2026-10-29)
+
+New plant becomes a **multi-quarter capital project committed at the quarter-end review** — no
+more instant capacity. This retires the v4 instant `buildCapacity` path. See
+[`docs/plan-v5/phase-5-construction.md`](docs/plan-v5/phase-5-construction.md).
+
+- **`construct.js` (new, pure)** — `BUILDABLES` (every tech with a lead-time, carrying MW, cost
+  and `leadQuarters`), `commitBuild` (quarter-end only — refused in operating; respects research
+  gates and cash; deducts capital and queues a `Build`), `tickBuilds` (runs at the quarter rollover:
+  a clean quarter decrements `quartersLeft`, completion appends a live `makeUnit` with fresh KPIs +
+  dials + a generated name), `concurrencySlip` (the overextension soft-cap) and `forecastDemand`.
+- **Lead-times are the wait.** Gas/solar/wind/battery land in 1 quarter, coal/CCS in 2, geo in 3,
+  nuclear/SMR in 4 — an in-flight build produces **nothing** until it comes online, so you build
+  *ahead* of the demand curve or brown out.
+- **Overextension is a soft-cap, not a ceiling.** Past a comfortable count of concurrent projects,
+  each further commit carries a rising **slip risk** (capped). A slip makes **no progress that
+  quarter** and charges a cost overrun — delay, never a hard block; a huge queue still finishes.
+- **Planning Office** gains a **Capacity & construction** section: a demand forecast (Q+1/Q+2/Q+4
+  peak vs capacity-incl-in-flight, with shortfall flags), the in-flight queue, and commit buttons
+  (research-gated techs disabled; a slip warning when the queue is crowded). **Manage ▸ Build** is
+  now a **read-only** pipeline/forecast view that points to the quarter-end review.
+- **Seams noted:** `forecastDemand` uses the steep v4 `peakGrowth`, so far-horizon peaks read very
+  large — the demand-scaling retune is deferred to Phase 6. `tools/balance.mjs` (a dev-only tuning
+  script, not in the suite) still imports the retired v4 paths and is left stale.
+- New `construct` suite (10 tasks, deterministic via an injected rng); v4 `buildCapacity` tests
+  ported to a direct `addUnit` helper or moved into `construct.test`; all 21 suites green.
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a
