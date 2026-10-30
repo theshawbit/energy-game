@@ -587,7 +587,32 @@ function verdictCard(S){
         <li><span>Settlement</span><span>${settle}</span></li>
       </ul>
     </div>
+    ${scorecardBlock(v)}
     <p class="v-note">“${v.note}”</p>
+  </div>`;
+}
+
+// v5.1 Phase 6: the KPI scorecard — the ⚡ faucet made legible. Seven metrics in two channels
+// (PnL / Satisfaction), each a 0..100 bar; the channel subtotals split a 50/50 pool and mint the
+// quarter's ⚡, banked to the skill tree. Pure read of the verdict's attached scorecard.
+function scorecardBlock(v){
+  const sc = v.scorecard; if (!sc) return "";
+  const pct = x => Math.round((x || 0) * 100);
+  const bar = (label, x) => `<li><span>${label}</span><span class="sc-bar"><i style="width:${pct(x)}%"></i></span><span class="sc-pct">${pct(x)}</span></li>`;
+  return `<div class="v-scorecard">
+    <div class="sc-channel">
+      <div class="sc-head"><span>PnL</span><span class="sc-score">${pct(sc.pnlScore)}</span></div>
+      <ul>${bar("Margin", sc.pnl.margin)}${bar("Cost discipline", sc.pnl.cost)}${bar("Capital efficiency", sc.pnl.capEff)}</ul>
+    </div>
+    <div class="sc-channel">
+      <div class="sc-head"><span>Satisfaction</span><span class="sc-score">${pct(sc.satScore)}</span></div>
+      <ul>${bar("Reliability", sc.sat.reliability)}${bar("Headroom", sc.sat.headroom)}${bar("Clean", sc.sat.clean)}${bar("Affordability", sc.sat.affordability)}</ul>
+    </div>
+    <div class="sc-mint">
+      <span class="sc-mint-lead">⚡ minted</span>
+      <span class="sc-mint-split">${Math.round(sc.mintPnL)} PnL + ${Math.round(sc.mintSat)} Sat</span>
+      <span class="sc-mint-total">${v.mintTotal} ⚡</span>
+    </div>
   </div>`;
 }
 

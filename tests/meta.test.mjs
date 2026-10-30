@@ -2,7 +2,7 @@
 // Pins the four score tracks, their ⚡ conversion, record-keeping, and the hard
 // isolation between the two cross-run writers (currency vs credit standing).
 import { CFG } from "../src/live/config.js";
-import { CLEAN_TECHS, SCORE_TRACKS, scoreTracks, currencyForRun, awardCurrency, updateRecords, ECONOMY_UNLOCKS, buyEconomyUnlock, runLengthFor } from "../src/live/meta.js";
+import { CLEAN_TECHS, SCORE_TRACKS, scoreTracks, awardCurrency, updateRecords, ECONOMY_UNLOCKS, buyEconomyUnlock, runLengthFor } from "../src/live/meta.js";
 import { commitCreditStanding } from "../src/live/finance.js";
 
 let failed = 0;
@@ -27,14 +27,13 @@ check("CLEAN_TECHS includes CCS + nuclear, excludes raw coal/peaker",
   check("cleanShare is 0 when nothing served", scoreTracks({ day: 1, servedMWh: 0, cleanMWh: 0 }).cleanShare === 0);
 }
 
-// 3) currencyForRun sums the four track rewards and is always ≥ 1
+// 3) SCORE_TRACKS stay defined (the per-track records + stats hub still read them) even though
+//    the end-of-run ⚡ award (currencyForRun) is retired in v5.1 Phase 6 — ⚡ now mints quarterly.
 {
+  check("SCORE_TRACKS still cover the four tracks", SCORE_TRACKS.map(t => t.id).sort().join() === ["cleanShare","longevity","netWorth","spotKill"].sort().join());
   const S = { day: 6, peakNetWorth: 600000, cleanMWh: 500, servedMWh: 1000, bestSpotKill: 40000 };
   const t = scoreTracks(S);
-  const expected = Math.max(1, Math.round(SCORE_TRACKS.reduce((a, tr) => a + tr.reward(t[tr.id]), 0)));
-  check("currencyForRun = Σ track rewards (≥ 1)", currencyForRun(S) === expected && expected > 1, "⚡ " + currencyForRun(S));
-  const empty = { day: 1, peakNetWorth: 0, cleanMWh: 0, servedMWh: 0, bestSpotKill: 0 };
-  check("currencyForRun floors at 1 for a nothing run", currencyForRun(empty) === 1);
+  check("every track still has a reward curve", SCORE_TRACKS.every(tr => Number.isFinite(tr.reward(t[tr.id]))));
 }
 
 // 4) updateRecords only raises bests and returns the beaten ids

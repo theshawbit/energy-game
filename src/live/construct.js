@@ -41,6 +41,7 @@ export function commitBuild(S, tech){
   const gate = BUILD_GATE[tech]; if (gate && !(S.rmods?.[gate])) return null; // research-gated
   if (S.cash < spec.cost) return null;
   S.cash -= spec.cost;
+  if (S.quarterLog) S.quarterLog.capitalSunk = (S.quarterLog.capitalSunk || 0) + spec.cost; // v5.1 P6: capital efficiency
   const build = {
     id: "build" + (S.buildSeqV5 = (S.buildSeqV5 || 0) + 1),
     tech, cost: spec.cost, mw: spec.mw,

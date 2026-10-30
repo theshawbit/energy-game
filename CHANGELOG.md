@@ -273,6 +273,37 @@ data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. Se
   pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
   deterministic headless run must pin the global RNG *before* calling it.)
 
+### Added — v5.1 Phase 6: KPI → ⚡ currency (2026-10-30)
+
+Sixth phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). Fixes the **orphaned skill currency**:
+the end-of-run ⚡ award died with the v5 run, leaving the permanent skill tree with no faucet and
+`S.zap` (crew promotions, perks) funded by nothing. ⚡ now **mints quarterly** from a KPI scorecard and
+banks to the profile every board review — one unified pool the live run spends and the tree carries over.
+
+- **`src/live/scorecard.js` (new, pure).** `scoreQuarter(S)` reads the closed quarter's log alone and
+  scores **seven metrics in two channels** — PnL (net **margin**, **cost** discipline $/MWh, **capital
+  efficiency** on cash sunk) and Satisfaction (**reliability**, **headroom**, **cleanliness**,
+  **affordability**) — each `0..1` on its own curve, every division guarded against an empty log. Each
+  channel averages its metrics and mints its **50/50** share of the pool, so a lopsided operator can't
+  out-earn a balanced one and no single metric dominates. `mintCurrency(sc)` → the rounded, never-negative
+  ⚡ total.
+- **One ⚡ pool.** `main.js` mirrors `S.zap` ↔ `profile.currency`: seeded from the banked balance at run
+  start, written back after every promote/perk spend, and topped up at the quarter rollover by banking the
+  verdict's mint through `awardCurrency` (meta.js's only faucet), latched to fire **once** per quarter.
+- **`verdict.js`** attaches the scorecard + `mintTotal` to the verdict (the grade formula is **unchanged** —
+  the scorecard is the additive *currency* layer, the serve/kpi/clean composite still drives the ratchet);
+  `freshQuarterLog` gains the raw accumulators the scorecard needs (`opCost`, `capitalSunk`, `reserveAccum`,
+  `priceAccum`, `hours`). **`sim.js`** accrues operating cost / reserve / price / hours per tick;
+  **`construct.js`** + **`contractor.js`** accrue `capitalSunk` when capital is committed.
+- **`render.js`** — the Board Review verdict card gains a scorecard block: the seven metrics as bars under
+  their two channel subtotals, the 50/50 split, and the ⚡ minted (styled in `styles/live.css`).
+- **`meta.js`** — the dead `currencyForRun` end-of-run award is retired; `scoreTracks` / `SCORE_TRACKS`
+  stay for the per-track records + stats hub.
+- **`config.js`** — new `CFG.v5_1.score` (pool size, channel split, and the reference points each metric
+  normalises against). PLACEHOLDER curves, to be tuned by play.
+- New `scorecard` suite (6 spec tasks) + `meta` rebased off `currencyForRun`; `verdict` passes unchanged.
+  **All 32 suites green.**
+
 ### Added — v5.1 Phase 5: daily brief loop (2026-10-30)
 
 Fifth phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). Reintroduces the pre-grill **daily

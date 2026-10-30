@@ -1,6 +1,6 @@
 # Grid Operator v5.1 — Rebalance & Rework (master index)
 
-> **Status: building (grill 2026-10-30). Phases 1–5 shipped 2026-10-30.** This is the engineering decomposition of the v5.1
+> **Status: building (grill 2026-10-30). Phases 1–6 shipped 2026-10-30.** This is the engineering decomposition of the v5.1
 > rebalance grill into seven independently shippable phases. v5 shipped all nine phases
 > ([`../plan-v5/`](../plan-v5/README.md)); a week of play exposed a structural flaw — **demand
 > (compounding +6%/day) outran the only capacity lever (quarter-end builds), dropping the player
@@ -40,7 +40,7 @@ own doc below. Order follows the dependency graph.
 | 3 | **Upgrade ladders & contractor queue** | [phase-3-upgrades-contractor.md](phase-3-upgrades-contractor.md) | reworks `progression.js`; new `contractor.js` | ✅ shipped 2026-10-30 |
 | 4 | **Rolling maintenance** | [phase-4-rolling-maintenance.md](phase-4-rolling-maintenance.md) | reworks `maint.js`, `crews.js` | ✅ shipped 2026-10-30 |
 | 5 | **Daily Brief loop** | [phase-5-daily-brief.md](phase-5-daily-brief.md) | `brief.js` (new) + `sim.js` orchestrator | ✅ shipped 2026-10-30 |
-| 6 | **KPI → currency economy** | [phase-6-kpi-currency.md](phase-6-kpi-currency.md) | `scorecard.js` (new, pure); `verdict.js`, `meta.js` | ☐ planned |
+| 6 | **KPI → currency economy** | [phase-6-kpi-currency.md](phase-6-kpi-currency.md) | `scorecard.js` (new, pure); `verdict.js`, `meta.js` | ✅ shipped 2026-10-30 |
 | 7 | **UI overhaul** | [phase-7-ui-overhaul.md](phase-7-ui-overhaul.md) | `render.js`, `styles/live.css`, `index.html` | ☐ planned |
 
 ---
@@ -121,7 +121,13 @@ S.jobsDone;             // rolling completions since the last boundary (the "job
 S.briefEnabled;         // gates the whole beat OFF for headless runs; main.js arms it per session
 
 // Phase 6 — quarterly KPI → currency
-S.quarterLog.kpi = { margin, costPerMWh, capEff, reliability, headroom, clean, affordability };
+// As-built: no stored kpi block — scoreQuarter derives the seven metrics from raw accumulators.
+S.quarterLog.opCost;       // operating $ accrued this quarter (→ cost discipline $/MWh)
+S.quarterLog.capitalSunk;  // cash committed to builds + upgrades this quarter (→ capital efficiency)
+S.quarterLog.reserveAccum; // Σ reserve-margin · dtH (→ headroom, averaged over hours)
+S.quarterLog.priceAccum;   // Σ spot price · dtH (→ affordability, averaged over hours)
+S.quarterLog.hours;        // Σ dtH this quarter (the averaging divisor)
+S.zap;                     // the ONE ⚡ pool: mirrors profile.currency; minted here, spent on perks/promotions
 ```
 
 ### Canonical types (new)
@@ -129,8 +135,8 @@ S.quarterLog.kpi = { margin, costPerMWh, capEff, reliability, headroom, clean, a
 ```js
 UpgradeJob = { id, unitId, axis, toTier, cost, daysLeft };   // contractor queue (Phase 3)
 MaintJob   = { id, name, unitId, axis, crewId, daysLeft, cost }; // rolling maintenance (Phase 4)
-Scorecard  = { pnl: {margin, costPerMWh, capEff}, sat: {reliability, headroom, clean, affordability},
-               mintPnL, mintSat, mintTotal };                // quarterly KPI → ⚡ (Phase 6)
+Scorecard  = { pnl: {margin, cost, capEff}, sat: {reliability, headroom, clean, affordability},
+               pnlScore, satScore, mintPnL, mintSat, mintTotal }; // quarterly KPI → ⚡ (Phase 6)
 ```
 
 ### Signatures (what each phase exports; the arrow names the consumer)
