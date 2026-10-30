@@ -509,6 +509,23 @@ export const CFG = {
       cashFloor:   20000,    // interrupt when cash drops under this
       stabilityDanger: 0.6,  // interrupt when the stability bar is ≥ this fraction of its ceiling
     },
+    // Phase 6 — the KPI → ⚡ CURRENCY faucet. The board review scores seven metrics in two
+    // channels (PnL: margin · cost discipline · capital efficiency; Satisfaction: reliability ·
+    // headroom · cleanliness · affordability), each 0..1 on its own curve. Each channel averages
+    // its metrics and mints its 50% share of the quarter's ⚡ pool, so a lopsided operator (great
+    // profit, dark city) can't out-earn a balanced one. The mint banks to profile.currency (the
+    // permanent skill tree) — the fix for the orphaned skill currency. Numbers are balance data;
+    // the tests pin the STRUCTURE (seven metrics, 50/50 split, monotone mint, banked), not these.
+    score: {
+      mintPerQuarter: 10,    // ⚡ a perfect-both quarter mints (the pool; split 50/50 by channel)
+      channelSplit:  0.5,    // PnL gets this share of the pool; Satisfaction gets the rest
+      marginRef:     0.40,   // net-margin ratio (pnl/revenue) that scores a full PnL-margin
+      costCeil:      120,    // operating $/MWh served at which cost discipline scores 0 (0 → 1)
+      capEffRef:     0.50,   // return ratio (pnl / capital sunk) that scores full capital efficiency
+      headroomRef:   0.25,   // average reserve margin that scores full headroom (25% over demand)
+      priceCeil:     100,    // average wholesale $/MWh at which affordability scores 0 (cheap → 1)
+      // cleanliness reuses CFG.v5.econ.dirtyIntensity (the intensity at which clean standing hits 0).
+    },
   },
 };
 

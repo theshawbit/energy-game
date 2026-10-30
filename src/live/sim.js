@@ -495,6 +495,11 @@ export function step(S, dt){
   const qlog = S.quarterLog;
   qlog.swingPay += swingPerH * dtH; qlog.floorPay += floorPerH * dtH;
   qlog.servedMWh += hr.served * dtH; qlog.emissions += hr.emissions * dtH;
+  // v5.1 Phase 6: the scorecard's extra raw inputs — operating cost (→ cost discipline), and
+  // time-weighted reserve margin + wholesale price (→ headroom / affordability). Capital sunk
+  // into builds/upgrades is accrued where it's committed (construct.commitBuild / contractor.queueUpgrade).
+  qlog.opCost += (hr.varCost + effSurcharge + spin + fixedOM) * dtH;
+  qlog.reserveAccum += rm * dtH; qlog.priceAccum += S.price * dtH; qlog.hours += dtH;
   let kw = 0, kr = 0, ke = 0, ko = 0, kf = 0;
   for (const u of S.fleet) if (u.kpis){ kw++; kr += u.kpis.reliability; ke += u.kpis.efficiency; ko += u.kpis.output; kf += u.kpis.flexibility; }
   if (kw > 0){ qlog.kpiAccum.reliability += (kr / kw) * dtH; qlog.kpiAccum.efficiency += (ke / kw) * dtH;

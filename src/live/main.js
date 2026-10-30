@@ -18,7 +18,7 @@ import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
 import { rollSpecialOffer } from "./offers.js";
 import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief } from "./render.js";
-import { buySkill, buyUnlock, buyEconomyUnlock } from "./meta.js";
+import { buySkill, buyUnlock, buyEconomyUnlock, awardCurrency } from "./meta.js";
 import { loadProfile, saveProfile, restartRun } from "./persist.js";
 
 const $ = id => document.getElementById(id);
@@ -96,6 +96,7 @@ function seedRun(){
   S.bestRecords = profile.records;               // read-only mirror for the hub scorecard
   S.briefEnabled = true;                         // v5.1 Phase 5: arm the daily brief for this session (headless stays off)
   S.autoAdvance = true;
+  S.zap = profile.currency || 0;                 // v5.1 Phase 6: ⚡ is ONE pool — the run spends the profile's banked currency
 }
 
 // ---- the persistent grid ----
@@ -126,19 +127,34 @@ function restartGame(){
   render(S);
 }
 
+// v5.1 Phase 6: ⚡ is ONE pool. The run spends S.zap (crew promotions, perks); after any spend
+// write the remainder back to the profile so the banked balance always reflects it. The quarter
+// rollover mints fresh ⚡ from the KPI scorecard into the profile (awardCurrency — meta.js's only
+// faucet), then re-mirrors it onto S.zap so the new quarter can spend what it just earned. Banking
+// is guarded to fire ONCE per quarter (planningOpen latches it) and records the verdict it paid.
+function syncZap(){ profile.currency = S.zap; saveProfile(profile); }
+function bankQuarterMint(){
+  const v = S.economy?.lastVerdict;
+  if (!v || v.minted) return;                    // nothing to bank, or already banked this quarter
+  awardCurrency(profile, v.mintTotal || 0);      // KPI scorecard → profile.currency
+  v.minted = true;                               // latch so a repaint can't double-bank
+  S.zap = profile.currency;                      // the run spends the freshly banked pool
+  saveProfile(profile);
+}
+
 // quarter-end Planning Office: maintenance triage (assign crews to per-KPI tasks),
 // crew roster (promote with ⚡, hire with cash), then begin the next quarter. Each
 // action mutates S and repaints the office in place; `begin` resumes the live day.
 const planningActions = {
   schedule(unitId, axis, crewId){ queueMaint(S, unitId, axis, crewId); renderPlanning(S, planningActions); },
   cancelTask(taskId){ cancelTask(S, taskId); renderPlanning(S, planningActions); },
-  promote(crewId){ promote(S, crewId); renderPlanning(S, planningActions); },
+  promote(crewId){ promote(S, crewId); syncZap(); renderPlanning(S, planningActions); },
   hire(trade){ hireCrew(S, trade); renderPlanning(S, planningActions); },
   commitBuild(tech){ commitBuild(S, tech); renderPlanning(S, planningActions); },
   // v5.1 Phase 3: progression — queue a cash upgrade on a plant's axis (rolling contractor
   // line), or ⚡ to unlock a perk. Both repaint the office in place.
   specialize(unitId, axis){ specializeUnit(S, unitId, axis); renderPlanning(S, planningActions); },
-  perk(perkId){ buyPerk(S, perkId); renderPlanning(S, planningActions); },
+  perk(perkId){ buyPerk(S, perkId); syncZap(); renderPlanning(S, planningActions); },
   begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; buildUnits(S, act); render(S); },
 };
 
@@ -166,7 +182,7 @@ function frame(now){
       // v5.1 Phase 2: the run collapsed — freeze the loop and show the end screen once.
       if (!collapseOpen){ collapseOpen = true; render(S); renderCollapse(S, { restart: restartGame }); }
     } else if (S.calendar.mode === "planning"){
-      if (!planningOpen){ planningOpen = true; renderPlanning(S, planningActions); }
+      if (!planningOpen){ planningOpen = true; bankQuarterMint(); renderPlanning(S, planningActions); }
     } else if (S.calendar.mode === "brief"){
       // v5.1 Phase 5: the daily brief opened (surviveDay flipped the mode on an exception or a
       // hands-on day). Paint it once and wait for the player to advance / step the day.

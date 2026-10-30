@@ -18,6 +18,7 @@
 // ============================================================
 import { CFG } from "./config.js";
 import { overlordNote } from "./world.js";
+import { scoreQuarter, mintCurrency } from "./scorecard.js"; // v5.1 Phase 6: the KPI → ⚡ faucet
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -32,6 +33,10 @@ export function freshQuarterLog(){
     emissions: 0,                       // tCO₂ emitted this quarter (→ clean standing)
     kpiAccum: { reliability: 0, efficiency: 0, output: 0, flexibility: 0 }, kpiWeight: 0,
     wages: 0, overruns: 0,              // Phase 4/5 seams: crew wages + build overruns settle HERE
+    // v5.1 Phase 6 — the scorecard's extra raw inputs (the five the grade didn't already track):
+    opCost: 0,                          // operating cost (fuel + O&M + spin) → cost discipline, $/MWh
+    capitalSunk: 0,                     // cash committed to builds + upgrades → capital efficiency
+    reserveAccum: 0, priceAccum: 0, hours: 0, // time-weighted reserve margin + wholesale price → headroom / affordability
   };
 }
 
@@ -81,6 +86,14 @@ export function settleQuarter(S){
   const bonus = gap > 0 ? Math.round(gap / (1 - e.gradeNeutral) * e.bonusMax) : 0;
   const fine  = gap < 0 ? Math.round(-gap / e.gradeNeutral * e.fineMax) : 0;
 
+  // v5.1 Phase 6: score the quarter's seven KPIs and mint this quarter's ⚡. The grade above
+  // still drives the ratchet/bonus/fine + the stability coupling (it reads the same KPIs); the
+  // scorecard is the CURRENCY layer, banked to the profile at the rollover (main.js). Both ride
+  // the quarter's performance, so a strong quarter heals the HP bar AND mints well — and the
+  // reverse — keeping survival and progression coupled.
+  const scorecard = scoreQuarter(S);
+  const mintTotal = mintCurrency(scorecard);
+
   return {
     year, quarter,
     kpiScore: Math.round(kpiScore), serveRate, cleanScore, grade,
@@ -90,6 +103,7 @@ export function settleQuarter(S){
     floorPay: Math.round(q.floorPay), swingPay: Math.round(q.swingPay),
     wages: Math.round(q.wages), overruns: Math.round(q.overruns), breachFines: Math.round(q.breachFines),
     shedFines: Math.round(q.shedFines || 0),
+    scorecard, mintTotal,       // v5.1 Phase 6: the KPI scorecard + the ⚡ this quarter minted
     note: overlordNote({ grade, serveRate, cleanScore, year, quarter }),
   };
 }

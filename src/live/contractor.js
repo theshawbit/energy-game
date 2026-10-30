@@ -24,6 +24,7 @@ export function queueUpgrade(S, unitId, axis){
   const cost = upgradeCost(u, axis, S.rmods); // honour the Modular Upgrades research discount
   const toTier = (u.tiers[axis] ?? 0) + 1;
   S.cash -= cost;
+  if (S.quarterLog) S.quarterLog.capitalSunk = (S.quarterLog.capitalSunk || 0) + cost; // v5.1 P6: capital efficiency
   const job = { id: (S.contractorSeq = (S.contractorSeq || 0) + 1), unitId: u.id, axis, toTier,
                 cost, daysLeft: CFG.v5_1.upgrade.leadDays };
   (S.contractor ||= []).push(job);

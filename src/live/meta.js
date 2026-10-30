@@ -160,13 +160,10 @@ export function scoreTracks(S){
   };
 }
 
-// Total ⚡ a run earns: the sum of every track's reward, never below 1. Replaces
-// the single-score award (scoreRun/currencyFor are kept for legacy best.* fields).
-export function currencyForRun(S){
-  const t = scoreTracks(S);
-  const total = SCORE_TRACKS.reduce((a, tr) => a + tr.reward(t[tr.id] || 0), 0);
-  return Math.max(1, Math.round(total));
-}
+// v5.1 Phase 6: the end-of-run ⚡ award (`currencyForRun`) is RETIRED — it died with the v5
+// run and left the skill tree with no faucet. ⚡ is now minted QUARTERLY from the KPI
+// scorecard (scorecard.js) and banked to profile.currency via awardCurrency below, every board
+// review. `scoreTracks` / `SCORE_TRACKS` stay for the per-track records + the stats hub.
 
 // The ONLY path that grants meta-currency (⚡). Kept isolated from the credit
 // thread (commitCreditStanding) so a test can assert the two never mix.
