@@ -26,6 +26,26 @@ function money(x){ const a = Math.abs(x), s = x < 0 ? "−" : ""; if (a >= 1e6) 
 function clock(t){ const h = Math.floor(t), m = Math.floor((t - h) * 60); return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
 const roman = n => ["", "I", "II", "III", "IV", "V"][n] || String(n);
 
+// v5 Phase 3: the four KPI axes replace the single condition bar. Rendered as a
+// compact 2×2 cluster of labelled micro-bars (R·E·O·F), each banded by its own value.
+const KPI_AXES = [["reliability", "R"], ["efficiency", "E"], ["output", "O"], ["flexibility", "F"]];
+const kpiBand = v => v > 60 ? "ok" : v > 30 ? "warn" : "bad";
+const kpiColor = band => css(band === "ok" ? "--good" : band === "warn" ? "--warn" : "--bad");
+const kpiTitle = (k, v) => `${k[0].toUpperCase()}${k.slice(1)} ${v}%`;
+// Static cluster (Manage view, string-rendered each open): fills painted inline now.
+function kpiClusterStatic(kpis){
+  return `<span class="kpis">` + KPI_AXES.map(([k, l]) => {
+    const v = Math.round(kpis[k]);
+    return `<span class="kq" title="${kpiTitle(k, v)}"><b>${l}</b><span class="kb"><i style="width:${v}%;background:${kpiColor(kpiBand(v))}"></i></span></span>`;
+  }).join("") + `</span>`;
+}
+// Live cluster (fleet rail): empty bars + a data-k hook per axis, painted by updateUnits.
+function kpiClusterLive(){
+  return `<span class="kpis">` + KPI_AXES.map(([k, l]) =>
+    `<span class="kq" data-kq="${k}"><b>${l}</b><span class="kb"><i data-k="${k}"></i></span></span>`
+  ).join("") + `</span>`;
+}
+
 // v4.2 CR-2: status-cluster state. Last demand sample for the rising/easing trend.
 let _prevDemand = null;
 // v4.2.3: the readable numbers refresh on a calm ~5Hz cadence, decoupled from the
@@ -207,7 +227,7 @@ export function buildUnits(S, onToggle){
   const table = document.createElement("table");
   table.className = "fleet-live";
   table.innerHTML = `<thead><tr>
-    <th>Plant</th><th>Status</th><th class="num">MW</th><th class="num">Cond</th><th class="num">Load</th>
+    <th>Plant</th><th>Status</th><th class="num">MW</th><th>Health</th><th class="num">Load</th>
   </tr></thead>`;
   const tb = document.createElement("tbody");
   for (const u of S.fleet){
@@ -215,8 +235,8 @@ export function buildUnits(S, onToggle){
     tr.className = "fu" + (u.ctrl ? " ctrl" : "");
     const mk = (u.tier || 1) > 1 ? ` <span class="mk">Mk ${roman(u.tier)}</span>` : "";
     const key = u.ctrl && u.key ? `<span class="fkey" title="shortcut">${u.key}</span>` : "";
-    const condCell = u.condition != null
-      ? `<b class="condtxt" data-condtxt>—</b><span class="cbar"><i data-cond></i></span>`
+    const condCell = u.kpis
+      ? kpiClusterLive()
       : `<span class="faint">—</span>`;
     tr.innerHTML = `
       <td class="fu-nm"><span class="nm">${u.name}${mk}</span>${key}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
@@ -226,10 +246,12 @@ export function buildUnits(S, onToggle){
       <td class="num"><span data-load>—</span></td>`;
     if (u.ctrl) tr.onclick = () => onToggle(u.id);
     tb.appendChild(tr);
+    const kpi = {}, kpiq = {};
+    tr.querySelectorAll("[data-k]").forEach(i => kpi[i.dataset.k] = i);
+    tr.querySelectorAll("[data-kq]").forEach(q => kpiq[q.dataset.kq] = q);
     unitEls[u.id] = {
       el: tr, st: tr.querySelector("[data-st]"), out: tr.querySelector("[data-out]"),
-      sub: tr.querySelector("[data-sub]"), cond: tr.querySelector("[data-cond]"),
-      condtxt: tr.querySelector("[data-condtxt]"), load: tr.querySelector("[data-load]"),
+      sub: tr.querySelector("[data-sub]"), kpi, kpiq, load: tr.querySelector("[data-load]"),
     };
   }
   table.appendChild(tb);
@@ -256,13 +278,15 @@ function updateUnits(S, tick = true){
 
     if (!tick) continue; // numeric columns + sub-note throttle with the readout cadence
     if (refs.out.textContent != String(out)) refs.out.textContent = out;
-    // Condition % + bar (thermal only)
-    if (refs.cond && u.condition != null){
-      const c = Math.round(u.condition), band = c > 60 ? "ok" : c > 30 ? "warn" : "bad";
-      if (refs.condtxt.textContent != c + "%") refs.condtxt.textContent = c + "%";
-      refs.condtxt.className = "condtxt " + band;
-      refs.cond.style.width = c + "%";
-      refs.cond.style.background = css(band === "ok" ? "--good" : band === "warn" ? "--warn" : "--bad");
+    // Four KPI bars (thermal only) — reliability·efficiency·output·flexibility
+    if (refs.kpi && u.kpis){
+      for (const [k] of KPI_AXES){
+        const fill = refs.kpi[k]; if (!fill) continue;
+        const v = Math.round(u.kpis[k]);
+        fill.style.width = v + "%";
+        fill.style.background = kpiColor(kpiBand(v));
+        const q = refs.kpiq[k]; if (q) q.title = kpiTitle(k, v);
+      }
     }
     // Load% — how hard this unit is worked (the wear driver). Thermal/peaker use the
     // dispatch share (loadFrac); renewables = output/cap; off/idle = —.
@@ -619,8 +643,8 @@ function fleetRow(S, u){
   else if (u.status === "tripped"){ stClass = "st-tripped"; stText = "TRIPPED"; }
   else { stClass = "st-off"; stText = u.kind === "renew" ? "IDLE" : "RESERVE"; }
   const out = Math.round(unitOutput(S, u));
-  const cond = u.condition != null
-    ? `<b class="condtxt ${u.condition > 60 ? "ok" : u.condition > 30 ? "warn" : "bad"}">${Math.round(u.condition)}%</b>`
+  const cond = u.kpis
+    ? kpiClusterStatic(u.kpis)
     : `<span class="faint">—</span>`;
   const max = tier >= UPGRADE.maxTier, uCost = upgradeCost(tier), canUp = !max && S.cash >= uCost;
   const upBtn = `<button data-up="${u.id}" ${canUp ? "" : "disabled"}>${max ? "Max" : `→ Mk ${roman(tier + 1)} · ${money(uCost)}`}</button>`;
@@ -677,7 +701,7 @@ function fleetBody(S){
     <th data-sort="name">Plant${arr("name")}</th>
     <th data-sort="status">Status${arr("status")}</th>
     <th class="num" data-sort="output">Output${arr("output")}</th>
-    <th class="num" data-sort="condition">Cond.${arr("condition")}</th>
+    <th data-sort="condition">Health${arr("condition")}</th>
     <th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function wireFleet(S, actions){

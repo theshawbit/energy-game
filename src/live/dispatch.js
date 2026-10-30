@@ -8,18 +8,12 @@
 // Fast gas replaces the old peaker: a gas plant dialled to a narrow high band is
 // the former peaker (fast, expensive top-up), through the same merit order.
 //
-// No imports — effectiveMax reads only u.cap and the (Phase 3) Output KPI, so the
-// module tests headless and can't drift from config.
+// effectiveMax / minStableLoad come from kpi.js (Phase 3): the Output KPI derates
+// the offer and the Flexibility KPI sets how far the plant can turn down.
 // ============================================================
+import { effectiveMax, minStableLoad } from "./kpi.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-
-// The unit's achievable top MW. Honours the Phase 3 Output KPI (derate); dormant
-// until Phase 3 writes u.kpis, so a fresh unit's effectiveMax is just its cap.
-export function effectiveMax(u){
-  const outputKpi = u.kpis ? u.kpis.output : 100;
-  return u.cap * (outputKpi / 100);
-}
 
 // Sane opt-in defaults so a player who touches nothing still runs a sensible grid:
 // baseload (firm) is committed and offers its full band; fast gas sits in reserve
@@ -46,7 +40,10 @@ export function applyDials(u){
   const d = u.dials;
   if (!d || !d.commit) return { min: 0, max: 0, committed: false, held: 0 };
   const eMax = effectiveMax(u);
-  let bandMin = clamp(d.bandMin ?? 0, 0, eMax);
+  // Phase 3: a low-Flexibility plant can't turn down below its min stable load, so
+  // the band floor is raised to it (no kpis → flex 100 → min 0, unchanged from Phase 2).
+  const floorMW = minStableLoad(u.kpis ? u.kpis.flexibility : 100) * eMax;
+  let bandMin = Math.max(clamp(d.bandMin ?? 0, 0, eMax), floorMW);
   let bandMax = clamp(d.bandMax ?? eMax, 0, eMax);
   if (bandMin > bandMax) bandMax = bandMin;            // never an inverted band (min wins)
   const hold = clamp(d.reserveHold ?? 0, 0, 1);
