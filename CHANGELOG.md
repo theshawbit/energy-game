@@ -273,6 +273,19 @@ data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. Se
   pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
   deterministic headless run must pin the global RNG *before* calling it.)
 
+### Fixed — v5.1: daily-brief panel overflow (2026-10-30)
+
+Follow-up to Phase 7 (playtest report). The daily-brief overlay had **no CSS of its own**, so it
+inherited the base centred 460px modal with no max-height — on a normal screen it overflowed the
+viewport with no way to scroll, leaving the **Advance / Step-a-day buttons unreachable**, and its two
+columns stacked into one cramped, centred strip.
+
+- **`styles/live.css`** — new `.modal.brief` block: a wide (820px), left-aligned, **scrollable** sheet
+  (`max-height:90vh; overflow-y:auto`), a real two-column `.brief-cols` grid (stacks to one column at
+  phone width), styled section headings + alert chips, and a **sticky footer** so Advance / Step stay in
+  reach without scrolling to the very bottom.
+- CSS only — no markup or logic change; `renderBrief` already emitted these class names.
+
 ### Changed — v5.1 Phase 7: UI overhaul (2026-10-30)
 
 Final phase of the [v5.1 rebalance](docs/plan-v5.1/README.md) — the capstone. A week of play showed
