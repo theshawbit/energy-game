@@ -108,8 +108,10 @@ function planningGame(){ const S = createGame(); S.calm = true; S.calendar.mode 
   const S = planningGame();
   check("the forecast steepens with the horizon",
     forecastDemand(S, 0) === S.peak && forecastDemand(S, 2) > forecastDemand(S, 1) && forecastDemand(S, 4) > forecastDemand(S, 2));
+  // v5.1 Phase 1: the gentler quarterly cadence means the shortfall is further out (that's the
+  // point — it's plannable now), but the forecast still eventually crosses capacity.
   check("forecast peak outgrows current capacity within the horizon (short in Q+N)",
-    forecastDemand(S, 2) > nameplate(S), `Q+2 ${forecastDemand(S, 2)} MW vs cap ${nameplate(S)} MW`);
+    forecastDemand(S, 8) > nameplate(S), `Q+8 ${forecastDemand(S, 8)} MW vs cap ${nameplate(S)} MW`);
 }
 
 // 9) Determinism — a pinned rng gives identical slip outcomes across runs.

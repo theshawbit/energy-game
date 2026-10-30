@@ -92,6 +92,7 @@ function startGame(){
   S = createGame(profile.skills, profile.researchUnlocked, [], profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
   const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG
   S.rngForecast = makeRng((seed ^ 0xF0) >>> 0); // separate stream so forecast sharpening never desyncs realized spot
+  S.rngDemand = makeRng((seed ^ 0xD3) >>> 0);   // v5.1 Phase 1: daily demand-noise stream, isolated from the economy
   // v5 Phase 8: deal the opening quarter's seasonal regime and let it drive the per-tick
   // mods (supersedes the one-shot mutator roll); the rollover re-rolls it each quarter.
   rollRegime(S, S.rng); S.mmods = regimeMods(S);

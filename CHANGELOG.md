@@ -273,6 +273,32 @@ data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. Se
   pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
   deterministic headless run must pin the global RNG *before* calling it.)
 
+### Changed — v5.1 Phase 1: hybrid demand curve (2026-10-30)
+
+First phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). **Fixes the root cause of the
+unrecoverable mid-quarter blackout** a week of play exposed: demand compounded +6%/day
+(`peakGrowth` 1.06), doubling in ~12 days and outrunning the only capacity lever (quarter-end
+builds).
+
+- **New `src/live/demand.js` (pure).** Demand is now a **hybrid curve**: a *plannable* per-quarter
+  baseline (`S.quarterPeak`) that **steps once at each quarter rollover** (`rollQuarterPeak`, +12%
+  default) instead of compounding daily, plus a bounded **seasonal daily noise** so the live `S.peak`
+  wobbles around the baseline (`stepDemand` — summer days swing hardest; `S.calm` flattens it for
+  tests). `forecastPeak(S, n)` is the honest forward baseline the build panel plans against.
+- **`sim.js`** — `surviveDay` no longer compounds `S.peak` daily; it refreshes the live peak off the
+  baseline each day and steps the baseline at the rollover (reading the Phase 6 `growthStall`). The
+  meta efficiency skill now carries into the quarterly step via `S.peakGrowthMult`. New seeded
+  `S.rngDemand` stream (isolated from the economic RNG).
+- **`construct.forecastDemand`** delegates to `demand.forecastPeak` so the build panel tracks the real
+  cadence; the retired daily-compounding forecast is gone.
+- New `demand` suite (5 tasks) incl. the **plannability regression guard** — a forecast operator is
+  never surprised beyond the season's noise band (the old runaway curve can't recur). `sim`/`construct`
+  suites rebased off daily growth; **all 28 suites green**. (Live-boot smoke was blocked by a stale
+  browser ESM cache of `render.js` — a file unchanged this phase, verified correct on disk + fresh
+  fetch; the node suite is the authoritative gate, and a hard-refresh clears the pane.)
+- **Tuning deferred** (per the grill): the step size / noise amplitude are `CFG.v5_1.demand` knobs for a
+  `tools/balance.mjs` pass — the tests pin *shape* (stepped, bounded, forecastable), not the numbers.
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a

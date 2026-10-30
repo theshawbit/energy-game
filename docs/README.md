@@ -47,7 +47,7 @@ game, what's **planned**, and what's been **superseded**.
 | [`PLAN-v4.2-control-room.md`](PLAN-v4.2-control-room.md) | v4.2 | ✅ Built — Control Room UI redesign (CR-1…CR-4) |
 | [`PLAN-v4.2.1-reliability-and-volatility.md`](PLAN-v4.2.1-reliability-and-volatility.md) | v4.2.1–4.2.3 | ✅ Built — wear = load × age, rare trips, volatile net-load |
 | [`plan-v5/`](plan-v5/README.md) | v5 | ✅ Built — phased implementation spec (9 phases); Phases 1–5 shipped 2026-10-29, Phases 6–9 shipped 2026-10-30 |
-| [`plan-v5.1/`](plan-v5.1/README.md) | v5.1 | 📋 Planned — rebalance & rework (7 phases): fail-state/HP bar, hybrid demand, 4×9 upgrades + contractor queue, rolling maintenance, daily brief, KPI→currency, UI overhaul (grill 2026-10-30) |
+| [`plan-v5.1/`](plan-v5.1/README.md) | v5.1 | 🚧 Building — rebalance & rework (7 phases); Phase 1 (hybrid demand curve) shipped 2026-10-30; remaining: fail-state/HP bar, 4×9 upgrades + contractor queue, rolling maintenance, daily brief, KPI→currency, UI overhaul |
 
 ## Narrative bibles (later flavour layer)
 

@@ -12,6 +12,7 @@
 // ============================================================
 import { CFG, BUILD, BUILD_GATE, makeUnit } from "./config.js";
 import { eraOf } from "./world.js"; // v5 Phase 9: late-era builds take New Veridia names
+import { forecastPeak } from "./demand.js"; // v5.1 Phase 1: plannable demand forecast
 
 // The buildable catalogue: capital cost + MW from BUILD, lead-time from CFG.v5.build.
 // Only techs with a configured lead-time are buildable as projects.
@@ -80,11 +81,10 @@ export function tickBuilds(S, rng = Math.random){
   return done;
 }
 
-// Project the steepening peak demand `quartersAhead` quarters out — the honest forecast
-// the build panel reads to warn "you'll be short in Q+N". Pure read of peakGrowth +
-// the calendar's quarter length. (The steep daily-growth constant is a standing balance
-// item — a dedicated demand-cadence pass, not Phase 6; the forecast still flags the trend.)
+// Project the plannable peak demand `quartersAhead` quarters out — the honest forecast the
+// build panel reads to warn "you'll be short in Q+N". v5.1 Phase 1: delegates to the demand
+// curve's forecast (the per-quarter baseline step), so it tracks the real cadence the player
+// plans against instead of the retired daily-compounding constant.
 export function forecastDemand(S, quartersAhead){
-  const days = quartersAhead * CFG.v5.daysPerQuarter;
-  return Math.round(S.peak * Math.pow(S.peakGrowth, days));
+  return forecastPeak(S, quartersAhead);
 }

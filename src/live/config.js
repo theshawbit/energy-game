@@ -435,6 +435,22 @@ export const CFG = {
       },
     },
   },
+  // ============================================================
+  // v5.1 REBALANCE knobs (docs/plan-v5.1/). A separate sub-namespace so v5 knobs
+  // stay put. Phase 1 owns `demand`; later phases add their own keys here.
+  // ============================================================
+  v5_1: {
+    // Phase 1 — the hybrid demand curve. Retires the old +6%/day compounding (which
+    // doubled demand in ~12 days and outran every capacity lever). Demand now holds a
+    // plannable per-QUARTER baseline that steps up at the rollover, with the live daily
+    // S.peak wobbling around it by a bounded, season-dependent weather noise.
+    demand: {
+      stepFrac: 0.12,   // +12% baseline per quarter (was ≈1.06^22 ≈ +280%/quarter under daily compounding)
+      yearScale: 0.0,   // optional EXTRA step growth per year past Y1 (0 = flat cadence; a long-arc dial)
+      // ± daily swing of the live peak around the quarter baseline, by season (summer days swing hardest).
+      noiseAmp: { winter: 0.06, spring: 0.04, summer: 0.08, autumn: 0.04, default: 0.05 },
+    },
+  },
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and

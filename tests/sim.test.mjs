@@ -43,12 +43,13 @@ check("step advances clock by dt·(24/secondsPerDay)", near(S.t - t0, 24 / CFG.s
 check("step computes a demand > 0", S.demand > 0, Math.round(S.demand) + " MW");
 check("step sets a sensible clearing price (coal baseload marginal)", S.price >= 0 && S.price <= 300, "$" + Math.round(S.price));
 
-// 4) Day rollover triggers surviveDay (demand peak grows)
-S = createGame();
-S.t = 23.9; const peak0 = S.peak;
-step(S, 1.0); // crosses midnight
+// 4) Day rollover triggers surviveDay (v5.1: quarterly-step demand, not daily growth)
+S = createGame(); S.calm = true;
+S.t = 23.9; const qp0 = S.quarterPeak;
+step(S, 1.0); // crosses midnight, still within the quarter
 check("crossing 24:00 rolls the day over", S.day === 2, "day " + S.day);
-check("surviving a day raises the demand peak", S.peak > peak0, `${peak0} → ${S.peak} MW`);
+check("within a quarter the baseline holds (no daily growth)", S.quarterPeak === qp0 && S.peak === qp0,
+  `base ${S.quarterPeak}, peak ${S.peak} MW`);
 
 // 5) Carbon escalation begins on carbonStartDay and climbs
 S = createGame();
@@ -176,7 +177,7 @@ S = createGame({ battery: 1 });
 const batU = S.fleet.find(u => u.id === "bat");
 check("Battery Science grows the battery", batU.cap > 120 && batU.maxEnergy > 240, `${batU.cap} MW / ${batU.maxEnergy} MWh`);
 S = createGame({ efficiency: 2 });
-check("Efficiency Drive slows demand growth", S.peakGrowth < CFG.peakGrowth, S.peakGrowth.toFixed(3));
+check("Efficiency Drive slows demand growth", S.peakGrowthMult < 1, S.peakGrowthMult.toFixed(3));
 
 // 17) computeMods is neutral with no skills
 const m0 = meta.computeMods({});
