@@ -11,6 +11,7 @@ import { TRADES, tradeModifier } from "./crews.js";
 import { BUILDABLES, forecastDemand, concurrencySlip } from "./construct.js";
 import { CFG, BUILD_ORDER, BUILD_GATE, salvageValue } from "./config.js";
 import { AXES, upgradeCost, axisHardCeiling, canUpgrade, ceilingCost, canRaiseCeiling, PERKS, isAutomationUnlocked, automationTier, canUnlockPerk } from "./progression.js";
+import { loadShedTiers, canDemandRespond } from "./crisis.js";
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
@@ -205,7 +206,38 @@ export function render(S){
   $("shakeTarget").classList.toggle("held", paused);
   const ff = $("ffBtn");
   if (ff){ const fast = speed === CFG.v5.fastSpeed; ff.textContent = fast ? "▶▶ Fast" : "▶ 1×"; ff.classList.toggle("on", fast); }
+  crisisBar(S);
 }
+
+// v5 Phase 8: the mid-quarter crisis strip — the active regime's name, the prioritised
+// load-shed tiers, and the demand-response button with its availability state. Rebuilt only
+// when its signature changes (so it isn't torn down every frame); a delegated click listener
+// in main.js routes the data-shed / data-dr hooks. Shown only during the live day.
+let _lastCrisisSig = null;
+function crisisBar(S){
+  const bar = $("crisisBar"); if (!bar) return;
+  const live = S.running && S.calendar?.mode === "operating";
+  bar.style.display = live ? "" : "none";
+  if (!live){ _lastCrisisSig = null; return; }
+  const shedOn = !!(S.shed && S.shed.tLeft > 0);
+  const drReady = canDemandRespond(S);
+  const drOn = !!(S.dr && S.dr.tLeft > 0);
+  const cd = Math.ceil(S.drCooldown || 0);
+  const ev = S.regime?.events?.[0];
+  const regimeTxt = S.regime ? `${cap(S.regime.season)}${ev ? " · " + (mutatorById(ev)?.label || ev) : ""}` : "—";
+  const tiers = loadShedTiers(S);
+  const sig = `${regimeTxt}|${shedOn}|${drReady}|${drOn}|${cd}|${tiers.map(t => t.mw).join(",")}`;
+  if (sig === _lastCrisisSig) return;        // nothing changed — skip the rebuild
+  _lastCrisisSig = sig;
+  const shedBtns = tiers.map(t =>
+    `<button class="crisis-shed" data-shed="${t.id}" ${shedOn ? "disabled" : ""} title="cut ${t.mw} MW for a short window">▼ ${t.label} · ${t.mw}MW</button>`
+  ).join("");
+  const drLabel = drOn ? "⟳ DR active" : cd > 0 ? `⟳ DR · cd ${cd}h` : "⟳ Demand Response";
+  const drBtn = `<button class="crisis-dr${drReady ? " ready" : ""}" data-dr ${drReady ? "" : "disabled"}>${drLabel}</button>`;
+  bar.innerHTML = `<span class="crisis-regime">⛭ ${regimeTxt}</span>
+    <span class="crisis-tools">${shedBtns}${drBtn}</span>`;
+}
+function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
 // v4.2 CR-3: fleet as a bank of live instrument tiles. Built once per game
 // (buildUnits) and patched each frame (updateUnits) — no per-frame DOM teardown,

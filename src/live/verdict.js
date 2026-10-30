@@ -26,6 +26,7 @@ export function freshQuarterLog(){
     servedMWh: 0, shortfallMWh: 0,      // load delivered vs load missed (reliability of supply)
     floorPay: 0, swingPay: 0,           // the two income surfaces, banked over the quarter
     breaches: 0, breachFines: 0,        // capacity-obligation breaches + their fines
+    shedFines: 0,                       // v5 P8: load-shed fines (the price of a controlled brownout)
     emissions: 0,                       // tCO₂ emitted this quarter (→ clean standing)
     kpiAccum: { reliability: 0, efficiency: 0, output: 0, flexibility: 0 }, kpiWeight: 0,
     wages: 0, overruns: 0,              // Phase 4/5 seams: crew wages + build overruns settle HERE
@@ -70,7 +71,7 @@ export function settleQuarter(S){
 
   // composite grade 0..1 and the money for the quarter.
   const grade = clamp(e.wKpi * (kpiScore / 100) + e.wServe * serveRate + e.wClean * cleanScore, 0, 1);
-  const pnl = Math.round(q.floorPay + q.swingPay - q.wages - q.overruns - q.breachFines);
+  const pnl = Math.round(q.floorPay + q.swingPay - q.wages - q.overruns - q.breachFines - (q.shedFines || 0));
 
   // the gap from "par" drives the ratchet, bonus, and fine.
   const gap = grade - e.gradeNeutral;
@@ -86,6 +87,7 @@ export function settleQuarter(S){
     // the earnings split + settled costs, carried for the board review (the log resets after).
     floorPay: Math.round(q.floorPay), swingPay: Math.round(q.swingPay),
     wages: Math.round(q.wages), overruns: Math.round(q.overruns), breachFines: Math.round(q.breachFines),
+    shedFines: Math.round(q.shedFines || 0),
     note: verdictNote(grade, serveRate, cleanScore),
   };
 }

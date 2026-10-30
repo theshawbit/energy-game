@@ -22,6 +22,8 @@ import { degradeKPIs, freshKPIs, heatRateMult } from "./kpi.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
+import { rollRegime, regimeMods } from "./events.js";
+import { tickCrisis, activeShedMW, activeDrShave } from "./crisis.js";
 import { exogenousBaseline, reserveMargin, spotPrice, swingCoeff, swingEarn } from "./market.js";
 import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
 import { forecastFog, forecastInputs } from "./forecast.js";
@@ -99,6 +101,10 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     // (empty = baseCeiling); `perks` holds unlocked ⚡ perks. Per-plant cash upgrades live on
     // u.caps (seeded by freshCaps). See progression.js.
     capCeil: {}, perks: {},
+    // v5 Phase 8: mid-quarter crisis tools (null = inactive) + the seasonal event regime
+    // (null until main.js rolls Q1; the rollover re-rolls it each quarter). drCooldown ages
+    // down in tickCrisis. S.mmods is driven by regimeMods once a regime is live.
+    shed: null, dr: null, drCooldown: 0, regime: null,
     // v5 Phase 5: in-flight lead-time construction projects. Committed at the quarter
     // review; tickBuilds advances them at each rollover and lands a live unit on completion.
     builds: [], buildSeqV5: 0,
@@ -217,6 +223,10 @@ export function surviveDay(S){
     const verdict = settleQuarter(S);
     applyVerdict(S, verdict);
     S.quarterLog = freshQuarterLog();
+    // v5 Phase 8: deal the NEW quarter's seasonal event regime (the calendar already rolled
+    // into it) and refresh the per-tick mods the sim reads. Only once a regime system is
+    // live (main.js rolls Q1 at game start); headless tests stay on neutral mmods.
+    if (S.regime){ rollRegime(S, S.rng || Math.random); S.mmods = regimeMods(S); }
     S.calendar.mode = "planning";
     // v5 Phase 7: Auto-Maintenance perk — with the board review now open (planning mode),
     // auto-assign free crews to the neediest plants before handing control back. It still
@@ -318,6 +328,9 @@ export function step(S, dt){
       // plant rarely strains; when it does, it enters a telegraphed warning first.
       if (Math.random() < 1 - Math.exp(-tripHazard(u, diff) * dt)){
         u.status = "strained"; u.strainTimer = CFG.strainWarn;
+        // v5 Phase 8: a telegraphed trip is the beat to reach for the crisis toolkit —
+        // auto-pause the clock so load-shed / demand response are reachable before it falls.
+        autoPause(S, `${u.name} straining — shed load or fire reserves`);
         setTicker(S, `⚠ ${u.name} straining — ${Math.round(u.cap)} MW at risk; stabilize or fire reserves!`);
       }
     }
@@ -328,6 +341,11 @@ export function step(S, dt){
   // shaved by demand-response research (the demand-SIDE lever).
   S.demand = S.peak * interp(DEMAND_SHAPE, S.t) * (S.mmods?.demandMult ?? 1) * (1 - (S.rmods?.demandShave ?? 0))
     * (1 + S.demandJit) * (S.spikeT > 0 ? 1 + S.spikeMag : 1); // v4.2.2 jitter + spikes
+  // v5 Phase 8: the crisis tools shave the live load. Active DEMAND RESPONSE takes a
+  // fraction off the peak (foresight — gated on the DR research branch); an active
+  // LOAD-SHED cuts a prioritised tier's MW (a controlled brownout the player chose).
+  S.demand *= (1 - activeDrShave(S));
+  S.demand = Math.max(0, S.demand - activeShedMW(S));
   S.capacity = totalCapacity(S);
 
   // economics — clear the hour through the shared, verified merit-order engine.
@@ -533,6 +551,9 @@ export function step(S, dt){
     S.strain = Math.max(0, S.strain - CFG.strainRecover * dt);
     if (S.satisfaction < 100) S.satisfaction = Math.min(100, S.satisfaction + CFG.satRecover * dt);
   }
+  // v5 Phase 8: age the crisis tools (expire a finished shed/DR window, wind the DR
+  // cooldown down) — they were consumed in the demand calc above, so age them now.
+  tickCrisis(S, dtH);
 
   // insolvency (v4, Phase C): a second fail-path beside the blackout. Being in the
   // red with debt triggers a one-time default (credit cratered for the run); a
