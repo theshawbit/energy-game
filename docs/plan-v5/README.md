@@ -24,7 +24,7 @@ section) is what actually gates them.
 | 1 | **Time & calendar skeleton** | [phase-1-time-calendar.md](phase-1-time-calendar.md) | `calendar.js`, `clock.js` | ✅ shipped 2026-10-29 |
 | 2 | **Dial-able dispatch** | [phase-2-dispatch-dials.md](phase-2-dispatch-dials.md) | `dispatch.js` | ✅ shipped 2026-10-29 |
 | 3 | **KPIs & degradation** | [phase-3-kpis-degradation.md](phase-3-kpis-degradation.md) | `kpi.js` | ✅ shipped 2026-10-29 |
-| 4 | **Maintenance & crews** | [phase-4-maintenance-crews.md](phase-4-maintenance-crews.md) | `crews.js`, `maint.js` | ☐ planned |
+| 4 | **Maintenance & crews** | [phase-4-maintenance-crews.md](phase-4-maintenance-crews.md) | `crews.js`, `maint.js` | ✅ shipped 2026-10-29 |
 | 5 | **Construction** | [phase-5-construction.md](phase-5-construction.md) | `construct.js` | ☐ planned |
 | 6 | **Hybrid economy** | [phase-6-hybrid-economy.md](phase-6-hybrid-economy.md) | revives `market.js`/`finance.js`/`capacity.js`, `verdict.js` | ☐ planned |
 | 7 | **Progression** | [phase-7-progression.md](phase-7-progression.md) | `progression.js` | ☐ planned |

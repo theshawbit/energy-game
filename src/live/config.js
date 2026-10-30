@@ -223,6 +223,39 @@ export const CFG = {
     // = extra $/MWh fraction at Efficiency 0; rampMin = ramp-speed floor at Flex 0;
     // minLoadMax = min stable load (as a cap fraction) at Flex 0.
     kpiCurve: { outputMin: 0.6, heatRateMax: 0.5, rampMin: 0.5, minLoadMax: 0.4 },
+    // Phase 4: the soft-specialized, levelling crew pool. A crew is best at one trade
+    // (KPI axis) but can take any task at the offTrade penalty (never 0 — fungible).
+    // Levels up passively through use; ⚡ promotes standouts + raises the level ceiling.
+    // Wages are a standing per-quarter cost (deducted in the rollover until Phase 6's
+    // settleQuarter folds them into PnL). The roster ceiling gates hiring (⚡ raises it
+    // in Phase 7). All crew/maintenance balance lives here so it tunes centrally.
+    crews: {
+      startCrews:    3,       // crews you begin the save with (one per core trade)
+      baseRoster:    4,       // starting roster ceiling — max crews you can hold
+      hireCost:      4000,    // $ to hire one crew (within the ceiling)
+      wage:          1200,    // $/crew/quarter standing cost, deducted at settlement
+      offTrade:      0.6,     // ×restore when a crew works off its trade (soft-specialized)
+      levelEdge:     0.08,    // +restore per crew level above 1 (on-trade mastery compounds)
+      xpPerTask:     12,      // XP a crew earns per completed task
+      xpCurve:       20,      // cumulative XP to cross one level
+      levelCapBase:  3,       // a fresh crew levels this high on XP alone …
+      maxLevel:      6,       // … and never past here, even promoted
+      promoteCost:   2,       // ⚡ to promote a crew (raise its level ceiling + bump level)
+      promoteCapBump:1,       // levels the ceiling rises per promotion
+    },
+    // Phase 4: the per-KPI maintenance task catalogue. Each task restores exactly one
+    // axis (overhaul→reliability, retune→efficiency, uprate→output, recalibrate→
+    // flexibility). Scheduled ONLY at the quarter-end board review; resolves over the
+    // following quarter with downtime (the plant is offline while in the shop — the
+    // teeth). restore = base KPI points at a level-1 on-trade crew; quarters = duration.
+    maint: {
+      tasks: {
+        overhaul:    { axis:"reliability", label:"Overhaul",    restore:45, quarters:1, cost:9000 },
+        retune:      { axis:"efficiency",  label:"Retune",      restore:40, quarters:1, cost:6000 },
+        uprate:      { axis:"output",      label:"Uprate",      restore:40, quarters:1, cost:7000 },
+        recalibrate: { axis:"flexibility", label:"Recalibrate", restore:35, quarters:1, cost:5000 },
+      },
+    },
   },
 };
 
@@ -338,6 +371,18 @@ export function plantName(tech, n){
   const i = (n - 1) % pool.length;
   const wrap = Math.floor((n - 1) / pool.length);
   return `${pool[i]} ${fuel}${wrap ? " " + (wrap + 1) : ""}`;
+}
+
+// Phase 4: crew call-signs — operator surnames for the maintenance pool, so a crew
+// reads as a person ("Okonkwo · Reliability"), never "Crew 3". Wraps with a numeral
+// only past the pool. Matches the fleet's no-generic-placeholder naming taste.
+const CREW_NAMES = [
+  "Okonkwo","Vance","Reyes","Halloran","Novak","Ferreira","Driscoll","Sato",
+  "Abara","Quill","Mensah","Dray","Lindqvist","Torres","Ashby","Ng",
+];
+export function crewName(n){
+  const i = (n - 1) % CREW_NAMES.length, wrap = Math.floor((n - 1) / CREW_NAMES.length);
+  return `${CREW_NAMES[i]}${wrap ? " " + (wrap + 1) : ""}`;
 }
 
 // ---- fleet definition ----

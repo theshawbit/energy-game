@@ -6,7 +6,9 @@
 // phase) and resumes into the next quarter.
 // ============================================================
 import { createGame, step, setTicker, beginNextQuarter } from "./sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
+import { toggleUnit, buildCapacity, upgradeUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
+import { scheduleTask, cancelTask } from "./maint.js";
+import { promote, hireCrew } from "./crews.js";
 import { setSpeed } from "./clock.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
@@ -52,7 +54,6 @@ function rollDailyOffer(){
 const menu = {
   build(tech){ buildCapacity(S, tech); buildUnits(S, act); refreshPage(); render(S); },
   upgrade(id){ upgradeUnit(S, id); buildUnits(S, act); refreshPage(); render(S); },
-  service(id){ serviceUnit(S, id); refreshPage(); render(S); },
   decommission(id){ decommissionUnit(S, id); buildUnits(S, act); refreshPage(); render(S); },
   // v5 Phase 2 dials: commit re-renders the page (band/push enable with it); the
   // sliders write u.dials live without a page rebuild so the drag stays smooth.
@@ -96,9 +97,15 @@ function startGame(){
   render(S);
 }
 
-// leave the quarter-end Planning Office and resume the live day in the new quarter
+// quarter-end Planning Office: maintenance triage (assign crews to per-KPI tasks),
+// crew roster (promote with ⚡, hire with cash), then begin the next quarter. Each
+// action mutates S and repaints the office in place; `begin` resumes the live day.
 const planningActions = {
-  begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; render(S); },
+  schedule(unitId, axis, crewId){ scheduleTask(S, unitId, axis, crewId); renderPlanning(S, planningActions); },
+  cancelTask(taskId){ cancelTask(S, taskId); renderPlanning(S, planningActions); },
+  promote(crewId){ promote(S, crewId); renderPlanning(S, planningActions); },
+  hire(trade){ hireCrew(S, trade); renderPlanning(S, planningActions); },
+  begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; buildUnits(S, act); render(S); },
 };
 
 // ---- main loop: step + repaint while the shift is live; the quarter-end beat
