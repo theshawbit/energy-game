@@ -10,16 +10,20 @@ game, what's **planned**, and what's been **superseded**.
 > (four KPIs + style-driven degradation replacing `condition`), Phase 4 (cut-throat
 > quarter-end maintenance worked by a levelling crew pool), and Phase 5 (lead-time
 > construction with an overextension soft-cap) shipped 2026-10-29, and Phase 6 (the
-> hybrid floor+swing economy with the overlord's quarterly verdict) and Phase 7
+> hybrid floor+swing economy with the overlord's quarterly verdict), Phase 7
 > (progression — per-axis specialization, RP ceiling-raises, and ⚡ perks with
-> growth-tier-gated automation; the v4 Mk ladder retired) shipped 2026-10-30 — the
+> growth-tier-gated automation; the v4 Mk ladder retired), and Phase 8 (the
+> mid-quarter crisis toolkit — load-shed + demand response — and the seasonal event
+> regime) shipped 2026-10-30 — the
 > grid is persistent, the run reset is gone, every plant dispatches on dials, how you
 > run a plant decides which KPI decays, repairs are triaged at the board review,
 > new plant is a multi-quarter capital project committed there too, the quarter
 > now settles on a regulated floor + market swing graded by a scored board verdict
-> (failure is stagnation, never a game-over), and plants grow deeper by specializing
-> their four KPI axes past nameplate;
-> Phases 8–9 remain planned. See [`ROADMAP-v5.md`](ROADMAP-v5.md) and
+> (failure is stagnation, never a game-over), plants grow deeper by specializing
+> their four KPI axes past nameplate, and a failing plant mid-quarter can be survived
+> by shedding a prioritised load tier or firing pre-built demand response while the
+> seasons colour each quarter's weather and events;
+> Phase 9 remains planned. See [`ROADMAP-v5.md`](ROADMAP-v5.md) and
 > [`plan-v5/`](plan-v5/README.md). Some roguelike docs below still describe superseded
 > run-based mechanics.
 
@@ -40,7 +44,7 @@ game, what's **planned**, and what's been **superseded**.
 | [`PLAN-v4.md`](PLAN-v4.md) | v4 | ✅ Built (phases A–G) |
 | [`PLAN-v4.2-control-room.md`](PLAN-v4.2-control-room.md) | v4.2 | ✅ Built — Control Room UI redesign (CR-1…CR-4) |
 | [`PLAN-v4.2.1-reliability-and-volatility.md`](PLAN-v4.2.1-reliability-and-volatility.md) | v4.2.1–4.2.3 | ✅ Built — wear = load × age, rare trips, volatile net-load |
-| [`plan-v5/`](plan-v5/README.md) | v5 | 🚧 Building — phased implementation spec (9 phases); Phases 1–5 shipped 2026-10-29, Phases 6–7 shipped 2026-10-30, 8–9 planned |
+| [`plan-v5/`](plan-v5/README.md) | v5 | 🚧 Building — phased implementation spec (9 phases); Phases 1–5 shipped 2026-10-29, Phases 6–8 shipped 2026-10-30, Phase 9 planned |
 
 ## Narrative bibles (later flavour layer)
 

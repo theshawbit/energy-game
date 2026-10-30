@@ -8,6 +8,8 @@
 import { createGame, step, setTicker, beginNextQuarter } from "./sim.js";
 import { toggleUnit, specializeUnit, raiseAxisCeiling, buyPerk, pinUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
 import { scheduleTask, cancelTask } from "./maint.js";
+import { rollRegime, regimeMods } from "./events.js";
+import { triggerLoadShed, triggerDemandResponse } from "./crisis.js";
 import { promote, hireCrew } from "./crews.js";
 import { commitBuild } from "./construct.js";
 import { setSpeed } from "./clock.js";
@@ -16,7 +18,6 @@ import { makeRng } from "./rng.js";
 import { rollSpecialOffer } from "./offers.js";
 import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning } from "./render.js";
 import { buySkill, buyUnlock, buyEconomyUnlock } from "./meta.js";
-import { rollMutators } from "./mutators.js";
 import { loadProfile, saveProfile } from "./persist.js";
 
 const $ = id => document.getElementById(id);
@@ -86,9 +87,14 @@ function toggleFast(){ if (S.calendar.mode !== "operating" || S.paused) return; 
 // ---- the persistent grid ----
 function startGame(){
   hideAll(); planningOpen = false; fastMode = false;
-  S = createGame(profile.skills, profile.researchUnlocked, rollMutators(), profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
+  // v5 Phase 8: the per-run mutator roll is retired — the seasonal event regime (rolled
+  // just below, re-rolled each quarter) now drives the weather/demand/fuel bias instead.
+  S = createGame(profile.skills, profile.researchUnlocked, [], profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
   const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG
   S.rngForecast = makeRng((seed ^ 0xF0) >>> 0); // separate stream so forecast sharpening never desyncs realized spot
+  // v5 Phase 8: deal the opening quarter's seasonal regime and let it drive the per-tick
+  // mods (supersedes the one-shot mutator roll); the rollover re-rolls it each quarter.
+  rollRegime(S, S.rng); S.mmods = regimeMods(S);
   S.bestRecords = profile.records; // read-only mirror for the hub scorecard
   S.paused = false; applySpeed();
   buildUnits(S, act);
@@ -153,6 +159,14 @@ window.addEventListener("keydown", e => {
   const k = e.key.toLowerCase();
   if (k === "1") act("pk1"); else if (k === "2") act("pk2");
   else if (k === "3") act("pk3"); else if (k === "b") act("bat");
+});
+// v5 Phase 8: crisis toolkit — a delegated listener on the crisis bar (buttons are
+// rebuilt by render only when state changes, so binding here once survives the repaints).
+$("crisisBar").addEventListener("click", e => {
+  if (!S.running || S.calendar.mode !== "operating") return;
+  const shed = e.target.closest("[data-shed]");
+  if (shed){ triggerLoadShed(S, shed.dataset.shed); render(S); return; }
+  if (e.target.closest("[data-dr]")){ triggerDemandResponse(S); render(S); }
 });
 window.addEventListener("resize", () => { if (S) render(S); });
 requestAnimationFrame(frame);

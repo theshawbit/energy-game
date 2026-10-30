@@ -210,6 +210,15 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .mut-lead{font-family:var(--mono);font-size:.72rem;font-weight:600;letter-spacing:.04em;color:var(--warn);text-transform:uppercase}
 .mut-chip{font-size:.8rem;color:var(--muted)}
 .mut-chip b{color:var(--fg)}
+/* v5 Phase 8: the mid-quarter crisis bar — regime label + shed tiers + demand-response */
+.crisis-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;margin:0 0 12px;padding:7px 11px;border:1px solid var(--line);border-radius:10px;background:#0d1219}
+.crisis-regime{font-family:var(--mono);font-size:.72rem;letter-spacing:.03em;color:var(--muted)}
+.crisis-tools{display:flex;flex-wrap:wrap;gap:5px}
+.crisis-shed,.crisis-dr{border:1px solid var(--line);color:var(--muted);background:#0a0e14;border-radius:5px;padding:4px 9px;font-family:var(--mono);font-size:.68rem;cursor:pointer;white-space:nowrap}
+.crisis-shed:hover:not(:disabled){border-color:var(--warn);color:var(--warn)}
+.crisis-dr.ready{border-color:#24415e;color:#7fb8ff}
+.crisis-dr.ready:hover{border-color:#7fb8ff;color:#fff}
+.crisis-shed:disabled,.crisis-dr:disabled{opacity:.4;cursor:not-allowed}
 /* research & R&D (v3) */
 .rd-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-family:var(--mono);font-size:.8rem;color:var(--muted);margin-top:4px}
 .rd-head .rd-bank b{color:var(--accent);font-size:1.1rem}

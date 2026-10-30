@@ -213,6 +213,37 @@ wholesale and replaced by three growth lanes, built at the quarter-end Developme
 - **Still deferred:** the `peakGrowth` demand cadence re-tune (carried from Phase 6); v4 narrative copy
   (→ Phase 9); `tools/balance.mjs` remains stale.
 
+### Added — v5 Phase 8: crisis toolkit & seasonal event regime (2026-10-30)
+
+Two additions make the live day survivable and the seasons matter. See
+[`docs/plan-v5/phase-8-crisis-events.md`](docs/plan-v5/phase-8-crisis-events.md).
+
+- **Mid-quarter crisis toolkit (`src/live/crisis.js`, new/pure).** Because maintenance is
+  quarter-end only, a plant that fails on day 5 now has an **earned, penalised** escape hatch —
+  nothing free:
+  - **Load-shed** — `loadShedTiers(S)` / `triggerLoadShed(S, tierId)` cut a pre-prioritised
+    non-critical load tier (industrial → commercial → residential), a *controlled* brownout that
+    **reuses** the shipped shortfall mechanic (the cut simply lowers demand for a short window so the
+    grid clears). It takes a real satisfaction hit now and books a fine into the quarter PnL
+    (`quarterLog.shedFines`) — verified **cheaper than the blackout it averts**, never free.
+  - **Demand response** — `canDemandRespond` / `triggerDemandResponse` fire an active peak shave,
+    gated **strictly** on the demand-response research branch (`rmods.demandShave > 0`): foresight,
+    never a panic button. One shot per window, then a cooldown.
+  - A **telegraphed trip auto-pauses** the clock (Phase 1 `autoPause`) so the tools are reachable
+    before the grid falls.
+- **Seasonal event regime (`src/live/events.js`, new/pure, grown from `mutators.js`).** Each quarter
+  is a season with a weather bias + a weighted event deck dealt from the shipped mutator ids.
+  `rollRegime(S, rng)` deals the coming quarter's events at the rollover (deterministic under a pinned
+  stream); `regimeMods(S)` folds the active regime into the **same shape** `computeMutatorMods`
+  returns, so `step` consumes it through `S.mmods` with no new plumbing — **winter/summer peak hard**,
+  the shoulder seasons are milder. The one-shot per-run mutator roll is **retired** (the regime
+  supersedes it); the Operating Room gains a crisis bar (regime name + shed tiers + DR button).
+- Costs settle through Phase 6 (new `quarterLog.shedFines` folds into the verdict PnL). New
+  `crisis` (17 checks) + `events` (14 checks) suites; all **26 suites green**.
+- **Still deferred:** the `peakGrowth` demand cadence re-tune; v4 narrative copy + the regime's
+  flavour text (→ Phase 9, which owns all copy); `tools/balance.mjs` remains stale. (Note: `sim.test`
+  carries a pre-existing trip-hazard flake — it doesn't pin the global RNG — unrelated to this phase.)
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a

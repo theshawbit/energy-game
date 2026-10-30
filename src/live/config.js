@@ -344,6 +344,41 @@ export const CFG = {
         { fleet: 15, year: 3 },  // tier 2 — a big grid that has earned automation
       ],
     },
+    // Phase 8: the mid-quarter CRISIS toolkit. Because maintenance is quarter-end only,
+    // the live day needs an EARNED, PENALISED escape hatch when a plant fails. Two tools:
+    //  • LOAD-SHED — cut a pre-prioritised non-critical load tier (a controlled brownout:
+    //    you choose the cut instead of the grid cascading). A real satisfaction hit + a fine
+    //    that settles into the quarter PnL (quarterLog.shedFines) — cheaper than the blackout
+    //    it averts, never free. `frac` = share of current load the tier sheds.
+    //  • DEMAND RESPONSE — an active peak shave, gated STRICTLY on the demand-response
+    //    research branch (rmods.demandShave > 0): foresight, never a panic button. One shot
+    //    per window, then a cooldown.
+    crisis: {
+      shedTiers: [
+        { id: "industrial",  label: "Industrial Park",      frac: 0.08, satHit: 3,  fine: 4000 },
+        { id: "commercial",  label: "Commercial Districts",  frac: 0.14, satHit: 7,  fine: 9000 },
+        { id: "residential", label: "Outer Residential",     frac: 0.22, satHit: 14, fine: 18000 },
+      ],
+      shedWindow: 2,          // game-hours a load-shed holds before the tier is restored
+      drShave:    0.15,       // active demand response shaves this fraction of load …
+      drWindow:   3,          // … for this many game-hours …
+      drCooldown: 12,         // … then DR can't fire again for this many game-hours
+    },
+    // Phase 8: the seasonal EVENT REGIME. Each quarter (= season) carries a weather bias +
+    // an event deck dealt from the shipped mutator ids. `bias` folds straight into the
+    // computeMutatorMods shape (so `step` consumes it unchanged); `deck` is weighted draws;
+    // `deal` is how many distinct events the quarter runs. Winter/summer peak hard; the
+    // shoulder seasons (spring/autumn) are milder with their own flavour. Flavour TEXT stays
+    // OUT of here (Phase 9 owns copy) — ids + mods only.
+    regimes: {
+      deal: 1,                // distinct events dealt per quarter from the active deck
+      bySeason: {
+        winter: { demandMult: 1.12, deck: [ { id: "cold-snap", weight: 3 }, { id: "fuel-spike", weight: 2 }, { id: "renewable-lull", weight: 1 } ] },
+        spring: { demandMult: 1.0,  deck: [ { id: "renewable-lull", weight: 2 }, { id: "chaotic-market", weight: 2 }, { id: "drought", weight: 1 } ] },
+        summer: { demandMult: 1.14, deck: [ { id: "heatwave", weight: 3 }, { id: "drought", weight: 2 }, { id: "fuel-spike", weight: 1 } ] },
+        autumn: { demandMult: 1.0,  deck: [ { id: "chaotic-market", weight: 2 }, { id: "renewable-lull", weight: 2 }, { id: "cold-snap", weight: 1 } ] },
+      },
+    },
   },
 };
 
