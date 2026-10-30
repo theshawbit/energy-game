@@ -25,6 +25,13 @@ As-built fidelity map (checked against the live modules, 2026-10-26):
   Efficiency/Quality/Flexibility). So any Mk-referencing copy here (Scene 3 Sol Kane;
   the Transmission "Mk Upgrade Amplifier" node) must be reconciled to the specialization
   language when the narrative slice is built — AFTER v5.1 lands.
+  *** RECONCILED (v5 Phase 9, 2026-10-30) ***: the as-built game has no Mk ladder and no
+  run/succession — progression is **per-axis KPI specialization** (Output / Reliability /
+  Efficiency / Flexibility; see src/live/progression.js) and the grid is **persistent** (no
+  game-over; failure is stagnation). Treat every "Mk I→II", "Mk Upgrade Amplifier", and
+  "CDO #NNN succession" line here as historical creative source: the shipped voice lives in
+  `CFG.v5.world` (C.A.S.S. barks + the overlord verdict) and is selected by src/live/world.js.
+  Read the Mk/succession copy for TONE, not for mechanics.
 - HOMING NOTE: margin notes (§4) target per-plant "cards", but the fleet is now a TABLE
   (v4.2.4). Per-tech plant notes need a home — likely the Manage / specialization view.
 - PHASED / BIG: the five-act "Project Leviathan" mystery (§2, §8 — encrypted reveals

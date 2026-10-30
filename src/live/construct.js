@@ -11,6 +11,7 @@
 // Phase 9 / v4.2 plantName). Retires the v4 instant `buildCapacity` path.
 // ============================================================
 import { CFG, BUILD, BUILD_GATE, makeUnit } from "./config.js";
+import { eraOf } from "./world.js"; // v5 Phase 9: late-era builds take New Veridia names
 
 // The buildable catalogue: capital cost + MW from BUILD, lead-time from CFG.v5.build.
 // Only techs with a configured lead-time are buildable as projects.
@@ -69,7 +70,7 @@ export function tickBuilds(S, rng = Math.random){
     }
     if (b.quartersLeft <= 0){
       const n = (S.techCount[b.tech] = (S.techCount[b.tech] || 0) + 1);
-      const u = makeUnit(b.tech, n, S.buildSeq++);               // enters the fleet live
+      const u = makeUnit(b.tech, n, S.buildSeq++, eraOf(S));     // enters the fleet live, named for the current era
       S.fleet.push(u);
       b.unit = u;
       done.push(b);

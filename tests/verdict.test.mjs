@@ -3,7 +3,7 @@
 // + S.calendar; applyVerdict is the only mutator. Failure must stall growth + tighten
 // credit, NEVER set a game-over. Deterministic (no RNG in the pure path; pinned where a
 // sim loop runs). Run: `npm test`.
-import { freshQuarterLog, freshEconomy, settleQuarter, applyVerdict, verdictNote } from "../src/live/verdict.js";
+import { freshQuarterLog, freshEconomy, settleQuarter, applyVerdict } from "../src/live/verdict.js";
 import { createGame, surviveDay, step } from "../src/live/sim.js";
 import { CFG } from "../src/live/config.js";
 

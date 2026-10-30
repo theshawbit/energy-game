@@ -22,8 +22,10 @@ game, what's **planned**, and what's been **superseded**.
 > (failure is stagnation, never a game-over), plants grow deeper by specializing
 > their four KPI axes past nameplate, and a failing plant mid-quarter can be survived
 > by shedding a prioritised load tier or firing pre-built demand response while the
-> seasons colour each quarter's weather and events;
-> Phase 9 remains planned. See [`ROADMAP-v5.md`](ROADMAP-v5.md) and
+> seasons colour each quarter's weather and events, and the district itself grows
+> from the Rust District into New Veridia with a deadpan dispatch-AI (C.A.S.S.) and
+> the overlord's barbed verdict voice layered over the whole sim as pure flavour;
+> v5 is now fully built (all 9 phases). See [`ROADMAP-v5.md`](ROADMAP-v5.md) and
 > [`plan-v5/`](plan-v5/README.md). Some roguelike docs below still describe superseded
 > run-based mechanics.
 
@@ -34,7 +36,7 @@ game, what's **planned**, and what's been **superseded**.
 | [`ROADMAP-v2.md`](ROADMAP-v2.md) | v2 | ✅ Shipped — the real-time roguelike core |
 | [`ROADMAP-v3.md`](ROADMAP-v3.md) | v3 | ✅ Shipped — research tech tree, mutators, meta-gating |
 | [`ROADMAP-v4.md`](ROADMAP-v4.md) | v4 | ✅ Shipped — "The Book": contracts + spot, financing, forecast, scoring |
-| [`ROADMAP-v5.md`](ROADMAP-v5.md) | v5 | 📋 **Scoped, not built** — persistent management/ops-sim pivot (parent program spec) |
+| [`ROADMAP-v5.md`](ROADMAP-v5.md) | v5 | ✅ **Built** — persistent management/ops-sim pivot (parent program spec) |
 
 ## Build plans (the "how")
 
@@ -44,7 +46,7 @@ game, what's **planned**, and what's been **superseded**.
 | [`PLAN-v4.md`](PLAN-v4.md) | v4 | ✅ Built (phases A–G) |
 | [`PLAN-v4.2-control-room.md`](PLAN-v4.2-control-room.md) | v4.2 | ✅ Built — Control Room UI redesign (CR-1…CR-4) |
 | [`PLAN-v4.2.1-reliability-and-volatility.md`](PLAN-v4.2.1-reliability-and-volatility.md) | v4.2.1–4.2.3 | ✅ Built — wear = load × age, rare trips, volatile net-load |
-| [`plan-v5/`](plan-v5/README.md) | v5 | 🚧 Building — phased implementation spec (9 phases); Phases 1–5 shipped 2026-10-29, Phases 6–8 shipped 2026-10-30, Phase 9 planned |
+| [`plan-v5/`](plan-v5/README.md) | v5 | ✅ Built — phased implementation spec (9 phases); Phases 1–5 shipped 2026-10-29, Phases 6–9 shipped 2026-10-30 |
 
 ## Narrative bibles (later flavour layer)
 

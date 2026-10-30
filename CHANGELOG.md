@@ -244,6 +244,35 @@ Two additions make the live day survivable and the seasons matter. See
   flavour text (→ Phase 9, which owns all copy); `tools/balance.mjs` remains stale. (Note: `sim.test`
   carries a pre-existing trip-hazard flake — it doesn't pin the global RNG — unrelated to this phase.)
 
+### Added — v5 Phase 9: world & narrative — the identity arc + C.A.S.S./overlord voice (2026-10-30)
+
+The final v5 phase. A **cosmetic world layer** over the finished sim: the district's visual
+identity, the dispatch AI's deadpan barks, and the overlord's verdict voice — **all copy lives as
+data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. See
+[`docs/plan-v5/phase-9-world-narrative.md`](docs/plan-v5/phase-9-world-narrative.md).
+
+- **Identity arc (`eraOf`).** The grid grows from the **Rust District → Transition → New Veridia**,
+  gated on two *monotonic* inputs together — the calendar year **and** the demand peak — so it never
+  regresses. The era sets a `body[data-era]` accent and relabels the crisis strip; it never gates play.
+- **Era-aware plant naming.** `plantName(tech, n, era)` / `makeUnit(…, era)` draw late-era builds from
+  the New Veridia name pools (`Solaris Fields Solar`, `Veridia Prime Nuclear`, …); omitting `era` (or
+  `"rust"`) keeps the **shipped foundry names exactly** — every one still appears, and a name is fixed
+  once at a unit's birth. `construct.tickBuilds` passes the live era.
+- **C.A.S.S. — the dispatch AI (`cassLine`).** A deadpan one-liner for every shipped mutator id and
+  live state (`trip`/`strain`/`brownout`/`milestone`/`calm`), keyed off the day so it's deterministic
+  and **never consumes the economic RNG**; it rides the crisis bar. Unknown keys fall back, never empty.
+- **The overlord's verdict voice (`overlordNote`).** Replaces the Phase 6 stub string — a pure,
+  grade-driven selector over the verdict's own fields (praise is never warm, a fine is always barbed).
+  `verdict.js` now imports it; the scoring logic is untouched.
+- **The cardinal rule, tested.** Flavour **colours** the sim, it never **gates** it: the `world` suite's
+  strip test blanks every copy table to `""` and asserts an identical run — same cash, dispatch, fleet
+  condition, demand peak. New `world` suite (5 tasks / 40 checks); **all 27 suites green**. The storyline
+  bibles' `Mk`-ladder / succession language is reconciled to the persistent-grid KPI frame (docs only).
+- **Still deferred (carried past v5):** the `peakGrowth` demand cadence re-tune (a dedicated balance
+  pass); `tools/balance.mjs` remains stale. (The pre-existing `sim.test` trip-hazard flake — it doesn't
+  pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
+  deterministic headless run must pin the global RNG *before* calling it.)
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a

@@ -12,6 +12,7 @@ import { BUILDABLES, forecastDemand, concurrencySlip } from "./construct.js";
 import { CFG, BUILD_ORDER, BUILD_GATE, salvageValue } from "./config.js";
 import { AXES, upgradeCost, axisHardCeiling, canUpgrade, ceilingCost, canRaiseCeiling, PERKS, isAutomationUnlocked, automationTier, canUnlockPerk } from "./progression.js";
 import { loadShedTiers, canDemandRespond } from "./crisis.js";
+import { eraOf, cassLine } from "./world.js"; // v5 Phase 9: identity arc + C.A.S.S. voice (cosmetic)
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
@@ -225,8 +226,13 @@ function crisisBar(S){
   const cd = Math.ceil(S.drCooldown || 0);
   const ev = S.regime?.events?.[0];
   const regimeTxt = S.regime ? `${cap(S.regime.season)}${ev ? " · " + (mutatorById(ev)?.label || ev) : ""}` : "—";
+  // v5 Phase 9: the aesthetic era (sets a body accent) + a deadpan C.A.S.S. bark for
+  // the live event — both pure flavour over the same crisis data.
+  const era = eraOf(S);
+  if (document.body.dataset.era !== era) document.body.dataset.era = era;
+  const cassTxt = ev ? cassLine(S, ev) : (S.brownout ? cassLine(S, "brownout") : "");
   const tiers = loadShedTiers(S);
-  const sig = `${regimeTxt}|${shedOn}|${drReady}|${drOn}|${cd}|${tiers.map(t => t.mw).join(",")}`;
+  const sig = `${era}|${regimeTxt}|${cassTxt}|${shedOn}|${drReady}|${drOn}|${cd}|${tiers.map(t => t.mw).join(",")}`;
   if (sig === _lastCrisisSig) return;        // nothing changed — skip the rebuild
   _lastCrisisSig = sig;
   const shedBtns = tiers.map(t =>
@@ -234,9 +240,11 @@ function crisisBar(S){
   ).join("");
   const drLabel = drOn ? "⟳ DR active" : cd > 0 ? `⟳ DR · cd ${cd}h` : "⟳ Demand Response";
   const drBtn = `<button class="crisis-dr${drReady ? " ready" : ""}" data-dr ${drReady ? "" : "disabled"}>${drLabel}</button>`;
-  bar.innerHTML = `<span class="crisis-regime">⛭ ${regimeTxt}</span>
+  bar.innerHTML = `<span class="crisis-regime" title="${cassTxt}">⛭ ${ERA_LABEL[era]} · ${regimeTxt}</span>${cassTxt ? `<span class="crisis-cass">C.A.S.S.: ${cassTxt}</span>` : ""}
     <span class="crisis-tools">${shedBtns}${drBtn}</span>`;
 }
+// v5 Phase 9: the era's display label for the crisis strip.
+const ERA_LABEL = { rust: "Rust District", transition: "Transition", veridia: "New Veridia" };
 function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
 // v4.2 CR-3: fleet as a bank of live instrument tiles. Built once per game
