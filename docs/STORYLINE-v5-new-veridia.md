@@ -24,6 +24,15 @@ As-built fidelity map (checked against the live modules, 2026-10-26):
   Tier 1 here is literally "The Rust District", so those names may be reframed as
   the legacy fleet rather than rethemed.
 - Future / out of scope now: Tier-4 "external crisis grids" campaign expansion.
+
+RECONCILED (v5 Phase 9, 2026-10-30): the identity arc shipped. The grid now grows
+Rust District → Transition → New Veridia (src/live/world.js `eraOf`, gated on year +
+demand peak), the v4.2.6 foundry names are kept as the legacy Rust-era fleet with New
+Veridia pools layered on top for late-era builds (config.js `CFG.v5.world.names`), and
+the C.A.S.S. / overlord voice is live as data-driven copy. The game is PERSISTENT —
+there is no run #, no succession, no game-over — so any "last-run days" / operator-#
+/ Mk-ladder language above is historical source for TONE only; progression is per-axis
+KPI specialization (progression.js), not an Mk ladder.
 -->
 
 # Grid Operator: Storyline & Narrative Bible

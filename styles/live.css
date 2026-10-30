@@ -219,6 +219,14 @@ kbd{font-family:var(--mono);background:#1b2433;border:1px solid var(--line);bord
 .crisis-dr.ready{border-color:#24415e;color:#7fb8ff}
 .crisis-dr.ready:hover{border-color:#7fb8ff;color:#fff}
 .crisis-shed:disabled,.crisis-dr:disabled{opacity:.4;cursor:not-allowed}
+/* v5 Phase 9: the deadpan C.A.S.S. bark riding the crisis strip, and the era accent.
+   The identity arc only tints the UI (left border + regime hue) — never gates play. */
+.crisis-cass{flex:1 1 100%;order:3;font-family:var(--mono);font-size:.64rem;color:var(--muted);opacity:.78;font-style:italic;letter-spacing:.02em}
+body[data-era="rust"] .crisis-bar{border-left:3px solid #8a6a4a}
+body[data-era="transition"] .crisis-bar{border-left:3px solid #4a7e8a}
+body[data-era="veridia"] .crisis-bar{border-left:3px solid #58c6a6}
+body[data-era="veridia"] .crisis-regime{color:#8fe0c7}
+body[data-era="transition"] .crisis-regime{color:#8fc3d6}
 /* research & R&D (v3) */
 .rd-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-family:var(--mono);font-size:.8rem;color:var(--muted);margin-top:4px}
 .rd-head .rd-bank b{color:var(--accent);font-size:1.1rem}

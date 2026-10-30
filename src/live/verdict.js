@@ -12,10 +12,12 @@
 // squeeze. Failure is STAGNATION, never a game-over: a wrecked quarter stalls demand
 // growth and (via the sim's finance path) tightens credit — the save always survives.
 //
-// The `note` is a plain barbed one-liner here; Phase 9 swaps in the overlord's /
-// C.A.S.S. full voice without touching this logic.
+// The `note` is the overlord's barbed one-liner, now selected by world.overlordNote
+// from the CFG.v5.world.overlord copy tables (Phase 9) — pure and grade-driven, so
+// this scoring logic is untouched by the voice.
 // ============================================================
 import { CFG } from "./config.js";
+import { overlordNote } from "./world.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -88,7 +90,7 @@ export function settleQuarter(S){
     floorPay: Math.round(q.floorPay), swingPay: Math.round(q.swingPay),
     wages: Math.round(q.wages), overruns: Math.round(q.overruns), breachFines: Math.round(q.breachFines),
     shedFines: Math.round(q.shedFines || 0),
-    note: verdictNote(grade, serveRate, cleanScore),
+    note: overlordNote({ grade, serveRate, cleanScore, year, quarter }),
   };
 }
 
@@ -106,11 +108,3 @@ export function applyVerdict(S, v){
   S.economy.growthStall = clamp(miss * CFG.v5.econ.growthStallMax, 0, CFG.v5.econ.growthStallMax);
 }
 
-// A plain, barbed one-liner in the overlord's voice (stub — Phase 9 gives full copy).
-export function verdictNote(grade, serveRate, cleanScore){
-  if (serveRate < 0.9) return "The city noticed the dark. So did we. Keep the lights on or answer for it.";
-  if (grade >= 0.85)   return "Adequate. The board is, grudgingly, not displeased. Your rate improves.";
-  if (grade >= CFG.v5.econ.gradeNeutral) return "Within tolerance. Do not mistake tolerance for approval.";
-  if (cleanScore < 0.3) return "Your smokestacks embarrass us. The fine is for the optics.";
-  return "Underwhelming. The rate is cut. Perform, or be replaced by someone who will.";
-}

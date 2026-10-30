@@ -1,6 +1,6 @@
 # Grid Operator v5 — Implementation Plan (master index)
 
-> **Status: building. Phases 1–5 shipped (2026-10-29), Phases 6–8 shipped (2026-10-30); Phase 9 planned.** This is the
+> **Status: shipped. Phases 1–5 shipped (2026-10-29), Phases 6–9 shipped (2026-10-30). v5 implementation complete.** This is the
 > engineering decomposition of [`docs/ROADMAP-v5.md`](../ROADMAP-v5.md) (the program spec)
 > into nine independently shippable phases. The ROADMAP is *what and why*; this folder is
 > *how and in what order*. `engine.js` stays **sacred** throughout — `dispatchHour()` +
@@ -29,11 +29,13 @@ section) is what actually gates them.
 | 6 | **Hybrid economy** | [phase-6-hybrid-economy.md](phase-6-hybrid-economy.md) | revives `market.js`/`finance.js`/`capacity.js`, `verdict.js` | ✅ shipped 2026-10-30 |
 | 7 | **Progression** | [phase-7-progression.md](phase-7-progression.md) | `progression.js` | ✅ shipped 2026-10-30 |
 | 8 | **Crisis toolkit & events** | [phase-8-crisis-events.md](phase-8-crisis-events.md) | `crisis.js`, `events.js` | ✅ shipped 2026-10-30 |
-| 9 | **World & narrative** | [phase-9-world-narrative.md](phase-9-world-narrative.md) | `world.js` + copy | ☐ planned |
+| 9 | **World & narrative** | [phase-9-world-narrative.md](phase-9-world-narrative.md) | `world.js` + copy | ✅ shipped 2026-10-30 |
 
 The retired `PLAN-v5.1-progression.md` (legacy roguelike-era progression plan) was removed when this
 plan folder landed; its live references in `docs/README.md`, `ROADMAP-v5.md`, and `CHANGELOG.md` now
-point here. The `Mk`-ladder references still in the storyline bibles are reconciled in Phase 9.
+point here. The `Mk`-ladder references in the storyline bibles were reconciled in Phase 9 — the
+persistent-grid frame (per-axis KPI specialization + the New Veridia identity arc) now supersedes
+the old roguelike `Mk I→II→III` / succession-clause language.
 
 ---
 

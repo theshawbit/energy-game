@@ -379,6 +379,61 @@ export const CFG = {
         autumn: { demandMult: 1.0,  deck: [ { id: "chaotic-market", weight: 2 }, { id: "renewable-lull", weight: 2 }, { id: "cold-snap", weight: 1 } ] },
       },
     },
+    // Phase 9: the WORLD layer — the Rust District → New Veridia identity arc, the C.A.S.S.
+    // dispatch-AI barks, and the overlord's verdict voice. ALL copy lives here as DATA; world.js
+    // is a pure selector over these tables. This layer COLOURS the sim, never gates it — strip
+    // every string to "" and the mechanics are identical (see tests/world.test.mjs task 5).
+    world: {
+      // the aesthetic era, gated on monotonic inputs (year AND demand peak) so it never regresses.
+      // A fresh grid is "rust"; it grows into "transition" then "veridia" as the city scales.
+      eras: {
+        transition: { year: 2, peak: 1400 },  // ≥Y2 AND peak ≥1400 MW → the district modernises
+        veridia:    { year: 3, peak: 3000 },  // ≥Y3 AND peak ≥3000 MW → gleaming New Veridia
+      },
+      // era-aware place-name pools for mid-run builds. "rust" reuses the shipped PLACE_POOL below
+      // (so every shipped name still appears); later eras override with their own pools. A tech
+      // absent from an era's pool falls back to the rust foundry names — new content is a data drop.
+      names: {
+        veridia: {
+          nuclear: ["Veridia Prime","Aurora Reach","Helios Spire","Meridian"],
+          coal:    ["Reclaim One","Sunset Stack","Legacy Yard","Transition Works"],
+          solar:   ["Solaris Fields","Brightmere","Lumen Park","Dawnspan","Clearwater","Apex Array"],
+          wind:    ["Skyreach","Zephyr Line","Highcrest","Aeris Point","Windward","Crestfall"],
+          peaker:  ["Swiftcore Gas","Nimbus Peak","Pulsegate","Flashpoint","Vanguard","Keenedge"],
+          battery: ["Cellhaven","Fluxmere","Ionvault","Everstore","Reservoir","Keystone Cells"],
+          smr:     ["Quantum Vale","Fission Court","Minervine","Coremantle"],
+          geo:     ["Terravent","Deepwell Prime","Magmara","Corebloom"],
+          ccs_coal:["Purecoal Works","Scrubspire","Cleanstack","Zerovault Coal"],
+          ccs_gas: ["Pureflame","Capturine","Clearburn Prime","Azure Gas"],
+        },
+      },
+      // C.A.S.S. (the deadpan dispatch AI). Barks keyed to real game ids/states — every shipped
+      // mutator/event id and key state has a pool, so cassLine never falls through to empty.
+      // Flavour only; what the player READS, never what the sim DOES.
+      cass: {
+        "fuel-spike":     ["Gas just got expensive. The merit order disagrees with your budget.", "Fuel markets are panicking. You should not. (You may.)"],
+        "heatwave":       ["Eight million air conditioners just voted. Demand wins.", "The basin is sweating. Find firm headroom or explain the dark."],
+        "cold-snap":      ["Heating load spikes. The cold does not file paperwork.", "Everyone turned the heat up at once. Reserves, now."],
+        "drought":        ["Still air, low water. The wind turbines are decorative today.", "Hydrology is not cooperating. Neither is the wind."],
+        "renewable-lull": ["Overcast and calm. Solar and wind have both clocked out.", "The weather is holding its breath. So is your margin."],
+        "chaotic-market": ["Prices are lurching. The forecast is a rumour.", "The spot market is improvising. Hedge, or pray."],
+        trip:             ["A plant just tripped. The city noticed faster than you did.", "Unit offline. Unscheduled. Unhelpful."],
+        strain:           ["That plant is straining. You have seconds, not minutes.", "Telegraphed failure in progress. Decide."],
+        brownout:         ["Load exceeds supply. Shed something or answer for the dark.", "The grid is short. The slums go first unless you say otherwise."],
+        milestone:        ["Demand record. The city grows; so does the scrutiny.", "New peak served. The board will expect it again."],
+        calm:             ["Nominal. Enjoy it. It is temporary.", "All green. Suspiciously so."],
+      },
+      // the overlord's quarter-end verdict voice — never a thank-you. Keyed to grade bands; the
+      // selector reads the Verdict fields (grade, serveRate, cleanScore). overlordNote replaces
+      // the Phase 6 stub string (verdict.verdictNote) — pure, cosmetic, grade-driven.
+      overlord: {
+        dark:     ["The city noticed the dark. So did we. Keep the lights on or answer for it.", "You let the basin go black. The board does not forget outages."],
+        praise:   ["Adequate. The board is, grudgingly, not displeased. Your rate improves.", "A competent quarter. We will pretend not to be surprised."],
+        tolerate: ["Within tolerance. Do not mistake tolerance for approval.", "Acceptable. Barely. The rate holds."],
+        dirty:    ["Your smokestacks embarrass us. The fine is for the optics.", "The emissions figures are a liability. We bill you for the exposure."],
+        fail:     ["Underwhelming. The rate is cut. Perform, or be replaced by someone who will.", "A poor quarter. The squeeze is instructive. Learn from it."],
+      },
+    },
   },
 };
 
@@ -483,9 +538,14 @@ const PLACE_POOL = {
   ccs_gas: ["Cleanburn","Methermere","Vaporton","Blueflame"],
 };
 // Name for the n-th (1-based) mid-run build of a tech: `<place> <fuel>`, with a
-// numeral suffix if the run outlasts the pool.
-export function plantName(tech, n){
-  const pool = PLACE_POOL[tech] || PLACE_POOL.coal;
+// numeral suffix if the run outlasts the pool. v5 Phase 9: the `era` param draws
+// the place pool from the era-specific CFG.v5.world.names[era] table when one
+// exists for the tech; omitted or "rust" (and any era/tech with no override)
+// falls back to the shipped PLACE_POOL, so every shipped name still appears and
+// the pre-Phase-9 signature keeps working. The fuel word never changes by era.
+export function plantName(tech, n, era){
+  const eraPool = era && era !== "rust" ? CFG.v5?.world?.names?.[era]?.[tech] : null;
+  const pool = (eraPool && eraPool.length) ? eraPool : (PLACE_POOL[tech] || PLACE_POOL.coal);
   const fuel = FUEL_WORD[tech] || (BUILD[tech]?.label ?? tech);
   const i = (n - 1) % pool.length;
   const wrap = Math.floor((n - 1) / pool.length);
@@ -543,13 +603,15 @@ export function dialSnapshot(d){ return { commit: d.commit, bandMin: d.bandMin, 
 export function freshCaps(){ const b = CFG.v5.upgrade.base; return { reliability: b, efficiency: b, output: b, flexibility: b }; }
 
 // Factory for a unit added mid-run via the build catalogue. `n` numbers the
-// unit for display; `seq` makes its id unique.
-export function makeUnit(tech, n, seq){
+// unit for display; `seq` makes its id unique. v5 Phase 9: `era` (from world.eraOf)
+// steers the place-name pool so late-era builds read as New Veridia, not the rust
+// district; omitted → shipped names (the pre-Phase-9 behaviour).
+export function makeUnit(tech, n, seq, era){
   const b = BUILD[tech];
   const kind = (tech === "solar" || tech === "wind") ? "renew"
              : tech === "peaker" ? "gas"       // v5 Phase 2: "peaker" builds dial-able fast gas
              : tech === "battery" ? "battery" : "firm";
-  const u = { id:`${tech}-${seq}`, name:plantName(tech, n), kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
+  const u = { id:`${tech}-${seq}`, name:plantName(tech, n, era), kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
               status: (kind === "gas" || kind === "battery") ? "off" : "online",
               ctrl: (kind === "gas" || kind === "battery"), key:null };
   if (kind === "firm" || kind === "gas"){ u.condition = 100; u.ageHours = 0; u.kpis = freshKPIs(); u.caps = freshCaps(); } // mechanical plants wear (Phase 3 KPIs) & specialize (Phase 7 caps)
