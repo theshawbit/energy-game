@@ -1,22 +1,24 @@
 // ============================================================
-// LIVE ENTRY POINT — owns the live game state, runs the real-time loop, wires
-// input to actions, and drives screen navigation: Home ⇄ Skills / How-to, and
-// Home → Run → end screen → Home. Skills is reachable only from Home, so
-// opening it never disturbs a run.
+// LIVE ENTRY POINT (v5) — owns the persistent-grid state, runs the real-time
+// loop, wires input to actions, and drives screen navigation: Home ⇄ Skills /
+// How-to, and Home → the persistent grid. There is NO run end — the grid is
+// persistent. Completing a quarter pauses into the Planning Office (a stub this
+// phase) and resumes into the next quarter.
 // ============================================================
-import { createGame, step, setTicker } from "./sim.js";
+import { createGame, step, setTicker, beginNextQuarter } from "./sim.js";
 import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
+import { setSpeed } from "./clock.js";
+import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
-import { commitCreditStanding } from "./finance.js";
 import { rollSpecialOffer } from "./offers.js";
-import { render, buildUnits, showEndGame, clearEndGame, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner } from "./render.js";
-import { scoreRun, currencyFor, buySkill, buyUnlock, buyEconomyUnlock, runLengthFor, currencyForRun, awardCurrency, scoreTracks, updateRecords } from "./meta.js";
+import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning } from "./render.js";
+import { buySkill, buyUnlock, buyEconomyUnlock } from "./meta.js";
 import { rollMutators } from "./mutators.js";
 import { loadProfile, saveProfile } from "./persist.js";
 
 const $ = id => document.getElementById(id);
 const profile = loadProfile();
-let S, last = 0, ended = false, page = null; // page: null = live HUD; else the open manage page
+let S, last = 0, page = null, planningOpen = false; // page: null = live HUD; else the open manage page
 
 // ---- screen navigation ----
 const OVERLAYS = ["homeOverlay", "metaOverlay", "howtoOverlay", "menuOverlay", "overlay"];
@@ -25,7 +27,7 @@ function showHome(){ hideAll(); $("vignette").style.opacity = "0"; renderHome(pr
 function showSkills(){ hideAll(); renderMeta(profile, meta); }
 function showHowto(){ hideAll(); $("howtoOverlay").classList.add("on"); }
 
-const homeActions = { start: () => startRun(), skills: showSkills, howto: showHowto };
+const homeActions = { start: () => startGame(), skills: showSkills, howto: showHowto };
 const meta = {
   buy(id){ if (buySkill(profile, id)){ saveProfile(profile); renderMeta(profile, meta); } },
   unlock(id){ if (buyUnlock(profile, id)){ saveProfile(profile); renderMeta(profile, meta); } },
@@ -39,8 +41,7 @@ function act(id){ toggleUnit(S, id); render(S); }
 // re-paint the currently open manage page (after an action or a nav)
 function refreshPage(){ if (page) renderManage(S, page, menu); }
 
-// v4 (F): at each new day, expire a stale offer then roll a fresh one (null
-// unless the Rolodex economy unlock is owned). Uses the run's seeded RNG.
+// a buyer may call at each new day (null unless the Rolodex economy unlock is owned)
 function rollDailyOffer(){
   if (S.pendingOffer && S.day >= S.pendingOffer.expiresDay) S.pendingOffer = null;
   const offer = rollSpecialOffer(S, S.rng || Math.random);
@@ -67,49 +68,50 @@ const menu = {
   go(p){ page = p; refreshPage(); },
   close(){ S.menuOpen = false; page = null; hideManage(); last = 0; render(S); },
 };
-function openManage(){ if (S.over) return; S.menuOpen = true; page = "hub"; refreshPage(); }
+function openManage(){ if (S.calendar.mode !== "operating") return; S.menuOpen = true; page = "hub"; refreshPage(); }
 
-// ---- run lifecycle ----
-function startRun(){
-  hideAll(); clearEndGame();
-  S = createGame(profile.skills, profile.researchUnlocked, rollMutators(), profile.credit?.standing, profile.economyUnlocked, runLengthFor(profile)); // roll mutators; carry credit + economy unlocks + run length
-  const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG, replayable from the seed
-  S.rngForecast = makeRng((seed ^ 0xF0) >>> 0); // v4 (E): separate stream so sharpening the forecast never desyncs realized spot
-  S.bestRecords = profile.records; // v4 (D): read-only mirror for the hub scorecard (render never mutates it)
+// ---- speed control (v5): pause is a read-only hold (clock speed 0); fast-forward
+// skips calm hours. Both only act during the live day (not the planning beat). ----
+let fastMode = false;
+function applySpeed(){ setSpeed(S, S.paused ? 0 : (fastMode ? CFG.v5.fastSpeed : 1)); }
+function togglePause(){ if (S.calendar.mode !== "operating") return; S.paused = !S.paused; applySpeed(); render(S); }
+function toggleFast(){ if (S.calendar.mode !== "operating" || S.paused) return; fastMode = !fastMode; applySpeed(); render(S); }
+
+// ---- the persistent grid ----
+function startGame(){
+  hideAll(); planningOpen = false; fastMode = false;
+  S = createGame(profile.skills, profile.researchUnlocked, rollMutators(), profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
+  const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG
+  S.rngForecast = makeRng((seed ^ 0xF0) >>> 0); // separate stream so forecast sharpening never desyncs realized spot
+  S.bestRecords = profile.records; // read-only mirror for the hub scorecard
+  S.paused = false; applySpeed();
   buildUnits(S, act);
   renderMutatorBanner(S);
-  ended = false; last = 0;
+  last = 0;
   S.running = true;
   render(S);
 }
-function endRun(){
-  const res = scoreRun(S);                         // legacy composite (kept for best.{score,days,peak})
-  const earned = currencyForRun(S);                // v4 (D): ⚡ summed across the four tracks
-  const prevBest = { ...profile.best };
-  const tracks = scoreTracks(S);
-  updateRecords(profile, tracks, S.day);           // v4 (D): raise per-track bests (stats hub)
-  awardCurrency(profile, earned);                  // v4 (D): the ONLY ⚡-earn path
-  profile.best = {
-    days: Math.max(prevBest.days || 0, res.days),
-    score: Math.max(prevBest.score || 0, res.score),
-    peak: Math.max(prevBest.peak || 0, S.peak),
-  };
-  commitCreditStanding(profile, S);                // v4 (C): write the run's credit standing back (the only credit writer)
-  saveProfile(profile);
-  showEndGame(S, { score: res.score, earned, best: prevBest }, { replay: () => startRun(), home: showHome });
-}
 
-// ---- main loop: step + repaint only while the shift is live ----
+// leave the quarter-end Planning Office and resume the live day in the new quarter
+const planningActions = {
+  begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; render(S); },
+};
+
+// ---- main loop: step + repaint while the shift is live; the quarter-end beat
+// opens the Planning Office and waits for the player to begin the next quarter ----
 function frame(now){
   if (!last) last = now;
   let dt = (now - last) / 1000; last = now;
   dt = Math.min(dt, 0.1);
-  if (S.running && !S.paused && !S.menuOpen && !S.over){
-    const dayBefore = S.day;
-    const justEnded = step(S, dt);
-    if (S.day !== dayBefore && !S.over) rollDailyOffer(); // v4 (F): a buyer may call at each new day
-    if (justEnded && !ended){ ended = true; render(S); endRun(); }
-    else render(S);
+  if (S.running && !S.menuOpen){
+    if (S.calendar.mode === "planning"){
+      if (!planningOpen){ planningOpen = true; renderPlanning(S, planningActions); }
+    } else {
+      const dayBefore = S.day;
+      step(S, dt); // no-ops while paused (clock speed 0); never ends
+      if (S.day !== dayBefore && S.calendar.mode === "operating") rollDailyOffer();
+      render(S);
+    }
   }
   requestAnimationFrame(frame);
 }
@@ -118,17 +120,18 @@ function frame(now){
 S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act); render(S); renderMutatorBanner(S); // a game to paint behind the home screen
 showHome();
 $("manageBtn").onclick = () => openManage();
-$("pauseBtn").onclick = () => { if (S.running && !S.over){ S.paused = !S.paused; render(S); } };
+$("pauseBtn").onclick = togglePause;
+$("ffBtn").onclick = toggleFast;
 $("howtoBack").onclick = showHome;
 const HUB_KEYS = { "1": "fleet", "2": "build", "3": "research", "4": "desk" };
 window.addEventListener("keydown", e => {
-  if (e.code === "Space"){ e.preventDefault(); if (S.running && !S.over && !S.menuOpen){ S.paused = !S.paused; render(S); } return; }
+  if (e.code === "Space"){ e.preventDefault(); if (S.running && !S.menuOpen && S.calendar.mode === "operating") togglePause(); return; }
   if (S.menuOpen){ // manage-mode navigation: Esc = back, 1–4 jump from the hub
     if (e.key === "Escape"){ e.preventDefault(); if (page && page !== "hub") menu.go("hub"); else menu.close(); }
     else if (page === "hub" && HUB_KEYS[e.key]) menu.go(HUB_KEYS[e.key]);
     return; // swallow dispatch keys while managing
   }
-  if (!S.running || S.over) return; // dispatch keys only during live play
+  if (!S.running || S.calendar.mode !== "operating") return; // dispatch keys only during the live day
   const k = e.key.toLowerCase();
   if (k === "1") act("pk1"); else if (k === "2") act("pk2");
   else if (k === "3") act("pk3"); else if (k === "b") act("bat");

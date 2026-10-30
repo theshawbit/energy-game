@@ -4,10 +4,12 @@ This folder holds the design roadmaps, build plans, and narrative bibles for Gri
 Each doc is tagged with its status so you can tell at a glance what reflects the **shipped**
 game, what's **planned**, and what's been **superseded**.
 
-> **Game status:** the live game shipped through **v4.2.6** is a real-time **survival
-> roguelike**. **v5 is a scoped-but-unbuilt genre pivot** to a persistent management / ops
-> sim — see [`ROADMAP-v5.md`](ROADMAP-v5.md). Until v5 ships, the roguelike docs below
-> describe the game as it actually plays.
+> **Game status:** the live game shipped through **v4.2.6** was a real-time **survival
+> roguelike**; the **v5 genre pivot is now building**. Phase 1 (time & calendar, no
+> game-over) shipped 2026-10-29 — the grid is persistent and the run reset is gone;
+> Phases 2–9 remain planned. See [`ROADMAP-v5.md`](ROADMAP-v5.md) and
+> [`plan-v5/`](plan-v5/README.md). Some roguelike docs below still describe superseded
+> run-based mechanics.
 
 ## Design roadmaps (the "what & why")
 
@@ -26,7 +28,7 @@ game, what's **planned**, and what's been **superseded**.
 | [`PLAN-v4.md`](PLAN-v4.md) | v4 | ✅ Built (phases A–G) |
 | [`PLAN-v4.2-control-room.md`](PLAN-v4.2-control-room.md) | v4.2 | ✅ Built — Control Room UI redesign (CR-1…CR-4) |
 | [`PLAN-v4.2.1-reliability-and-volatility.md`](PLAN-v4.2.1-reliability-and-volatility.md) | v4.2.1–4.2.3 | ✅ Built — wear = load × age, rare trips, volatile net-load |
-| [`plan-v5/`](plan-v5/README.md) | v5 | 📋 Planned — phased implementation spec (9 phases) for [`ROADMAP-v5.md`](ROADMAP-v5.md) |
+| [`plan-v5/`](plan-v5/README.md) | v5 | 🚧 Building — phased implementation spec (9 phases); Phase 1 shipped 2026-10-29, 2–9 planned |
 
 ## Narrative bibles (later flavour layer)
 
