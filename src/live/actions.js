@@ -10,17 +10,14 @@ import { dailyBaseline } from "./market.js";
 import { contractPrice, expectedOutput, makeContract, creditRating } from "./finance.js";
 
 export function toggleUnit(S, id){
-  if (!S.running || S.paused || S.over) return;
+  if (!S.running || S.paused) return;
   const u = S.fleet.find(x => x.id === id); if (!u || !u.ctrl) return;
   if (u.kind === "battery"){
     if (u.status === "discharge") u.status = "off";
     else if (u.energy > 1) u.status = "discharge";
     else setTicker(S, "Battery depleted — needs surplus capacity to recharge.");
-  } else { // peaker
-    if (u.status === "off"){ u.status = "starting"; u.startTimer = u.startTime * (S.mods?.startTimeMult ?? 1) * (S.rmods?.startTimeMult ?? 1); }
-    // online / starting / strained → stand down (standing a STRAINED peaker down on
-    // your terms clears the strain, so the warning window buys you real agency)
-    else if (u.status === "online" || u.status === "starting" || u.status === "strained"){ u.status = "off"; u.strainTimer = 0; }
+  } else { // v5 Phase 2: fast gas — the COMMIT dial arms/stands it down; sim reconciles
+    u.dials.commit = !u.dials.commit;   // commit→status (spin-up / stand-down) happens in step()
   }
 }
 
@@ -222,12 +219,11 @@ export function repay(S, amount){
 // Take on a capacity obligation: commit to keeping `reserveMW` of firm capacity
 // available for a term, earning an availability payment — and risking a breach
 // fine if a call finds you short. One obligation at a time. reserveMW defaults to
-// ~40% of current firm+peaker capacity (what a prudent operator can actually back).
+// ~40% of current firm+gas capacity (what a prudent operator can actually back).
 export function takeCapacityObligation(S, term = 4){
-  if (S.over) return { ok:false };
   if (!(S.economyUnlocked && S.economyUnlocked["capacity-market"])) return { ok:false, msg:"Capacity Market not unlocked." };
   if (S.capacityObligation) return { ok:false, msg:"Already under a capacity obligation." };
-  const firm = S.fleet.reduce((a, u) => a + ((u.kind === "firm" || u.kind === "peaker") ? u.cap : 0), 0);
+  const firm = S.fleet.reduce((a, u) => a + ((u.kind === "firm" || u.kind === "gas") ? u.cap : 0), 0);
   const reserveMW = Math.round(0.4 * firm);
   if (reserveMW <= 0) return { ok:false, msg:"No firm capacity to pledge." };
   const termDays = Math.max(2, Math.min(6, Math.round(Number(term) || 4)));

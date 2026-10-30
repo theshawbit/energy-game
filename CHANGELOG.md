@@ -45,6 +45,26 @@ See [`docs/plan-v5/phase-1-time-calendar.md`](docs/plan-v5/phase-1-time-calendar
 - **Clean-break persistence** (`gridop.v5` key): v4 saves are ignored, not migrated.
 - New `calendar`/`clock` suites + rewritten sim/persist assertions; all 16 suites green.
 
+### Added — v5 Phase 2: dial-able dispatch (2026-10-29)
+
+The fixed on/off fleet becomes the **Core+ four dials per plant**, and the dedicated
+peaker is retired. See [`docs/plan-v5/phase-2-dispatch-dials.md`](docs/plan-v5/phase-2-dispatch-dials.md).
+
+- **`dispatch.js` (new, pure)** — the dials → merit-order offer. `applyDials(u)` resolves
+  commit · output band · reserve hold into `{min, max, committed, held}`; `defaultDials`
+  gives sane opt-in defaults (baseload committed, gas in reserve) so a fresh fleet runs like
+  v4 untouched; `cycleCost` classifies a dial change as a start/ramp (the Phase 3 Flexibility
+  hook). `engine.js` stays **sacred** — the dials shape only the band it clears within.
+- **Reserve hold** shaves the offered max, keeping headroom back from the market swing
+  (surfaced on `S.reserveOffered` — it earns the capacity floor in Phase 6).
+- **Peaker retired.** The dedicated `peaker` kind is gone; the former peakers are dial-able
+  **fast gas** (`kind:"gas"`, `CFG.v5.gas` ramp/start timing). A gas plant dialled to a narrow
+  high band is the old peaker, through the same engine. The build catalogue's entry now builds gas.
+- **Dials UI** — every dial-able plant gets a Commit · Band · Reserve-hold · Push control strip
+  in Manage ▸ Fleet; the live fleet bank still arms gas by tap/hotkey (commit dial).
+- New `dispatch` suite (8 tasks) + sim/mutators assertions updated for the gas kind; all 17 green.
+- **Push has no mechanical effect yet** — it is a stored dial until the Phase 3 degradation keystone.
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a

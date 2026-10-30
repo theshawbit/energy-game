@@ -13,6 +13,7 @@ import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, serviceCost, serviceTimeFor } from "./config.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
 import { freshClock, tickClock, autoPause } from "./clock.js";
+import { applyDials } from "./dispatch.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
@@ -63,6 +64,7 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     fleet, techCount, weather:freshWeather(), buildSeq:1,
     demandJit:0, spikeMag:0, spikeT:0, // v4.2.2 net-load volatility state
     demand:0, capacity:0, price:0, brownout:false,
+    reserveOffered:0, // v5 Phase 2: MW held back from the swing via reserveHold (earns the floor in Phase 6)
     // ---- v4 "The Book": spot + contracts (Phase B) — all deterministic defaults
     // so a bare createGame() stays reproducible (spotNoise is always 0 in B). ----
     spot:0, spotBaseline:0, spotNoise:0, hedge:CFG.hedgeDefault,
@@ -150,7 +152,12 @@ export function unitOutput(S, u){
     return u.cap * interp(u.cf, S.t) * wx * mut;
   }
   if (u.kind === "battery") return (u.status === "discharge" && u.energy > 0) ? u.cap * (S.rmods?.battCapMult ?? 1) : 0;
-  return (u.status === "online" || u.status === "strained") ? u.cap : 0; // firm / peaker (a strained plant still generates until it trips)
+  // firm / gas (v5 Phase 2): the Core+ dials shape the MW offered to the merit order.
+  // Only a physically-running unit contributes (a strained plant still generates
+  // until it trips); starting/service/tripped offer nothing. applyDials handles the
+  // band clamp + reserve-hold shave; dialled to its full band this equals u.cap (v4).
+  if (u.status === "online" || u.status === "strained") return applyDials(u).max;
+  return 0;
 }
 export function totalCapacity(S){ return S.fleet.reduce((a, u) => a + unitOutput(S, u), 0); }
 
@@ -227,6 +234,18 @@ export function step(S, dt){
 
   // unit state machines
   for (const u of S.fleet){
+    // v5 Phase 2: the COMMIT dial drives online/offline for dial-able thermal (firm/gas).
+    // The dial is the desire; status is the physical state. A committed gas unit spins
+    // up (startTime); standing one down (or uncommitting) takes it offline and clears
+    // any strain. service/tripped run their own timers and re-arm from commit when done.
+    if (u.dials && (u.kind === "firm" || u.kind === "gas")){
+      if (u.dials.commit && u.status === "off"){
+        if (u.startTime > 0){ u.status = "starting"; u.startTimer = u.startTime * (S.mods?.startTimeMult ?? 1) * (S.rmods?.startTimeMult ?? 1); }
+        else u.status = "online";
+      } else if (!u.dials.commit && (u.status === "online" || u.status === "starting" || u.status === "strained")){
+        u.status = "off"; u.strainTimer = 0;
+      }
+    }
     if (u.status === "starting"){ u.startTimer -= dtH; if (u.startTimer <= 0) u.status = "online"; }
     else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; u.ageHours = (u.ageHours || 0) * CFG.serviceAgeRelief; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
     else if (u.status === "tripped"){ u.tripTimer -= dtH; if (u.tripTimer <= 0) u.status = u.ctrl ? "off" : "online"; }
@@ -240,7 +259,7 @@ export function step(S, dt){
         setTicker(S, `⚠ ${u.name} tripped offline — ${Math.round(u.cap)} MW lost!`);
       }
     }
-    else if ((u.kind === "firm" || u.kind === "peaker") && u.status === "online"){
+    else if ((u.kind === "firm" || u.kind === "gas") && u.status === "online"){
       // per-real-second hazard turned into an exact probability for this frame's dt
       // (1 - e^{-rate·dt}): frame-rate independent and never exceeds 1 on slow frames.
       // v4.1: base rates are low and WEAR dominates (tripHazard), so a maintained
@@ -263,6 +282,10 @@ export function step(S, dt){
   // Aggregate every unit's available MW (0 when off/tripped) into per-tech supply.
   const avail = {};
   for (const u of S.fleet) avail[u.tech] = (avail[u.tech] || 0) + unitOutput(S, u);
+  // v5 Phase 2: sum the headroom held back from the swing via reserveHold (only on
+  // committed, physically-running dial-able thermal). Phase 6 pays the capacity floor on it.
+  S.reserveOffered = S.fleet.reduce((a, u) =>
+    a + (((u.kind === "firm" || u.kind === "gas") && (u.status === "online" || u.status === "strained")) ? applyDials(u).held : 0), 0);
   const hr = dispatchHour(avail, S.demand, S.carbon, S.mmods?.fuelMult ?? 1); // carbon + mutator fuel spike re-sort the merit order
   S.price = hr.price;
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
@@ -291,7 +314,7 @@ export function step(S, dt){
 
   // spin: cost of keeping a thermal plant synced while it's generating (online or
   // straining — a strained plant is still running until it trips).
-  const generating = u => (u.kind === "firm" || u.kind === "peaker") && (u.status === "online" || u.status === "strained");
+  const generating = u => (u.kind === "firm" || u.kind === "gas") && (u.status === "online" || u.status === "strained");
   const spin = S.fleet.reduce((a, u) => a + (generating(u) ? u.cap * (u.spin ?? CFG.spinCost) : 0), 0) * (S.rmods?.spinMult ?? 1);
   // fixed O&M (v4.1): you pay the FULL rate only for dispatchable capacity you're
   // actually running; an off/tripped reserve (and the battery — storage is cheap to
@@ -364,7 +387,7 @@ export function step(S, dt){
       S.capHour = capHourNow;
       if (S.rng && !S.capacityObligation.calledToday && rollCapacityCall(S, S.rng)){
         S.capacityObligation.calledToday = true;
-        const deliverable = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "peaker") && u.status !== "tripped" && u.status !== "service") ? u.cap : 0), 0);
+        const deliverable = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "gas") && u.status !== "tripped" && u.status !== "service") ? u.cap : 0), 0);
         const fine = capacityPenalty(S.capacityObligation, deliverable);
         if (fine > 0){ S.cash -= fine; setTicker(S, `⚠ Capacity call — short ${Math.round(S.capacityObligation.reserveMW - deliverable)} MW, fined $${Math.round(fine).toLocaleString()}.`); }
         else setTicker(S, `✓ Capacity call met — reserve delivered.`);
