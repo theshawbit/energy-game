@@ -16,13 +16,13 @@ import { setSpeed } from "./clock.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
 import { rollSpecialOffer } from "./offers.js";
-import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning } from "./render.js";
+import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning, renderCollapse, hideCollapse } from "./render.js";
 import { buySkill, buyUnlock, buyEconomyUnlock } from "./meta.js";
-import { loadProfile, saveProfile } from "./persist.js";
+import { loadProfile, saveProfile, restartRun } from "./persist.js";
 
 const $ = id => document.getElementById(id);
 const profile = loadProfile();
-let S, last = 0, page = null, planningOpen = false; // page: null = live HUD; else the open manage page
+let S, last = 0, page = null, planningOpen = false, collapseOpen = false; // page: null = live HUD; else the open manage page
 
 // ---- screen navigation ----
 const OVERLAYS = ["homeOverlay", "metaOverlay", "howtoOverlay", "menuOverlay", "overlay"];
@@ -84,19 +84,37 @@ function applySpeed(){ setSpeed(S, S.paused ? 0 : (fastMode ? CFG.v5.fastSpeed :
 function togglePause(){ if (S.calendar.mode !== "operating") return; S.paused = !S.paused; applySpeed(); render(S); }
 function toggleFast(){ if (S.calendar.mode !== "operating" || S.paused) return; fastMode = !fastMode; applySpeed(); render(S); }
 
-// ---- the persistent grid ----
-function startGame(){
-  hideAll(); planningOpen = false; fastMode = false;
-  // v5 Phase 8: the per-run mutator roll is retired — the seasonal event regime (rolled
-  // just below, re-rolled each quarter) now drives the weather/demand/fuel bias instead.
-  S = createGame(profile.skills, profile.researchUnlocked, [], profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
+// Seed a fresh grid's live RNG streams + opening seasonal regime (shared by a new game and
+// the roguelite restart). v5 Phase 8: the per-run mutator roll is retired — the seasonal
+// event regime drives the weather/demand/fuel bias, re-rolled each quarter.
+function seedRun(){
   const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG
   S.rngForecast = makeRng((seed ^ 0xF0) >>> 0); // separate stream so forecast sharpening never desyncs realized spot
   S.rngDemand = makeRng((seed ^ 0xD3) >>> 0);   // v5.1 Phase 1: daily demand-noise stream, isolated from the economy
-  // v5 Phase 8: deal the opening quarter's seasonal regime and let it drive the per-tick
-  // mods (supersedes the one-shot mutator roll); the rollover re-rolls it each quarter.
-  rollRegime(S, S.rng); S.mmods = regimeMods(S);
-  S.bestRecords = profile.records; // read-only mirror for the hub scorecard
+  rollRegime(S, S.rng); S.mmods = regimeMods(S); // deal the opening quarter's regime
+  S.bestRecords = profile.records;               // read-only mirror for the hub scorecard
+}
+
+// ---- the persistent grid ----
+function startGame(){
+  hideAll(); hideCollapse(); planningOpen = false; collapseOpen = false; fastMode = false;
+  S = createGame(profile.skills, profile.researchUnlocked, [], profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
+  seedRun();
+  S.paused = false; applySpeed();
+  buildUnits(S, act);
+  renderMutatorBanner(S);
+  last = 0;
+  S.running = true;
+  render(S);
+}
+
+// v5.1 Phase 2: the roguelite restart — bank this run's records into the profile, discard the
+// collapsed grid, and start fresh (profile's banked ⚡/skills/credit carry over). Fired from
+// the grid-collapse end screen.
+function restartGame(){
+  S = restartRun(S, profile);
+  seedRun();
+  hideCollapse(); planningOpen = false; collapseOpen = false; fastMode = false;
   S.paused = false; applySpeed();
   buildUnits(S, act);
   renderMutatorBanner(S);
@@ -129,7 +147,10 @@ function frame(now){
   let dt = (now - last) / 1000; last = now;
   dt = Math.min(dt, 0.1);
   if (S.running && !S.menuOpen){
-    if (S.calendar.mode === "planning"){
+    if (S.over){
+      // v5.1 Phase 2: the run collapsed — freeze the loop and show the end screen once.
+      if (!collapseOpen){ collapseOpen = true; render(S); renderCollapse(S, { restart: restartGame }); }
+    } else if (S.calendar.mode === "planning"){
       if (!planningOpen){ planningOpen = true; renderPlanning(S, planningActions); }
     } else {
       const dayBefore = S.day;

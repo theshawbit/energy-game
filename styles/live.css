@@ -403,6 +403,9 @@ table.fleet tr.dials-row td{border-bottom:1px solid var(--line);padding:4px 8px 
 .pl-build{margin-top:4px}
 .pl-build button{padding:7px 10px}
 .bld-h{font-family:var(--mono);font-size:.74rem;color:var(--muted);font-weight:600;margin:12px 0 6px}
+/* v5: the read-only Build page's "commit at the quarter-end review" signpost */
+.build-banner{font-size:.78rem;line-height:1.45;color:var(--fg);background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:8px 11px;margin:0 0 10px}
+.build-banner b{color:var(--accent)}
 .rec-tile b.short{color:var(--bad)}
 .fc-stats li span.short,.pl-stats li span.short{color:var(--bad)}
 

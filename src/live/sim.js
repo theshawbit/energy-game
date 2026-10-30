@@ -25,6 +25,7 @@ import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
 import { rollRegime, regimeMods } from "./events.js";
 import { tickCrisis, activeShedMW, activeDrShave } from "./crisis.js";
+import { freshStability, tickStability, applyVerdictToStability } from "./stability.js"; // v5.1 Phase 2: fail-state HP bar
 import { exogenousBaseline, reserveMargin, spotPrice, swingCoeff, swingEarn } from "./market.js";
 import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
 import { forecastFog, forecastInputs } from "./forecast.js";
@@ -79,6 +80,10 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     demandJit:0, spikeMag:0, spikeT:0, // v4.2.2 net-load volatility state
     demand:0, capacity:0, price:0, brownout:false,
     reserveOffered:0, // v5 Phase 2: MW held back from the swing via reserveHold (earns the floor in Phase 6)
+    // v5.1 Phase 2: the fail-state returns. The grid-stability reservoir fills on a shortfall
+    // and drains on served hours; topping out sets S.over and freezes the run for a roguelite
+    // restart. runStartDay tags this run for the records the profile banks across deaths.
+    over:false, reason:null, runStartDay:1, stability:freshStability(),
     // ---- v4 "The Book": spot + contracts (Phase B) — all deterministic defaults
     // so a bare createGame() stays reproducible (spotNoise is always 0 in B). ----
     spot:0, spotBaseline:0, spotNoise:0, hedge:CFG.hedgeDefault,
@@ -228,6 +233,9 @@ export function surviveDay(S){
     S.quarterLog.wages = wages;
     const verdict = settleQuarter(S);
     applyVerdict(S, verdict);
+    // v5.1 Phase 2: couple the verdict to the stability bar — a strong quarter heals it, a
+    // weak one damages it and accelerates next quarter's fill (KPIs matter to survival).
+    applyVerdictToStability(S, verdict);
     // v5.1 Phase 1: step the plannable demand baseline for the NEW quarter (reads the
     // growthStall applyVerdict just set), then set the new quarter's first live peak off it.
     rollQuarterPeak(S);
@@ -271,6 +279,9 @@ export function beginNextQuarter(S){
 
 // Advance the simulation by `dt` real seconds. Returns true if the run just ended.
 export function step(S, dt){
+  // v5.1 Phase 2: once the stability bar tops out the run is OVER — step freezes (the grid
+  // is frozen pending a roguelite restart), matching how v4 handled its terminal flag.
+  if (S.over) return false;
   // v5: the clock owns dt→game-hours and honours speed (0 = read-only pause, so no
   // time passes and the tick is a no-op). step() never signals an end — the grid
   // is persistent, so it always returns false.
@@ -551,10 +562,10 @@ export function step(S, dt){
   const shortfall = S.demand - S.capacity;
   const sev = S.demand > 0 ? shortfall / S.demand : 0;
   if (shortfall > 0.5){
-    // v5: a shortfall still hurts — strain, lost confidence, unserved-load penalty —
-    // but it is NEVER an ending. Strain/satisfaction pin at their extremes (chronic
-    // pain), the grid keeps running. The stagnation model (Phase 6) will turn
-    // sustained failure into escalating cost and stalled growth, not a game-over.
+    // v5: a shortfall hurts — strain, lost confidence, unserved-load penalty. v5.1 Phase 2
+    // adds the TEETH back: the stability bar (tickStability below) fills on this shortfall,
+    // asymmetric by cause, and topping it out ends the run. Strain/satisfaction still pin at
+    // their extremes (chronic pain) while the day runs.
     S.brownout = true; S.downAcc += dt;
     S.strain = Math.min(100, S.strain + sev * CFG.strainRate * dt);
     S.satisfaction = Math.max(0, S.satisfaction - sev * CFG.satDrain * dt);
@@ -565,6 +576,10 @@ export function step(S, dt){
     S.strain = Math.max(0, S.strain - CFG.strainRecover * dt);
     if (S.satisfaction < 100) S.satisfaction = Math.min(100, S.satisfaction + CFG.satRecover * dt);
   }
+  // v5.1 Phase 2: drive the stability reservoir from this tick's served vs demanded MW
+  // (post crisis-shaves — S.demand/S.capacity are final here). Fills asymmetric by cause,
+  // drains when served; may set S.over, which freezes step() from the next tick.
+  tickStability(S, S.capacity, S.demand, dtH);
   // v5 Phase 8: age the crisis tools (expire a finished shed/DR window, wind the DR
   // cooldown down) — they were consumed in the demand calc above, so age them now.
   tickCrisis(S, dtH);

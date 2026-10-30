@@ -109,8 +109,10 @@ S.economy = {
 };
 S.quarterLog = { … };          // accumulators the board review reads (served, breaches, PnL, KPI avgs)
 
-// No S.over / S.won / S.maxRunDays / S.reason — v5 has no run end. Failure is stagnation
-// (see Phase 6 verdict + Phase 1 "no game-over" note), surfaced as state, never a terminal flag.
+// v5: no S.over / S.won / S.maxRunDays / S.reason — failure was stagnation, never a terminal flag.
+// ⚠️ SUPERSEDED by v5.1 Phase 2 (docs/plan-v5.1/phase-2-failstate-stability.md): the fail-state
+// RETURNS. S.over / S.reason="grid-collapse" are real again, set when the grid-stability HP bar tops
+// out; S.won / S.maxRunDays stay retired. This v5 "no game-over" note is kept for history only.
 ```
 
 ### Per-unit fields

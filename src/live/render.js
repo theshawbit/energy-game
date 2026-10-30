@@ -101,6 +101,15 @@ export function render(S){
   $("s-co2").style.color = S.co2 < 100 ? css("--good") : S.co2 < 450 ? css("--warn") : css("--bad");
   $("s-carbon").textContent = "$" + Math.round(S.carbon);
   $("s-carbon").style.color = S.carbon > 0 ? css("--warn") : css("--faint");
+  // v5.1 Phase 2: grid-stability readout. 0% pristine → 100% collapse; colour ramps as it
+  // climbs, and reads "filling"/"recovering" so the fail-state is legible without the chart.
+  const st = S.stability;
+  if (st){
+    const el = $("s-stability"); const pct = Math.round((st.hp / st.max) * 100);
+    const label = st.fillPaused ? (st.hp > 0 ? "recovering" : "stable") : (st.lastShortfall === "capacity" ? "COLLAPSING" : "straining");
+    el.textContent = `${pct}% · ${label}`;
+    el.style.color = pct >= 66 ? css("--bad") : pct >= 33 ? css("--warn") : css("--good");
+  }
 
   // ---- v4.2 CR-2: master status cluster ---------------------------------
   // DEMAND — level + which way it's moving this tick.
@@ -863,6 +872,32 @@ export function renderHome(profile, actions){
   $("homeOverlay").classList.add("on");
 }
 
+// v5.1 Phase 2: the grid-collapse end screen. The stability bar topped out → the run is
+// over; show a terse post-mortem and the roguelite restart (profile carries over). Phase 7
+// gives it the full run-summary treatment; this is the minimal wire.
+export function renderCollapse(S, actions){
+  const days = Math.max(0, (S.day ?? 1) - (S.runStartDay ?? 1) + 1);
+  const yr = S.calendar?.year ?? 1, q = S.calendar?.quarter ?? 1;
+  const stat = (b, s) => `<div class="hs"><b>${b}</b><small>${s}</small></div>`;
+  $("collapse").innerHTML = `
+    <div class="home-hero">
+      <div class="home-kicker" style="color:var(--bad)">Grid Collapse</div>
+      <h1 class="home-title">The lights went out.</h1>
+      <p class="home-tag">The grid's stability reserve ran dry — a sustained shortfall you couldn't
+        claw back from. C.A.S.S. has filed the incident. Your banked ⚡, skills and records carry
+        to the next operator.</p>
+    </div>
+    <div class="home-stats">${[
+      stat(days, "days survived"),
+      stat(`Y${yr} · Q${q}`, "reached"),
+      stat(money(S.peakNetWorth ?? S.cash ?? 0), "peak net worth"),
+    ].join("")}</div>
+    <button class="btn-primary home-start" id="collapseRestart">Take a new posting ▸</button>`;
+  $("collapseRestart").onclick = actions.restart;
+  $("collapseOverlay").classList.add("on");
+}
+export function hideCollapse(){ $("collapseOverlay").classList.remove("on"); }
+
 // ============================================================
 // MANAGE MODE (v4, Phase A) — hub-and-spoke. Pausing opens a landing hub with
 // four dedicated pages (Fleet / Build / Research / Desk). `page` routing lives in
@@ -1050,12 +1085,19 @@ function buildBody(S){
     const spec = BUILDABLES[t], gate = BUILD_GATE[t], locked = gate && !(S.rmods?.[gate]);
     return `<div class="rec-tile${locked ? " placeholder" : ""}"><small>+${spec.mw} ${spec.label}</small><b>${spec.leadQuarters}Q</b><span class="faint">${locked ? "🔒 research" : money(spec.cost)}</span></div>`;
   }).join("");
-  return `<div class="menu-cash">On hand <b>${money(S.cash)}</b> · capacity incl. in-flight <b>${cap.total} MW</b></div>
-    ${short ? `<p class="svc-note">⚠ Forecast peak outgrows your capacity in Q+${short} — commit a project at the quarter-end review.</p>`
-             : `<p class="svc-note faint">⚙ New capacity is committed at the quarter-end board review (multi-quarter lead time).</p>`}
+  // v5: building is committed at the quarter-end board review, not here. Spell that
+  // out loudly with a live countdown so this read-only page never reads as broken.
+  const toReview = CFG.v5.daysPerQuarter - S.calendar.dayInQuarter;
+  const when = toReview <= 0
+    ? "at the end of <b>today</b>"
+    : `in <b>${toReview} day${toReview === 1 ? "" : "s"}</b> (Day ${S.calendar.dayInQuarter}/${CFG.v5.daysPerQuarter})`;
+  return `<div class="build-banner">🏗 <b>This page is read-only.</b> New plants are committed at the <b>quarter-end board review</b> — the next one opens ${when}. Finish the quarter to build.</div>
+    <div class="menu-cash">On hand <b>${money(S.cash)}</b> · capacity incl. in-flight <b>${cap.total} MW</b></div>
+    ${short ? `<p class="svc-note">⚠ Forecast peak outgrows your capacity in Q+${short} — line up a project for the quarter-end review.</p>`
+             : `<p class="svc-note faint">⚙ Multi-quarter lead time: a plant you commit at the review takes several quarters to come online.</p>`}
     <h4 class="bld-h">Demand forecast vs capacity</h4><div class="rec-grid">${fc}</div>
     <h4 class="bld-h">In flight</h4>${queue}
-    <h4 class="bld-h">Buildable (lead time · cost)</h4><div class="rec-grid">${cat}</div>`;
+    <h4 class="bld-h">Buildable at the review (lead time · cost)</h4><div class="rec-grid">${cat}</div>`;
 }
 
 // --- research: the v3 R&D lab lever + tech tree (unchanged logic) ---

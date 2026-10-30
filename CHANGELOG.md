@@ -273,6 +273,35 @@ data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. Se
   pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
   deterministic headless run must pin the global RNG *before* calling it.)
 
+### Added — v5.1 Phase 2: fail-state & grid-stability HP bar (2026-10-30)
+
+Second phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). **Reverses the single most
+load-bearing v5 pillar — "no game-over."** This is a deliberate, grilled decision, not a
+regression: a blackout now has both *teeth* and an *exit*.
+
+- **New `src/live/stability.js` (pure).** A grid-stability reservoir (`S.stability.hp`, 0..max)
+  **fills on a shortfall and drains on served hours**, asymmetric by cause via `classifyShortfall(S)`:
+  a **capacity** shortfall (every recovery lever exhausted — all dispatchables committed, reserves
+  released, bands wide, load-shed firing, DR active/ungated, still short) fills at the **full** rate;
+  a **dispatch** shortfall (a usable move remained — an uncommitted plant, a held reserve, a throttled
+  band, an idle charged battery, an un-fired DR, an un-shed tier) fills at the **half** rate. You are
+  **never killed while a lever remains** (punish incompetence, don't ambush it). A served hour drains
+  it slower than it fills, so a flickering grid still nets upward and eventually dies.
+- **Verdict coupling** (`applyVerdictToStability`) — a strong quarter **heals** the bar; a weak one
+  **damages** it and **accelerates** next quarter's fill (`fillMult`). KPIs now matter to survival.
+- **Topping out ends the run** → `S.over` / `S.reason = "grid-collapse"`; `step()` freezes. A
+  **roguelite restart** (`persist.restartRun`) banks this run's records into the profile, then hands
+  back a fresh grid — the profile's banked ⚡, purchased skills, credit standing and records carry over.
+- **`sim.js`** — `step` drives `tickStability` each tick off the post-shave served-vs-demanded MW and
+  no-ops once `S.over`; the quarter rollover couples the verdict. `createGame` seeds
+  `S.over/reason/runStartDay/stability`. **`config.js`** — `CFG.v5_1.stability` (placeholder balance
+  numbers; the tests pin the *relationships*, not the values).
+- **UI (minimal wire; Phase 7 styles it)** — a Grid-Stability readout in the top status strip
+  (ramps colour as it climbs) and a **grid-collapse end screen** with the roguelite restart.
+- New `stability` suite (6 tasks: full/half/drain rate ordering, top-out freeze, verdict both-ways,
+  roguelite restart). The v5 "no `S.over`" assertions in `sim`/`verdict` are **formally retired**.
+  **All 29 suites green.**
+
 ### Changed — v5.1 Phase 1: hybrid demand curve (2026-10-30)
 
 First phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). **Fixes the root cause of the
