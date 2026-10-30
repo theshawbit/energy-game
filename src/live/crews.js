@@ -6,8 +6,8 @@
 // costs cash; wages are a standing per-quarter cost.
 //
 // Pure helpers over `S` and a `Crew` — all balance comes from CFG.v5.crews, so the
-// module itself holds no magic numbers. `taskRestore` (which combines a crew with a
-// task) and `resolveQuarterTasks` live in maint.js; this file owns the crew itself.
+// module itself holds no magic numbers. `axisRestore` (which combines a crew with an
+// axis) and the rolling queue (queueMaint/tickMaint) live in maint.js; this file owns the crew.
 // ============================================================
 import { CFG, crewName } from "./config.js";
 

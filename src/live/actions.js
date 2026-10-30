@@ -69,9 +69,9 @@ export function buyPerk(S, perkId){
   return { ok:true };
 }
 
-// v5 Phase 4: mid-quarter `serviceUnit` is retired. Maintenance is scheduled only at
-// the quarter-end board review and worked by the crew pool (see maint.js /
-// crews.js) — a plant that breaks mid-quarter is operated around, no buy-out.
+// v5 Phase 4: the old instant `serviceUnit` buy-out is retired. Maintenance is queued at
+// the board review and worked by the crew pool on a ROLLING schedule (v5.1 Phase 4 — see
+// maint.js / crews.js); the plant is offline while in the shop, for a few days not a quarter.
 
 // Decommission a unit and recover salvage cash. Lets the player transition the
 // fleet mix (e.g. retire early coal for nuclear/peakers). The battery is kept

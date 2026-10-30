@@ -13,12 +13,12 @@
 //    the clerical burden of scale before you earn the relief. (⚡ funding rehomes to the
 //    Phase 6 quarterly currency; kept on S.zap in the interim — see the Phase 3 PR note.)
 //
-// Pure over `S` (no DOM, no RNG). Automation routes through the Phase 4 scheduleTask /
-// Phase 2 dials — relief, never a cheat (it still pays, still obeys quarter-end timing).
+// Pure over `S` (no DOM, no RNG). Automation routes through the Phase 4 queueMaint /
+// Phase 2 dials — relief, never a cheat (it still pays, reserves a crew, books downtime).
 // ============================================================
 import { CFG } from "./config.js";
 import { effectiveMax } from "./kpi.js";
-import { scheduleTask } from "./maint.js";
+import { queueMaint } from "./maint.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const AXES = ["reliability", "efficiency", "output", "flexibility"];
@@ -107,10 +107,10 @@ export function unlockPerk(S, perkId){
 
 // ---- automation behaviours (active only when their perk is owned) ----
 
-// Auto-maintenance: at the quarter-end review, assign free crews to the neediest plants'
-// worst axis while cash allows — relief, not a cheat (routes through scheduleTask, so it
-// obeys quarter-end timing, crew availability and cost exactly like a manual plan). Returns
-// the Task[] it scheduled.
+// Auto-maintenance (v5.1 Phase 4: now ROLLING): assign free crews to the neediest plants' worst
+// axis while cash allows — relief, not a cheat (routes through queueMaint, so it still pays,
+// reserves a crew, books downtime and obeys the rolling calendar exactly like a manual queue).
+// Called daily by the sim when the perk is owned. Returns the MaintJob[] it queued.
 export function autoMaintenancePlan(S){
   if (!S.perks?.autoMaint) return [];
   const candidates = [];
@@ -122,14 +122,14 @@ export function autoMaintenancePlan(S){
     if (worstAxis && worst < cap - 1) candidates.push({ u, axis: worstAxis, deficit: cap - worst });
   }
   candidates.sort((a, b) => b.deficit - a.deficit); // worst first
-  const scheduled = [];
+  const queued = [];
   for (const c of candidates){
     const freeCrew = (S.crews || []).find(cr => !cr.assignment);
     if (!freeCrew) break;                       // no crews left to assign
-    const t = scheduleTask(S, c.u.id, c.axis, freeCrew.id); // enforces planning/cash/crew-free/not-down
-    if (t) scheduled.push(t);
+    const j = queueMaint(S, c.u.id, c.axis, freeCrew.id); // enforces cash/crew-free/not-down/not-queued
+    if (j) queued.push(j);
   }
-  return scheduled;
+  return queued;
 }
 
 // Dispatch assist: open each committed, UNPINNED thermal plant's band to its legal max each

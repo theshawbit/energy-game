@@ -250,9 +250,9 @@ export const CFG = {
     },
     // Phase 4: the per-KPI maintenance task catalogue. Each task restores exactly one
     // axis (overhaul→reliability, retune→efficiency, uprate→output, recalibrate→
-    // flexibility). Scheduled ONLY at the quarter-end board review; resolves over the
-    // following quarter with downtime (the plant is offline while in the shop — the
-    // teeth). restore = base KPI points at a level-1 on-trade crew; quarters = duration.
+    // flexibility). v5.1 Phase 4 made maintenance ROLLING: maint.js reads only `axis` +
+    // `label` from here for the UI; the live cost / duration / restore now come from
+    // CFG.v5_1.maint. The restore/quarters/cost fields below are legacy (quarter-end model).
     maint: {
       tasks: {
         overhaul:    { axis:"reliability", label:"Overhaul",    restore:45, quarters:1, cost:9000 },
@@ -484,6 +484,20 @@ export const CFG = {
       costBase:   20000,    // $ for the first tier (tier 0 → 1) …
       costGrowth: 1.55,     // … geometric steepening per tier (money + time gate, not a single buy)
       leadDays:   6,        // contractor lead time per upgrade job (rolling; lands mid-quarter)
+    },
+    // Phase 4 — ROLLING MAINTENANCE. Reverses Phase 4-v5's quarter-end-only batch: a maint job
+    // is queued any day, draws a crew from the pool (the maintenance-only limiter), resolves on a
+    // rolling `daysLeft`, and on completion restores the worked axis toward u.caps (which Phase 3
+    // upgrades raise — maint fights decay, upgrades raise the ceiling). The plant is OFFLINE while
+    // in the shop (the teeth), but for days now, not a whole quarter. restore/cost scale with how
+    // far the axis decayed below its cap. Balance numbers; crew effectiveness reuses CFG.v5.crews.
+    maint: {
+      leadDays:    3,       // base rolling duration of a maint job …
+      severityDays: 4,      // … + up to this many more, scaling with the axis's deficit vs its cap
+      costBase:    2500,    // $ floor to queue a restore …
+      costPerPoint: 130,    // … + this per KPI point of deficit (a near-dead plant costs more)
+      // base KPI points restored by a level-1 ON-TRADE crew, per axis (level + off-trade scale it).
+      restore: { reliability: 48, efficiency: 42, output: 42, flexibility: 38 },
     },
   },
 };

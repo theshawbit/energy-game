@@ -13,7 +13,7 @@ import {
 } from "../src/live/progression.js";
 import { queueUpgrade } from "../src/live/contractor.js";
 import { outputFactor, heatRateMult, effectiveMax, degradeKPIs } from "../src/live/kpi.js";
-import { resolveQuarterTasks, scheduleTask } from "../src/live/maint.js";
+import { queueMaint, tickMaint } from "../src/live/maint.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -74,14 +74,13 @@ const thermal = S => S.fleet.find(u => u.tiers);
 
 // 5) Maintenance restores toward the RAISED cap, not a flat 100 (cap→restore seam intact)
 {
-  const S = createGame(); S.cash = 1e9; S.calendar.mode = "planning";
+  const S = createGame(); S.cash = 1e9;
   const u = thermal(S);
   u.caps.output = 130; u.kpis.output = 95;          // upgraded, worn a little below the raised cap
   const crew = S.crews.find(c => !c.assignment);
-  const t = scheduleTask(S, u.id, "output", crew.id);
-  check("a maintenance task schedules in planning mode", !!t && u.maintDown);
-  t.quartersLeft = 1;                               // make it resolve on the next rollover
-  resolveQuarterTasks(S);
+  const job = queueMaint(S, u.id, "output", crew.id);
+  check("a rolling maintenance job queues + books the plant offline", !!job && u.maintDown);
+  for (let i = 0; i < 60 && S.maintQueue.length; i++) tickMaint(S, 24); // age it to completion
   check("restore climbs past 100 toward the raised cap", u.kpis.output > 100 && u.kpis.output <= 130, `output ${u.kpis.output.toFixed(1)}`);
 }
 
@@ -108,12 +107,12 @@ const thermal = S => S.fleet.find(u => u.tiers);
 // 7) Automation behaviours — auto-maintenance plans within the review; dispatch assist opens
 //    unpinned bands and never touches a pinned plant (and is RNG-free)
 {
-  const A = createGame(); A.cash = 1e9; A.calendar.mode = "planning";
+  const A = createGame(); A.cash = 1e9;
   check("autoMaintenancePlan is a no-op without the perk", autoMaintenancePlan(A).length === 0);
   A.perks.autoMaint = true;
   const u = thermal(A); u.kpis.output = 55;
   const planned = autoMaintenancePlan(A);
-  check("autoMaintenancePlan schedules the neediest plant", planned.length >= 1 && A.tasks.some(t => t.unitId === u.id) && u.maintDown);
+  check("autoMaintenancePlan queues the neediest plant", planned.length >= 1 && A.maintQueue.some(j => j.unitId === u.id) && u.maintDown);
 
   const D = createGame(); D.perks.dispatchAssist = true;
   const firm = D.fleet.filter(x => (x.kind === "firm" || x.kind === "gas") && x.dials && x.dials.commit);
