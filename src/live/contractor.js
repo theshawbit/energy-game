@@ -32,10 +32,11 @@ export function queueUpgrade(S, unitId, axis){
 
 // Age every in-flight upgrade job by dtH game-hours. On completion (daysLeft ≤ 0) apply the
 // tier: set u.tiers[axis] = toTier and recompute u.caps[axis] from the ladder, then drop the
-// job. Never touches S.crews (separate labor). Pure mutation of S.
+// job. Never touches S.crews (separate labor). Pure mutation of S. Returns the number of jobs
+// that completed this tick (v5.1 Phase 5: the daily brief tallies rolling completions).
 export function tickContractor(S, dtH){
   const q = S.contractor;
-  if (!q || !q.length || dtH <= 0) return;
+  if (!q || !q.length || dtH <= 0) return 0;
   const dDays = dtH / 24;                                  // game-hours → calendar days
   for (const job of q) job.daysLeft -= dDays;
   const done = q.filter(j => j.daysLeft <= 0);
@@ -47,6 +48,7 @@ export function tickContractor(S, dtH){
     }
   }
   if (done.length) S.contractor = q.filter(j => j.daysLeft > 0);
+  return done.length;
 }
 
 // In-flight upgrade jobs — the brief's readout + the hook for any future overextension soft-cap.

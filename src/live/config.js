@@ -499,6 +499,16 @@ export const CFG = {
       // base KPI points restored by a level-1 ON-TRADE crew, per axis (level + off-trade scale it).
       restore: { reliability: 48, efficiency: 42, output: 42, flexibility: 38 },
     },
+    // Phase 5 — the DAILY BRIEF interrupt thresholds. The brief is blocking-but-skippable:
+    // once the queues are set it auto-advances through quiet days and only yanks the player
+    // back on an exception. These are the exception gates (shouldInterrupt). This is the most
+    // FEEL-dependent dial in v5.1 — too twitchy and it's 22 pauses a quarter, too lax and the
+    // player sleeps through a crisis; PLACEHOLDER, to be tuned against a prototype by play.
+    brief: {
+      headroomPct: 0.10,     // interrupt when (capacity − peak)/peak falls below this (getting tight)
+      cashFloor:   20000,    // interrupt when cash drops under this
+      stabilityDanger: 0.6,  // interrupt when the stability bar is ≥ this fraction of its ceiling
+    },
   },
 };
 

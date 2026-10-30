@@ -27,6 +27,7 @@ import { rollRegime, regimeMods } from "./events.js";
 import { tickCrisis, activeShedMW, activeDrShave } from "./crisis.js";
 import { freshStability, tickStability, applyVerdictToStability } from "./stability.js"; // v5.1 Phase 2: fail-state HP bar
 import { tickContractor } from "./contractor.js"; // v5.1 Phase 3: rolling upgrade queue
+import { shouldInterrupt, openBrief } from "./brief.js"; // v5.1 Phase 5: the daily brief gate
 import { exogenousBaseline, reserveMargin, spotPrice, swingCoeff, swingEarn } from "./market.js";
 import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
 import { forecastFog, forecastInputs } from "./forecast.js";
@@ -121,6 +122,12 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     // v5 Phase 5: in-flight lead-time construction projects. Committed at the quarter
     // review; tickBuilds advances them at each rollover and lands a live unit on completion.
     builds: [], buildSeqV5: 0,
+    // v5.1 Phase 5: the daily brief. autoAdvance on = skip quiet days; an exception (a landed
+    // rolling job, a crisis, tight headroom, a cash/stability danger band) opens the brief and
+    // clears it. jobsDone counts rolling completions since the last boundary (the "job landed"
+    // interrupt). briefEnabled gates the whole beat OFF for headless runs (like regime/mmods);
+    // main.js arms it per session so createGame() stays operating-only and deterministic.
+    autoAdvance: true, jobsDone: 0, briefEnabled: false,
     // v5 Phase 6: the hybrid economy. `economy` holds the standing floor rate (ratcheted
     // by the overlord's verdict), a running swing PnL mirror, the last verdict, and the
     // stagnation lever; `quarterLog` accumulates the board review's inputs each tick and
@@ -245,6 +252,7 @@ export function surviveDay(S){
     // live (main.js rolls Q1 at game start); headless tests stay on neutral mmods.
     if (S.regime){ rollRegime(S, S.rng || Math.random); S.mmods = regimeMods(S); }
     S.calendar.mode = "planning";
+    S.jobsDone = 0; // v5.1 Phase 5: the quarter-end review supersedes the daily brief — start the new quarter's tally clean
     autoPause(S, "Quarter closed — board review");
     const notes = [];
     if (built.length) notes.push(`${built.length} new plant${built.length > 1 ? "s" : ""} online`);
@@ -263,6 +271,13 @@ export function surviveDay(S){
   setTicker(S, firstCarbon
     ? `✓ Day ${S.day - 1} cleared — carbon pricing begins at $${Math.round(S.carbon)}/t. Dirty plants cost more now.`
     : `✓ Day ${S.day - 1} cleared — ${S.quarterPeak} MW baseline, today peaking ${S.peak} MW.`);
+  // v5.1 Phase 5: the daily brief gate. Gated on S.briefEnabled so headless runs stay operating
+  // (like the regime system). Open the brief unless the player has armed auto-advance AND nothing
+  // demands attention; a quiet auto-advanced day just consumes the (empty) completion tally.
+  if (S.briefEnabled){
+    if (!S.autoAdvance || shouldInterrupt(S)) openBrief(S);
+    else S.jobsDone = 0;
+  }
 }
 
 // v5: leave the quarter-end board review and resume the live day. The calendar
@@ -278,6 +293,11 @@ export function step(S, dt){
   // v5.1 Phase 2: once the stability bar tops out the run is OVER — step freezes (the grid
   // is frozen pending a roguelite restart), matching how v4 handled its terminal flag.
   if (S.over) return false;
+  // v5.1 Phase 5: only the live day advances the sim. The quarter-end board review ("planning")
+  // and the daily brief ("brief") freeze the loop — the player is scheduling, not operating — so
+  // step no-ops outside "operating" (no double-stepping across a mode flip). main.js never calls
+  // step in those modes; this is the belt-and-suspenders guard the tests pin.
+  if (S.calendar && S.calendar.mode !== "operating") return false;
   // v5: the clock owns dt→game-hours and honours speed (0 = read-only pause, so no
   // time passes and the tick is a no-op). step() never signals an end — the grid
   // is persistent, so it always returns false.
@@ -581,10 +601,13 @@ export function step(S, dt){
   tickCrisis(S, dtH);
   // v5.1 Phase 3: age the rolling upgrade queue — lands a committed tier on its lead-time day
   // (its own contractor labor; never touches the maintenance crew pool).
-  tickContractor(S, dtH);
+  const upDone = tickContractor(S, dtH) || 0;
   // v5.1 Phase 4: age the rolling MAINTENANCE queue — a completed job restores its axis toward
   // the cap, levels + frees its crew, and lifts the plant's downtime. Crews are the limiter here.
-  tickMaint(S, dtH);
+  const mtDone = tickMaint(S, dtH) || 0;
+  // v5.1 Phase 5: a landed rolling job is a brief exception — tally completions since the last
+  // day boundary, where surviveDay reads S.jobsDone to decide whether to open the daily brief.
+  if (upDone || mtDone) S.jobsDone = (S.jobsDone || 0) + upDone + mtDone;
 
   // insolvency (v4, Phase C): a second fail-path beside the blackout. Being in the
   // red with debt triggers a one-time default (credit cratered for the run); a

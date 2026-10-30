@@ -12,6 +12,7 @@ import { BUILDABLES, forecastDemand, concurrencySlip } from "./construct.js";
 import { CFG, BUILD_ORDER, BUILD_GATE, salvageValue } from "./config.js";
 import { AXES, upgradeCost, canUpgrade, axisTierValue, upgradeTierMax, PERKS, isAutomationUnlocked, automationTier, canUnlockPerk } from "./progression.js";
 import { contractorLoad } from "./contractor.js";
+import { briefSummary } from "./brief.js"; // v5.1 Phase 5: the daily brief data
 import { loadShedTiers, canDemandRespond } from "./crisis.js";
 import { eraOf, cassLine } from "./world.js"; // v5 Phase 9: identity arc + C.A.S.S. voice (cosmetic)
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
@@ -785,6 +786,145 @@ export function hidePlanning(){
   $("overlay").classList.remove("on");
   $("vignette").style.opacity = "0";
 }
+
+// v5.1 Phase 5: the DAILY BRIEF — the blocking-but-skippable daily beat. A compact review +
+// quick-add surface onto the two ROLLING queues (maintenance crews + contractor upgrades):
+// the overnight recap + alerts, demand vs capacity + the next-quarter forecast, both queues
+// with ETAs, a compact maintenance triage and the per-plant upgrade chips, and in-flight builds
+// (surfaced, NOT committable here — that's the review). "Advance" re-arms auto-skip; "Step a day"
+// stays hands-on. Phase 7 restyles this; here it's the functional wire. Pure view (reads via
+// briefSummary; all scheduling routes through the Phase 3/4 queue actions).
+export function renderBrief(S, actions){
+  const sum = briefSummary(S);
+  const crews = S.crews || [], freeCrews = crews.filter(cr => !cr.assignment);
+  const bcfg = CFG.v5_1.brief;
+
+  // --- overnight recap + alerts ---
+  const recap = sum.events.length
+    ? sum.events.map(e => `<li>${e}</li>`).join("")
+    : `<li class="faint">A quiet night — nothing landed.</li>`;
+  const alerts = sum.alerts.length
+    ? `<ul class="brief-alerts">${sum.alerts.map(a => `<li>⚠ ${a}</li>`).join("")}</ul>`
+    : `<p class="faint">No alerts — the grid is steady.</p>`;
+
+  // --- demand vs capacity + the forecast ---
+  const headPct = Math.round(sum.demand.headroom * 100);
+  const demandStats = `<ul class="pl-stats">
+    <li><span>Peak today</span><span>${sum.demand.peak} MW</span></li>
+    <li><span>Capacity</span><span class="${sum.demand.headroom < bcfg.headroomPct ? "short" : ""}">${Math.round(sum.demand.capacity)} MW (${headPct >= 0 ? "+" : ""}${headPct}%)</span></li>
+    <li><span>Quarter baseline</span><span>${sum.forecast.thisQuarter} MW</span></li>
+    <li><span>Next quarter forecast</span><span>${sum.forecast.nextQuarter} MW</span></li>
+  </ul>`;
+
+  // --- both rolling queues with ETAs ---
+  const maintRows = sum.maintQueue.length
+    ? sum.maintQueue.map(j => {
+        const u = S.fleet.find(x => x.id === j.unitId), cr = crews.find(x => x.id === j.crewId), task = TASKS[j.name];
+        return `<li><span>${u ? u.name : j.unitId} — ${task ? task.label : j.name} (${cr ? cr.name : "?"})</span>
+          <span class="faint">${Math.ceil(j.daysLeft)}d</span>
+          <button class="tri-cancel" data-cancel="${j.id}">Cancel</button></li>`;
+      }).join("")
+    : `<li class="faint">No maintenance in the shop.</li>`;
+  const upRows = sum.contractorQueue.length
+    ? sum.contractorQueue.map(j => {
+        const u = S.fleet.find(x => x.id === j.unitId);
+        return `<li><span>${u ? u.name : j.unitId} · ${j.axis} → tier ${j.toTier}</span><span class="faint">${Math.ceil(j.daysLeft)}d</span></li>`;
+      }).join("")
+    : `<li class="faint">No upgrades on the contractor line.</li>`;
+
+  // --- quick-add maintenance (compact triage: needy plants not already in the shop) ---
+  const needy = S.fleet.filter(u => u.kpis && !u.maintDown && kpiDeficits(u).length > 0);
+  const crewOpts = (axis) => freeCrews.map(cr =>
+    `<option value="${cr.id}">${cr.name} · Lv${cr.level} (${tradeModifier(cr, axis) === 1 ? "on" : "off"}-trade)</option>`).join("");
+  const triageRows = needy.map(u => {
+    const defs = kpiDeficits(u);
+    const axisOpts = defs.map(d => `<option value="${d.axis}">${d.task.label} · ${d.letter} −${d.deficit} · ${money(d.cost)}</option>`).join("");
+    const canAssign = freeCrews.length > 0 && S.cash >= defs[0].cost;
+    return `<div class="tri-row" data-tri="${u.id}">
+      <div class="tri-nm">${u.name}<small class="faint">${Math.round(u.cap)} MW</small></div>
+      <select class="tri-axis" data-tri-axis="${u.id}">${axisOpts}</select>
+      <select class="tri-crew" data-tri-crew="${u.id}" ${freeCrews.length ? "" : "disabled"}>${crewOpts(defs[0].axis) || `<option>— no free crew —</option>`}</select>
+      <button class="tri-go" data-tri-go="${u.id}" ${canAssign ? "" : "disabled"}>Queue</button>
+    </div>`;
+  }).join("") || `<p class="faint">No plant needs maintenance — the fleet is healthy.</p>`;
+
+  // --- quick-add upgrade (per-plant axis chips → the contractor line) ---
+  const thermal = S.fleet.filter(u => u.tiers);
+  const specRows = thermal.map(u => {
+    const chips = AXES.map(ax => {
+      const tier = u.tiers[ax] ?? 0;
+      const queued = (S.contractor || []).some(j => j.unitId === u.id && j.axis === ax);
+      if (tier >= upgradeTierMax) return `<button class="spec-chip" disabled>${AXIS_LETTER[ax]} ${tier}/${upgradeTierMax}·max</button>`;
+      if (queued) return `<button class="spec-chip" disabled>${AXIS_LETTER[ax]} ${tier}/${upgradeTierMax} · ⏳</button>`;
+      const cost = upgradeCost(u, ax, S.rmods), can = canUpgrade(S, u.id, ax);
+      return `<button class="spec-chip" data-spec="${u.id}" data-spec-axis="${ax}" ${can ? "" : "disabled"}>${AXIS_LETTER[ax]} ${tier}/${upgradeTierMax} · ${money(cost)}</button>`;
+    }).join("");
+    return `<div class="spec-row"><div class="spec-nm">${u.name}<small class="faint">${u.tech}</small></div><div class="spec-chips">${chips}</div></div>`;
+  }).join("") || `<p class="faint">No thermal plants to upgrade.</p>`;
+
+  // --- builds: SURFACED only (committing is a quarter-review action) ---
+  const buildRows = sum.builds.length
+    ? sum.builds.map(b => {
+        const spec = BUILDABLES[b.tech];
+        return `<li><span>${spec ? spec.label : b.tech} · +${b.mw} MW</span><span class="faint">${b.quartersLeft}Q left</span></li>`;
+      }).join("")
+    : `<li class="faint">No construction in flight — commit new plants at the quarter review.</li>`;
+
+  $("vignette").style.opacity = "0";
+  $("brief").innerHTML = `
+    <div class="brief-panel">
+      <div class="pl-kicker">Daily Brief</div>
+      <h2>${quarterLabel(S)}</h2>
+      <p class="pl-lead">Review the day and set the rolling queues. <b>Advance</b> to fast-forward quiet
+        days — the brief snaps back the moment a job lands or the grid tightens. New plants are still
+        committed at the quarter-end review.</p>
+
+      <div class="brief-cols">
+        <div class="brief-col">
+          <h3>Overnight</h3><ul class="bq-list">${recap}</ul>
+          ${alerts}
+          <h3>Demand &amp; forecast</h3>${demandStats}
+        </div>
+        <div class="brief-col">
+          <h3>Maintenance queue</h3><ul class="bq-list">${maintRows}</ul>
+          <h3>Upgrade queue</h3><ul class="bq-list">${upRows}</ul>
+          <h3>In construction</h3><ul class="bq-list">${buildRows}</ul>
+        </div>
+      </div>
+
+      <div class="pl-section">
+        <h3>Queue maintenance <small class="faint">— a crew works it over the next few days</small></h3>
+        <div class="tri-list">${triageRows}</div>
+      </div>
+      <div class="pl-section">
+        <h3>Queue an upgrade <small class="faint">— the contractor line, parallel to crews</small></h3>
+        <div class="dev-col">${specRows}</div>
+      </div>
+
+      <div class="end-btns brief-btns">
+        <button class="btn-primary" id="briefAdvance">▶ Advance</button>
+        <button id="briefStep">Step a day</button>
+      </div>
+    </div>`;
+  $("briefOverlay").classList.add("on");
+
+  // repopulate the crew select when the axis changes (on/off-trade hint tracks the axis)
+  $("brief").querySelectorAll("[data-tri-axis]").forEach(sel => sel.onchange = () => {
+    const id = sel.dataset.triAxis, crewSel = $("brief").querySelector(`[data-tri-crew="${id}"]`);
+    if (crewSel) crewSel.innerHTML = crewOpts(sel.value) || `<option>— no free crew —</option>`;
+  });
+  $("brief").querySelectorAll("[data-tri-go]").forEach(b => b.onclick = () => {
+    const id = b.dataset.triGo;
+    const axis = $("brief").querySelector(`[data-tri-axis="${id}"]`)?.value;
+    const crewId = $("brief").querySelector(`[data-tri-crew="${id}"]`)?.value;
+    if (axis && crewId) actions.schedule(id, axis, crewId);
+  });
+  $("brief").querySelectorAll("[data-cancel]").forEach(b => b.onclick = () => actions.cancelTask(b.dataset.cancel));
+  $("brief").querySelectorAll("[data-spec]").forEach(b => b.onclick = () => actions.specialize(b.dataset.spec, b.dataset.specAxis));
+  $("briefAdvance").onclick = actions.advance;
+  $("briefStep").onclick = actions.step;
+}
+export function hideBrief(){ $("briefOverlay").classList.remove("on"); $("vignette").style.opacity = "0"; }
 
 // ---- progression screen (between runs): two tabs — passive Skills, and the
 // Research Unlocks that open in-run research branches. Tab state is module-level

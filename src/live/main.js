@@ -13,16 +13,17 @@ import { triggerLoadShed, triggerDemandResponse } from "./crisis.js";
 import { promote, hireCrew } from "./crews.js";
 import { commitBuild } from "./construct.js";
 import { setSpeed } from "./clock.js";
+import { closeBrief } from "./brief.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
 import { rollSpecialOffer } from "./offers.js";
-import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning, renderCollapse, hideCollapse } from "./render.js";
+import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief } from "./render.js";
 import { buySkill, buyUnlock, buyEconomyUnlock } from "./meta.js";
 import { loadProfile, saveProfile, restartRun } from "./persist.js";
 
 const $ = id => document.getElementById(id);
 const profile = loadProfile();
-let S, last = 0, page = null, planningOpen = false, collapseOpen = false; // page: null = live HUD; else the open manage page
+let S, last = 0, page = null, planningOpen = false, collapseOpen = false, briefOpen = false; // page: null = live HUD; else the open manage page
 
 // ---- screen navigation ----
 const OVERLAYS = ["homeOverlay", "metaOverlay", "howtoOverlay", "menuOverlay", "overlay"];
@@ -93,11 +94,13 @@ function seedRun(){
   S.rngDemand = makeRng((seed ^ 0xD3) >>> 0);   // v5.1 Phase 1: daily demand-noise stream, isolated from the economy
   rollRegime(S, S.rng); S.mmods = regimeMods(S); // deal the opening quarter's regime
   S.bestRecords = profile.records;               // read-only mirror for the hub scorecard
+  S.briefEnabled = true;                         // v5.1 Phase 5: arm the daily brief for this session (headless stays off)
+  S.autoAdvance = true;
 }
 
 // ---- the persistent grid ----
 function startGame(){
-  hideAll(); hideCollapse(); planningOpen = false; collapseOpen = false; fastMode = false;
+  hideAll(); hideCollapse(); hideBrief(); planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false;
   S = createGame(profile.skills, profile.researchUnlocked, [], profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
   seedRun();
   S.paused = false; applySpeed();
@@ -114,7 +117,7 @@ function startGame(){
 function restartGame(){
   S = restartRun(S, profile);
   seedRun();
-  hideCollapse(); planningOpen = false; collapseOpen = false; fastMode = false;
+  hideCollapse(); hideBrief(); planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false;
   S.paused = false; applySpeed();
   buildUnits(S, act);
   renderMutatorBanner(S);
@@ -139,6 +142,19 @@ const planningActions = {
   begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; buildUnits(S, act); render(S); },
 };
 
+// v5.1 Phase 5: the daily brief — the blocking-but-skippable daily beat. Quick-add buttons
+// route to the SAME rolling-queue functions as the Planning Office (maintenance → queueMaint,
+// upgrades → specializeUnit/queueUpgrade); builds are surfaced but committed only at the review.
+// "Advance" re-arms auto-skip; "Step a day" leaves it off so the next boundary reopens the brief.
+function leaveBrief(){ hideBrief(); briefOpen = false; S.paused = false; fastMode = false; applySpeed(); last = 0; render(S); }
+const briefActions = {
+  schedule(unitId, axis, crewId){ queueMaint(S, unitId, axis, crewId); renderBrief(S, briefActions); },
+  cancelTask(taskId){ cancelTask(S, taskId); renderBrief(S, briefActions); },
+  specialize(unitId, axis){ specializeUnit(S, unitId, axis); renderBrief(S, briefActions); },
+  advance(){ S.autoAdvance = true; closeBrief(S); leaveBrief(); },  // re-arm auto-skip
+  step(){ S.autoAdvance = false; closeBrief(S); leaveBrief(); },    // hands-on: reopen next boundary
+};
+
 // ---- main loop: step + repaint while the shift is live; the quarter-end beat
 // opens the Planning Office and waits for the player to begin the next quarter ----
 function frame(now){
@@ -151,6 +167,10 @@ function frame(now){
       if (!collapseOpen){ collapseOpen = true; render(S); renderCollapse(S, { restart: restartGame }); }
     } else if (S.calendar.mode === "planning"){
       if (!planningOpen){ planningOpen = true; renderPlanning(S, planningActions); }
+    } else if (S.calendar.mode === "brief"){
+      // v5.1 Phase 5: the daily brief opened (surviveDay flipped the mode on an exception or a
+      // hands-on day). Paint it once and wait for the player to advance / step the day.
+      if (!briefOpen){ briefOpen = true; renderBrief(S, briefActions); }
     } else {
       const dayBefore = S.day;
       step(S, dt); // no-ops while paused (clock speed 0); never ends
