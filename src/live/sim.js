@@ -4,12 +4,15 @@
 // dispatchHour() engine (one source of dispatch truth with the batch game);
 // the real-time mechanics (outages, strain, brownout/blackout) are new here.
 //
-// step() never touches the DOM: on a fatal shortfall it sets S.over / S.reason
-// and stops the clock, and the view layer reacts to that.
+// step() never touches the DOM and never ends (v5: the grid is persistent — no
+// game-over). A shortfall or insolvency inflicts pain (strain, fines, cratered
+// credit) but the loop keeps running; the view layer reacts to that state.
 // ============================================================
 import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, serviceCost, serviceTimeFor } from "./config.js";
+import { freshCalendar, advanceCalendar } from "./calendar.js";
+import { freshClock, tickClock, autoPause } from "./clock.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
@@ -46,7 +49,11 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     bat.energy = bat.maxEnergy;
   }
   return {
-    running:false, paused:false, menuOpen:false, over:false, reason:"",
+    running:false, paused:false, menuOpen:false,
+    // v5: the persistent grid — Year▸Quarter▸Day calendar + variable clock. No run
+    // ever ends, so there is no over/won/maxRunDays (failure is stagnation). S.day
+    // stays as the monotonic demand clock and mirrors S.calendar.absDay.
+    calendar:freshCalendar(), clock:freshClock(),
     t:CFG.startHour, day:1, peak:CFG.startPeak, peakGrowth:effPeakGrowth(mods),
     cash:CFG.startCash + mods.startCashBonus, satisfaction:100, strain:0,
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
@@ -70,9 +77,9 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     cleanMWh:0, servedMWh:0, peakNetWorth:CFG.startCash + mods.startCashBonus, bestSpotKill:0,
     // ---- v4 earned forecast (Phase E): next-hour spot outlook + its fog width ----
     marketVolatility:0, spotForecast:0, spotForecastFog:CFG.forecast.baseFog, fcHour:-1,
-    // ---- v4 meta blooms (Phase F): a run is a finite contract (win at maxRunDays);
-    // capacity obligation + special offers are opt-in via economy unlocks. ----
-    economyUnlocked: { ...economyUnlocked }, maxRunDays, won:false,
+    // ---- v4 meta blooms (Phase F): capacity obligation + special offers are
+    // opt-in via economy unlocks. (v5 retired the finite-run win.) ----
+    economyUnlocked: { ...economyUnlocked }, // v5: grid is persistent (maxRunDays/won retired)
     capacityObligation:null, capHour:-1,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
@@ -147,10 +154,12 @@ export function unitOutput(S, u){
 }
 export function totalCapacity(S){ return S.fleet.reduce((a, u) => a + unitOutput(S, u), 0); }
 
-function gameOver(S, reason){ S.over = true; S.running = false; S.reason = reason; }
-
 export function surviveDay(S){
-  S.day++; S.peak = Math.round(S.peak * S.peakGrowth); S.weather = freshWeather();
+  // v5: advance the Year▸Quarter▸Day calendar; S.day mirrors the monotonic absDay
+  // (the demand clock the economy reads). The grid never resets.
+  const rolled = advanceCalendar(S);
+  S.day = S.calendar.absDay;
+  S.peak = Math.round(S.peak * S.peakGrowth); S.weather = freshWeather();
   S.strain = Math.max(0, S.strain - 30);
   expireContracts(S); // v4: age term contracts one day, drop the expired ones
   creditTick(S);      // v4 (C): a solvent day rebuilds credit toward the cap
@@ -159,17 +168,19 @@ export function surviveDay(S){
   if (dayInterest > 0.5){ (S.debtLedger = S.debtLedger || []).push({ type:"interest", day:S.day - 1, amount:Math.round(dayInterest) }); }
   S.dayInterest0 = S.interestPaid;
   const firstCarbon = S.carbon === 0 && S.day >= CFG.carbonStartDay;
-  if (S.day >= CFG.carbonStartDay) S.carbon += CFG.carbonPerDay; // policy tightens as the run climbs
+  if (S.day >= CFG.carbonStartDay) S.carbon += CFG.carbonPerDay; // policy tightens as demand climbs
   // v4 (F): age a capacity obligation; it lapses when its term runs out.
   if (S.capacityObligation){
     S.capacityObligation.daysLeft -= 1; S.capacityObligation.calledToday = false;
     if (S.capacityObligation.daysLeft <= 0) S.capacityObligation = null;
   }
-  // v4 (F): a run is a finite contract — surviving past maxRunDays is a WIN, not
-  // an endless grind. Set the win flag; the view layer reacts to S.over as usual.
-  if (S.day > (S.maxRunDays ?? Infinity)){
-    S.over = true; S.won = true; S.running = false;
-    S.reason = `Contract complete — ${S.day - 1} days operated. The city renews your licence.`;
+  // v5: the quarter rolled → the fiscal period closed. Pause into the Planning
+  // Office (the quarter-end board review). This is a BEAT, not an ending — the
+  // grid is persistent; nothing is ever lost. Phase 6 fills the review.
+  if (rolled.rolledQuarter){
+    S.calendar.mode = "planning";
+    autoPause(S, "Quarter closed — board review");
+    setTicker(S, "◼ Quarter closed — the board review is ready.");
     return;
   }
   setTicker(S, firstCarbon
@@ -177,9 +188,21 @@ export function surviveDay(S){
     : `✓ Day ${S.day - 1} cleared — demand rising to ${S.peak} MW peak.`);
 }
 
+// v5: leave the quarter-end board review and resume the live day. The calendar
+// already advanced into the new quarter's day 1 when the quarter rolled, so this
+// just hands control back: operating mode, clock running at 1×.
+export function beginNextQuarter(S){
+  S.calendar.mode = "operating";
+  S.clock.speed = 1; S.clock.autoPaused = false; S.clock.pauseReason = "";
+}
+
 // Advance the simulation by `dt` real seconds. Returns true if the run just ended.
 export function step(S, dt){
-  const dtH = dt * (24 / CFG.secondsPerDay); // game-hours elapsed
+  // v5: the clock owns dt→game-hours and honours speed (0 = read-only pause, so no
+  // time passes and the tick is a no-op). step() never signals an end — the grid
+  // is persistent, so it always returns false.
+  const dtH = tickClock(S, dt);
+  if (dtH <= 0) return false;
   S.t += dtH;
   if (S.t >= 24){ S.t -= 24; surviveDay(S); }
 
@@ -388,13 +411,14 @@ export function step(S, dt){
   const shortfall = S.demand - S.capacity;
   const sev = S.demand > 0 ? shortfall / S.demand : 0;
   if (shortfall > 0.5){
+    // v5: a shortfall still hurts — strain, lost confidence, unserved-load penalty —
+    // but it is NEVER an ending. Strain/satisfaction pin at their extremes (chronic
+    // pain), the grid keeps running. The stagnation model (Phase 6) will turn
+    // sustained failure into escalating cost and stalled growth, not a game-over.
     S.brownout = true; S.downAcc += dt;
     S.strain = Math.min(100, S.strain + sev * CFG.strainRate * dt);
     S.satisfaction = Math.max(0, S.satisfaction - sev * CFG.satDrain * dt);
     S.cash -= shortfall * CFG.unservedPenalty * dtH; // lost sales already sting; this adds fines / emergency buys
-    if (sev > CFG.instantBlackout){ gameOver(S, `A ${Math.round(sev * 100)}% shortfall collapsed the grid.`); return true; }
-    if (S.strain >= 100){ gameOver(S, "Sustained brownout cascaded into a blackout."); return true; }
-    if (S.satisfaction <= 0){ gameOver(S, "Customers lost all confidence — the city pulled your licence."); return true; }
   } else {
     S.brownout = false; S.upAcc += dt;
     S.strain = Math.max(0, S.strain - CFG.strainRecover * dt);
@@ -405,11 +429,13 @@ export function step(S, dt){
   // red with debt triggers a one-time default (credit cratered for the run); a
   // catastrophic hole winds you up instantly; otherwise a grace window (like the
   // strain meter) runs before bankruptcy — so a financial death feels earned too.
+  // v5: insolvency keeps its TEETH (a default still craters credit — rates and
+  // ceiling slashed) but is no longer fatal — no wind-up, no bankruptcy end. The
+  // red cash and a cratered credit standing ARE the pain; recovery must be earned.
+  // insolventT still accrues as a "how long under water" signal for Phase 6.
   if (isInsolvent(S)){
     if (S.debt > 0 && !S.defaulted){ triggerDefault(S); setTicker(S, `⚠ DEFAULT — credit cratered to ${Math.round(S.credit)}. Rates and ceiling slashed.`); }
-    if (S.cash < CFG.hardInsolvency){ gameOver(S, "Creditors wound up the utility — assets seized."); return true; }
     S.insolventT += dt;
-    if (S.insolventT >= CFG.bankruptcyGrace){ gameOver(S, "Insolvent too long — the utility filed for bankruptcy."); return true; }
   } else {
     S.insolventT = Math.max(0, S.insolventT - dt);
   }

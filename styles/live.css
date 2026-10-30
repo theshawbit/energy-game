@@ -27,8 +27,7 @@ header.cmdbar{display:flex;align-items:center;gap:14px 20px;flex-wrap:wrap;flex:
 .cb-id{display:flex;align-items:center;margin-right:auto;min-width:0}
 .cb-mark{font-family:var(--disp);text-transform:uppercase;letter-spacing:.14em;font-size:.82rem;color:var(--muted);white-space:nowrap}
 .cb-clock{display:flex;align-items:baseline;gap:10px;margin-left:16px;padding-left:16px;border-left:1px solid var(--line)}
-.cb-day{font-family:var(--disp);text-transform:uppercase;letter-spacing:.1em;font-size:.7rem;color:var(--faint);white-space:nowrap}
-.cb-day b{color:var(--fg);font-size:1rem;margin-left:3px}
+.cb-cal{font-family:var(--disp);text-transform:uppercase;letter-spacing:.1em;font-size:.72rem;color:var(--fg);white-space:nowrap}
 .cb-time{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:1.5rem;letter-spacing:.02em}
 
 .cb-controls{display:flex;gap:10px}
@@ -41,6 +40,9 @@ header.cmdbar{display:flex;align-items:center;gap:14px 20px;flex-wrap:wrap;flex:
 .console-btn.manage{background:var(--accent);color:#1a1205;border:none;box-shadow:0 2px 0 #9c6a16}
 .console-btn.manage:hover{filter:brightness(1.08)}
 .console-btn.manage:active{transform:translateY(1px);box-shadow:0 1px 0 #9c6a16}
+.console-btn.ff{background:#1b2433;color:var(--muted);min-width:96px}
+.console-btn.ff:hover{border-color:var(--accent);color:#fff}
+.console-btn.ff.on{background:var(--accent);color:#1a1205;border-color:var(--accent);box-shadow:0 0 14px -3px var(--accent)}
 
 .cb-stats{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap}
 .hstat{display:flex;flex-direction:column;min-width:52px}
@@ -312,6 +314,14 @@ table.fleet .st{display:inline-block;font-family:var(--mono);font-size:.58rem;le
 .modal .earned{color:var(--good);font-weight:600;margin:4px 0 2px}
 .end-btns{display:flex;gap:8px;margin-top:14px}
 .end-btns button{flex:1}
+
+/* v5 Planning Office (quarter-end beat; a stub until the board-review phase) */
+.pl-kicker{font-family:var(--disp);text-transform:uppercase;letter-spacing:.2em;font-size:.66rem;color:var(--accent);font-weight:700;margin-bottom:4px}
+.pl-lead{color:var(--muted);font-size:.9rem;line-height:1.5;margin:6px 0 14px}
+.pl-stats{list-style:none;margin:0 0 4px;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
+.pl-stats li{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.86rem;padding:5px 0;border-bottom:1px solid var(--line)}
+.pl-stats li span:first-child{color:var(--faint);letter-spacing:.04em}
+.pl-stats li span:last-child{color:var(--fg);font-weight:600}
 
 /* skill tree */
 .meta-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;font-family:var(--mono);font-size:.8rem;margin:6px 0 2px}

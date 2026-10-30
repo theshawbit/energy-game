@@ -1,9 +1,10 @@
 # Grid Operator v5 — Implementation Plan (master index)
 
-> **Status: PLAN. Not yet built.** This is the engineering decomposition of
-> [`docs/ROADMAP-v5.md`](../ROADMAP-v5.md) (the program spec) into nine independently
-> shippable phases. The ROADMAP is *what and why*; this folder is *how and in what order*.
-> `engine.js` stays **sacred** throughout — `dispatchHour()` + `marginalCost()` untouched.
+> **Status: building. Phase 1 shipped (2026-10-29); Phases 2–9 planned.** This is the
+> engineering decomposition of [`docs/ROADMAP-v5.md`](../ROADMAP-v5.md) (the program spec)
+> into nine independently shippable phases. The ROADMAP is *what and why*; this folder is
+> *how and in what order*. `engine.js` stays **sacred** throughout — `dispatchHour()` +
+> `marginalCost()` untouched.
 
 v5 is effectively a new game on the shared engine: the roguelike *run* is gone, replaced by one
 persistent grid you grow across a **Year ▸ Quarter ▸ Day** calendar. The build is a **clean break**
@@ -18,17 +19,17 @@ Each phase is its own PR (per the repo's per-PR flow), test-green and independen
 its own doc below. The order matches the ROADMAP's build sequencing; the dependency graph (next
 section) is what actually gates them.
 
-| # | Phase | Doc | Module(s) it owns |
-| :-- | :--- | :--- | :--- |
-| 1 | **Time & calendar skeleton** | [phase-1-time-calendar.md](phase-1-time-calendar.md) | `calendar.js`, `clock.js` |
-| 2 | **Dial-able dispatch** | [phase-2-dispatch-dials.md](phase-2-dispatch-dials.md) | `dispatch.js` |
-| 3 | **KPIs & degradation** | [phase-3-kpis-degradation.md](phase-3-kpis-degradation.md) | `kpi.js` |
-| 4 | **Maintenance & crews** | [phase-4-maintenance-crews.md](phase-4-maintenance-crews.md) | `crews.js`, `maint.js` |
-| 5 | **Construction** | [phase-5-construction.md](phase-5-construction.md) | `construct.js` |
-| 6 | **Hybrid economy** | [phase-6-hybrid-economy.md](phase-6-hybrid-economy.md) | revives `market.js`/`finance.js`/`capacity.js`, `verdict.js` |
-| 7 | **Progression** | [phase-7-progression.md](phase-7-progression.md) | `progression.js` |
-| 8 | **Crisis toolkit & events** | [phase-8-crisis-events.md](phase-8-crisis-events.md) | `crisis.js`, `events.js` |
-| 9 | **World & narrative** | [phase-9-world-narrative.md](phase-9-world-narrative.md) | `world.js` + copy |
+| # | Phase | Doc | Module(s) it owns | Status |
+| :-- | :--- | :--- | :--- | :--- |
+| 1 | **Time & calendar skeleton** | [phase-1-time-calendar.md](phase-1-time-calendar.md) | `calendar.js`, `clock.js` | ✅ shipped 2026-10-29 |
+| 2 | **Dial-able dispatch** | [phase-2-dispatch-dials.md](phase-2-dispatch-dials.md) | `dispatch.js` | ☐ planned |
+| 3 | **KPIs & degradation** | [phase-3-kpis-degradation.md](phase-3-kpis-degradation.md) | `kpi.js` | ☐ planned |
+| 4 | **Maintenance & crews** | [phase-4-maintenance-crews.md](phase-4-maintenance-crews.md) | `crews.js`, `maint.js` | ☐ planned |
+| 5 | **Construction** | [phase-5-construction.md](phase-5-construction.md) | `construct.js` | ☐ planned |
+| 6 | **Hybrid economy** | [phase-6-hybrid-economy.md](phase-6-hybrid-economy.md) | revives `market.js`/`finance.js`/`capacity.js`, `verdict.js` | ☐ planned |
+| 7 | **Progression** | [phase-7-progression.md](phase-7-progression.md) | `progression.js` | ☐ planned |
+| 8 | **Crisis toolkit & events** | [phase-8-crisis-events.md](phase-8-crisis-events.md) | `crisis.js`, `events.js` | ☐ planned |
+| 9 | **World & narrative** | [phase-9-world-narrative.md](phase-9-world-narrative.md) | `world.js` + copy | ☐ planned |
 
 The retired `PLAN-v5.1-progression.md` (legacy roguelike-era progression plan) was removed when this
 plan folder landed; its live references in `docs/README.md`, `ROADMAP-v5.md`, and `CHANGELOG.md` now

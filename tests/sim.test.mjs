@@ -1,7 +1,8 @@
 // Unit tests for the live simulation (no DOM). Run: `npm test`.
 // These pin the real-time loop's state machine and economics so the Phase B+
 // feature work can't silently break pacing or the dispatch wiring.
-import { createGame, step, surviveDay, unitOutput, totalCapacity, interp, tripHazard, dailyStrainProb, autoService } from "../src/live/sim.js";
+import { createGame, step, surviveDay, beginNextQuarter, unitOutput, totalCapacity, interp, tripHazard, dailyStrainProb, autoService } from "../src/live/sim.js";
+import { isQuarterEnd } from "../src/live/calendar.js";
 import { toggleUnit, buildCapacity, upgradeUnit, serviceUnit, decommissionUnit, setHedge, hedgeContract, cancelContract } from "../src/live/actions.js";
 import { CFG, UPGRADE, upgradeCost, serviceCost, serviceTimeFor, salvageValue } from "../src/live/config.js";
 import { computeResearchMods } from "../src/live/research.js";
@@ -16,7 +17,7 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
 // 1) Fresh game state
 let S = createGame();
-check("fresh game: day 1, not running, not over", S.day === 1 && !S.running && !S.over);
+check("fresh game: day 1, not running, operating mode (no run-end)", S.day === 1 && !S.running && S.calendar.mode === "operating");
 check("fresh game: 9 units, carbon 0, starting cash", S.fleet.length === 9 && S.carbon === 0 && S.cash === CFG.startCash);
 
 // 2) unitOutput respects status and weather
@@ -176,7 +177,7 @@ let sres = serviceUnit(S, "colA");
 check("service pulls the unit offline and charges cash", sres.ok && colA.status === "service" && near(cashA - S.cash, expCost, 1e-6),
   "$" + (cashA - S.cash) + " for a 40% plant");
 colA.serviceTimer = 0.05; // nearly done
-step(S, 0.3);
+step(S, 0.5); // ~0.067 game-hours at the v5 180s day — enough to finish the 0.05gh service
 check("service completes at 100% condition, back online", colA.condition > 99 && colA.status === "online",
   colA.condition.toFixed(1) + "% / " + colA.status);
 
@@ -556,31 +557,31 @@ function insolvent(debt){
   check("default scars only once", S.credit === creditAfter && S.debtLedger.filter(e => e.type === "default").length === 1);
 }
 
-// 52) Bankruptcy: sustained insolvency ends the run after the grace window; recovering resets the clock
+// 52) v5: sustained insolvency is PAIN, not death. A default still craters credit,
+//     but the grid never ends (the Phase 6 stagnation model replaces bankruptcy).
+//     insolventT still accrues as a "how long under water" signal, and unwinds on recovery.
 {
   S = insolvent(1000);
-  step(S, CFG.bankruptcyGrace - 0.5); // insolvent but within grace
-  check("within the grace window the run survives", !S.over && S.insolventT > 0, `insolventT ${S.insolventT.toFixed(1)}`);
+  step(S, CFG.bankruptcyGrace + 2); // well past the old grace window
+  check("sustained insolvency no longer ends the game (v5: no bankruptcy)", !S.over && S.insolventT > 0, `insolventT ${S.insolventT.toFixed(1)}`);
+  check("insolvency with debt still fires a one-time default (credit cratered)", S.defaulted === true && S.credit <= CFG.defaultCredit);
   S.cash = 5000; // recover to solvent
   step(S, 0.1);
-  check("recovering to solvent resets the insolvency clock", S.insolventT < CFG.bankruptcyGrace - 0.5);
-  S.cash = -10; // back under
-  step(S, CFG.bankruptcyGrace + 0.5);
-  check("sustained insolvency past the grace window files bankruptcy", S.over && /bankrupt/i.test(S.reason), S.reason);
+  check("recovering to solvent winds the insolvency clock back down", S.insolventT < CFG.bankruptcyGrace + 2);
 }
 
-// 53) Hard insolvency is instant (a catastrophic hole, no grace)
+// 53) v5: even a catastrophic cash hole is survivable — no instant wind-up
 {
   S = insolvent(1000); S.cash = CFG.hardInsolvency - 1;
-  step(S, 0.02);
-  check("a catastrophic cash hole winds the utility up instantly", S.over && /seized|wound/i.test(S.reason), S.reason);
+  const ended = step(S, 0.05);
+  check("a catastrophic cash hole no longer winds the utility up", !S.over && ended === false, `cash ${S.cash.toFixed(0)}`);
 }
 
-// 54) A cash-only over-build can go bankrupt with NO debt (and never defaults)
+// 54) v5: a cash-only (no-debt) hole never defaults and never ends
 {
   S = insolvent(0);
-  step(S, CFG.bankruptcyGrace + 0.5);
-  check("no-debt insolvency still bankrupts after grace, without a default event", S.over && !S.defaulted && /bankrupt/i.test(S.reason), S.reason);
+  step(S, CFG.bankruptcyGrace + 2);
+  check("no-debt insolvency neither defaults nor ends the game", !S.over && !S.defaulted, `insolventT ${S.insolventT.toFixed(1)}`);
 }
 
 // ---- Phase D: scoring accumulators built over the run ----
@@ -624,16 +625,18 @@ function insolvent(debt){
 
 // ---- Phase F: finite-run win-state + capacity market wired into the sim ----
 
-// 60) createGame carries economy unlocks + max run days; finite run WINS at the cap
+// 60) v5: createGame copies economy unlocks; there is no run cap / win / over state
 {
-  const g = createGame({}, {}, [], CFG.creditStart, { "runlen-1": true }, 7);
-  check("createGame stores economyUnlocked (copied) + maxRunDays", g.economyUnlocked["runlen-1"] === true && g.maxRunDays === 7 && g.won === false);
+  const g = createGame({}, {}, [], CFG.creditStart, { "runlen-1": true });
+  check("createGame copies economyUnlocked onto state", g.economyUnlocked["runlen-1"] === true);
+  check("v5 state has no run-end fields (maxRunDays/won/over all absent)",
+    g.maxRunDays === undefined && g.won === undefined && g.over === undefined);
 }
 {
-  S = createGame({}, {}, [], CFG.creditStart, {}, 5); // 5-day contract
-  S.day = 5; S.t = 23.9;
-  step(S, 1.0); // crosses midnight into day 6 > maxRunDays
-  check("surviving past maxRunDays ends the run as a WIN", S.over && S.won === true && /Contract complete/i.test(S.reason), S.reason);
+  S = createGame(); S.running = true; S.day = 5; S.t = 23.9; const abs0 = S.calendar.absDay;
+  const ended = step(S, 1.0); // crosses midnight — in v4 this was the finite-run WIN; now just another day
+  check("a day rollover never ends the game (no finite-run win)",
+    ended === false && !S.over && S.calendar.absDay === abs0 + 1);
 }
 
 // 61) Capacity obligation pays for availability each tick (cash up, no call needed)
@@ -713,6 +716,48 @@ function insolvent(debt){
   setHedge(S, 0);
   const n1 = S.contracts.length;
   check("hedge dial at 0 signs nothing", !hedgeContract(S, 3).ok && S.contracts.length === n1);
+}
+
+// ---- v5 Phase 1: calendar / clock orchestration in the loop ----
+
+// 63) step advances the calendar on the midnight wrap — once, not per frame
+{
+  S = createGame(); S.calm = true; S.t = 23.98; const abs0 = S.calendar.absDay;
+  for (let i = 0; i < 4; i++) step(S, 0.2); // several frames; the day wraps exactly once
+  check("the calendar advances once on the midnight wrap (not per frame)",
+    S.calendar.absDay === abs0 + 1 && S.day === S.calendar.absDay, `absDay ${S.calendar.absDay}, day ${S.day}`);
+}
+
+// 64) No game-over anywhere: a chronically under-built grid degrades but never ends
+{
+  S = createGame(); S.running = true; S.calm = true; S.peak = 5000; // demand ≫ capacity
+  S.fleet.filter(u => u.kind === "renew").forEach(u => u.status = "off"); // deterministic deep shortfall
+  let everEnded = false;
+  for (let i = 0; i < 60; i++){ if (step(S, 0.5)) everEnded = true; }
+  check("chronic shortfall inflicts pain (strain pins) but NEVER ends the game",
+    !everEnded && S.over === undefined && S.brownout === true && S.strain >= 99, `strain ${S.strain.toFixed(0)}`);
+}
+
+// 65) Quarter-end flips to the Planning Office + auto-pauses; beginNextQuarter resumes
+{
+  S = createGame(); S.calm = true;
+  while (!isQuarterEnd(S)) surviveDay(S); // walk to the quarter's last day
+  check("positioned on the quarter's last day, still operating", isQuarterEnd(S) && S.calendar.mode === "operating");
+  surviveDay(S); // complete it — the quarter closes
+  check("completing the quarter enters planning mode and auto-pauses the clock",
+    S.calendar.mode === "planning" && S.clock.speed === 0 && S.clock.autoPaused === true);
+  beginNextQuarter(S);
+  check("beginNextQuarter resumes operating at 1× in the new quarter (Q2 D1)",
+    S.calendar.mode === "operating" && S.clock.speed === 1 && S.calendar.quarter === 2 && S.calendar.dayInQuarter === 1);
+}
+
+// 66) Demand steepens year-over-year with no run-reset discontinuity
+{
+  S = createGame(); S.calm = true; const peak0 = S.peak;
+  const yearDays = CFG.v5.daysPerQuarter * CFG.v5.quartersPerYear;
+  for (let i = 0; i < yearDays; i++) surviveDay(S);
+  check("demand steepens across a full year, no reset", S.peak > peak0 && S.calendar.year === 2,
+    `${peak0} → ${S.peak} MW, Y${S.calendar.year}`);
 }
 
 console.log(failed === 0 ? "\nAll sim tests passed." : `\n${failed} sim test(s) FAILED.`);

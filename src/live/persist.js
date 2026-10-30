@@ -5,15 +5,16 @@
 // records). Every access is wrapped in try/catch so the game still runs in
 // private windows or with storage blocked/cleared.
 //
-// v4 bumps the key to v3 and migrates v2 / v1 saves forward in ONE step: this is
-// the single canonical migration — later phases only read/write fields it already
-// creates. normalize() deep-merges every sub-object so an old save gains the new
-// fields without losing banked progress.
+// v5 is a CLEAN BREAK: it moves to the `gridop.v5` key and does NOT migrate the v4
+// (`grid-operator-live-*`) saves — v5 is effectively a new game, so it starts fresh
+// rather than mapping a fundamentally different model forward. normalize() still
+// deep-merges the current shape so a partial save gains any missing fields.
 // ============================================================
 import { CFG } from "./config.js";
 
-const KEY = "grid-operator-live-v3";                              // v4 added the Book thread
-const LEGACY_KEYS = ["grid-operator-live-v2", "grid-operator-live-v1"]; // newest-first
+// v5 clean-break namespace. v4 keys (grid-operator-live-v*) are left untouched and
+// are never read, so a returning player starts the persistent grid fresh.
+const KEY = "gridop.v5";
 
 function defaultProfile(){
   return {
@@ -53,15 +54,7 @@ export function loadProfile(){
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) return normalize(JSON.parse(raw));
-    // no v3 save yet — migrate the newest legacy save forward, if any
-    for (const k of LEGACY_KEYS){
-      const legacy = localStorage.getItem(k);
-      if (legacy){
-        const migrated = normalize(JSON.parse(legacy));
-        saveProfile(migrated); // write it under the new key so this runs once
-        return migrated;
-      }
-    }
+    // v5 clean break: no legacy migration — a v4 save is ignored, not carried.
   } catch (e) { /* storage unavailable — fall through to a fresh profile */ }
   return defaultProfile();
 }

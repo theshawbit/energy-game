@@ -26,6 +26,25 @@ currency lanes with ⚡ automation gated to late game; emergent specialization; 
 lives in [`docs/plan-v5/`](docs/plan-v5/README.md) (9 phases); it retires the earlier
 `PLAN-v5.1-progression.md`.
 
+### Added — v5 Phase 1: time & calendar, no game-over (2026-10-29)
+
+First slice of the pivot — the persistent-grid lifecycle, built test-first.
+See [`docs/plan-v5/phase-1-time-calendar.md`](docs/plan-v5/phase-1-time-calendar.md).
+
+- **`Year ▸ Quarter ▸ Day` calendar** (`src/live/calendar.js`): 22-day quarters, 4
+  quarters/year, season per quarter; a monotonic `absDay`, and a command-bar stamp
+  (`Y1 · Q1 Winter · Day 1/22`) replacing the old `DAY n` readout.
+- **Deliberate clock** (`src/live/clock.js`): a ~3-min live day (`secondsPerDay` 48 → 180),
+  a three-speed set (hold · 1× · fast), and an `autoPause` hook. Pause is now a **read-only
+  hold** (clock speed 0), and a **▶ fast-forward** button joins the console.
+- **No run end.** Removed game-over entirely — blackouts, chronic shortfall and insolvency
+  now inflict pain (strain, satisfaction, penalties, a one-time credit default) but **never
+  end the grid**. Completing a quarter pauses into a **Planning Office** stub and resumes
+  into the next quarter (`beginNextQuarter`); demand keeps steepening year-over-year with no
+  reset.
+- **Clean-break persistence** (`gridop.v5` key): v4 saves are ignored, not migrated.
+- New `calendar`/`clock` suites + rewritten sim/persist assertions; all 16 suites green.
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a

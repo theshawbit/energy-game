@@ -4,8 +4,9 @@
 // (onToggle, onRestart), so this file imports no action logic.
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
+import { quarterLabel } from "./calendar.js";
 import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
-import { SKILLS, skillCost, MILESTONES, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
+import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
 import { makeFleetComparator, compareNeedsAttention } from "./fleetsort.js";
@@ -58,7 +59,7 @@ export function render(S){
   const tick = now - _lastReadout >= READOUT_MS; // ~5Hz readable cadence
   if (tick){
   _lastReadout = now;
-  $("s-day").textContent = S.day;
+  $("s-cal").textContent = quarterLabel(S); // v5: Year▸Quarter▸Day stamp
   $("s-clock").textContent = clock(S.t);
   $("s-cash").textContent = money(S.cash);
   $("s-cash").style.color = S.cash < 0 ? css("--bad") : css("--fg");
@@ -170,12 +171,16 @@ export function render(S){
   updateUnits(S, tick);
   drawChart(S);
 
-  // v4.2 CR-1: the pause control is a deliberate console toggle — lamp on + the
-  // play area reads "held" while the clock is frozen (the command bar stays lit).
+  // v5: the console speed control reads off the clock. Pause is a read-only hold
+  // (clock.speed 0); the play area reads "held" while frozen. Fast-forward lights
+  // its own button. (An auto-pause at the quarter-end beat also reads as held.)
+  const speed = S.clock ? S.clock.speed : 1, paused = speed === 0;
   const pb = $("pauseBtn");
-  pb.textContent = S.paused ? "Resume" : "Pause";
-  pb.classList.toggle("on", S.paused);
-  $("shakeTarget").classList.toggle("held", S.paused);
+  pb.textContent = paused ? "Resume" : "Pause";
+  pb.classList.toggle("on", paused);
+  $("shakeTarget").classList.toggle("held", paused);
+  const ff = $("ffBtn");
+  if (ff){ const fast = speed === CFG.v5.fastSpeed; ff.textContent = fast ? "▶▶ Fast" : "▶ 1×"; ff.classList.toggle("on", fast); }
 }
 
 // v4.2 CR-3: fleet as a bank of live instrument tiles. Built once per game
@@ -405,36 +410,37 @@ function line(ctx, data, x, y, key, color, lw){
   data.forEach((p, i) => { const px = x(i), py = y(p[key]); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }); ctx.stroke();
 }
 
-// ---- end-of-run modal (score, meta-currency earned, milestones) ----
-export function showEndGame(S, result, actions){
-  const upPct = (S.upAcc + S.downAcc) > 0 ? S.upAcc / (S.upAcc + S.downAcc) * 100 : 100;
-  $("shakeTarget").classList.add("shake");
-  $("vignette").style.opacity = "1";
-  setTimeout(() => { $("shakeTarget").classList.remove("shake"); }, 700);
-  const reached = (S.milestonesHit || []).length, best = result.best || {};
+// ---- Planning Office (v5, Phase 1 STUB) — the quarter-end board review beat.
+// The grid never ends; completing a quarter pauses here. Phase 6 fills this with
+// the overlord's KPI verdict, maintenance triage, build queue, research and ⚡
+// perks. For now it reports the close and hands control back to the next quarter.
+export function renderPlanning(S, actions){
+  const c = S.calendar;
+  const closedQ = c.quarter === 1 ? CFG.v5.quartersPerYear : c.quarter - 1; // the quarter that just closed
+  const closedY = c.quarter === 1 ? c.year - 1 : c.year;
+  $("vignette").style.opacity = "0";
   $("modal").innerHTML = `
-    <h2 style="color:var(--bad)">Blackout</h2>
-    <p>${S.reason}</p>
-    <div class="score">${result.score}<small>SCORE</small></div>
-    <p class="earned">+${result.earned} ⚡ meta-currency earned${result.score >= (best.score || 0) ? " · <b>new best!</b>" : ""}</p>
-    <ul>
-      <li><span>Days survived</span><span>${S.day - 1}</span></li>
-      <li><span>Peak reached</span><span>${S.peak} MW</span></li>
-      <li><span>Uptime</span><span>${upPct.toFixed(1)}%</span></li>
-      <li><span>Milestones</span><span>${reached} / ${MILESTONES.length}</span></li>
-      <li><span>Cash balance</span><span>${money(S.cash)}</span></li>
-      <li><span>CO₂ emitted</span><span>${(S.co2Total / 1e3).toFixed(1)} kt</span></li>
-    </ul>
-    <div class="end-btns">
-      <button id="toHome">Home</button>
-      <button class="btn-primary" id="again">Run it back ▸</button>
+    <div class="planning">
+      <div class="pl-kicker">Planning Office</div>
+      <h2>Quarter Review</h2>
+      <p class="pl-lead">Y${closedY} · Q${closedQ} has closed. The board review — the overlord's KPI
+        verdict, maintenance triage, the build queue, research and ⚡ perks — arrives in a later phase.
+        For now, the grid rolls on.</p>
+      <ul class="pl-stats">
+        <li><span>Day</span><span>${S.day}</span></li>
+        <li><span>Peak demand</span><span>${S.peak} MW</span></li>
+        <li><span>Cash</span><span>${money(S.cash)}</span></li>
+        <li><span>Satisfaction</span><span>${Math.round(S.satisfaction)}%</span></li>
+      </ul>
+      <div class="end-btns">
+        <button class="btn-primary" id="beginQ">Begin Y${c.year} · Q${c.quarter} ▸</button>
+      </div>
     </div>`;
   $("overlay").classList.add("on");
-  $("toHome").onclick = actions.home;
-  $("again").onclick = actions.replay;
+  $("beginQ").onclick = actions.begin;
 }
 
-export function clearEndGame(){
+export function hidePlanning(){
   $("overlay").classList.remove("on");
   $("vignette").style.opacity = "0";
 }
