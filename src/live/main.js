@@ -17,7 +17,7 @@ import { closeBrief } from "./brief.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
 import { rollSpecialOffer } from "./offers.js";
-import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief } from "./render.js";
+import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief, renderPlantDetail, hidePlantDetail } from "./render.js";
 import { buySkill, buyUnlock, buyEconomyUnlock, awardCurrency } from "./meta.js";
 import { loadProfile, saveProfile, restartRun } from "./persist.js";
 
@@ -43,6 +43,15 @@ const meta = {
 // toggle a unit then repaint (actions never touch the DOM themselves)
 function act(id){ toggleUnit(S, id); render(S); }
 
+// v5.1 Phase 7: the per-plant upgrade drill-down (opened by a fleet row's ⚙). Holds the open
+// plant id so a queued upgrade re-renders the panel in place; Close returns to the live grid.
+let plantOpen = null;
+function openPlant(id){ plantOpen = id; renderPlantDetail(S, id, plantActions); }
+const plantActions = {
+  upgrade(unitId, axis){ specializeUnit(S, unitId, axis); renderPlantDetail(S, unitId, plantActions); },
+  close(){ plantOpen = null; hidePlantDetail(); render(S); },
+};
+
 // re-paint the currently open manage page (after an action or a nav)
 function refreshPage(){ if (page) renderManage(S, page, menu); }
 
@@ -55,7 +64,7 @@ function rollDailyOffer(){
 
 // manage mode (opens paused): hub-and-spoke navigation + per-page actions
 const menu = {
-  decommission(id){ decommissionUnit(S, id); buildUnits(S, act); refreshPage(); render(S); },
+  decommission(id){ decommissionUnit(S, id); buildUnits(S, act, openPlant); refreshPage(); render(S); },
   // v5 Phase 7: pin a plant against Dispatch Assist (fleet page toggle).
   pin(id){ pinUnit(S, id); refreshPage(); render(S); },
   // v5 Phase 2 dials: commit re-renders the page (band/push enable with it); the
@@ -101,11 +110,11 @@ function seedRun(){
 
 // ---- the persistent grid ----
 function startGame(){
-  hideAll(); hideCollapse(); hideBrief(); planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false;
+  hideAll(); hideCollapse(); hideBrief(); hidePlantDetail(); plantOpen = null; planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false;
   S = createGame(profile.skills, profile.researchUnlocked, [], profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
   seedRun();
   S.paused = false; applySpeed();
-  buildUnits(S, act);
+  buildUnits(S, act, openPlant);
   renderMutatorBanner(S);
   last = 0;
   S.running = true;
@@ -118,9 +127,9 @@ function startGame(){
 function restartGame(){
   S = restartRun(S, profile);
   seedRun();
-  hideCollapse(); hideBrief(); planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false;
+  hideCollapse(); hideBrief(); hidePlantDetail(); plantOpen = null; planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false;
   S.paused = false; applySpeed();
-  buildUnits(S, act);
+  buildUnits(S, act, openPlant);
   renderMutatorBanner(S);
   last = 0;
   S.running = true;
@@ -155,7 +164,7 @@ const planningActions = {
   // line), or ⚡ to unlock a perk. Both repaint the office in place.
   specialize(unitId, axis){ specializeUnit(S, unitId, axis); renderPlanning(S, planningActions); },
   perk(perkId){ buyPerk(S, perkId); syncZap(); renderPlanning(S, planningActions); },
-  begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; buildUnits(S, act); render(S); },
+  begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; buildUnits(S, act, openPlant); render(S); },
 };
 
 // v5.1 Phase 5: the daily brief — the blocking-but-skippable daily beat. Quick-add buttons
@@ -198,7 +207,7 @@ function frame(now){
 }
 
 // ---- wiring ----
-S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act); render(S); renderMutatorBanner(S); // a game to paint behind the home screen
+S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act, openPlant); render(S); renderMutatorBanner(S); // a game to paint behind the home screen
 showHome();
 $("manageBtn").onclick = () => openManage();
 $("pauseBtn").onclick = togglePause;
@@ -206,6 +215,8 @@ $("ffBtn").onclick = toggleFast;
 $("howtoBack").onclick = showHome;
 const HUB_KEYS = { "1": "fleet", "2": "build", "3": "research", "4": "desk" };
 window.addEventListener("keydown", e => {
+  // v5.1 Phase 7: the per-plant drill-down closes on Escape (it opens over the live grid).
+  if (plantOpen && e.key === "Escape"){ e.preventDefault(); plantActions.close(); return; }
   if (e.code === "Space"){ e.preventDefault(); if (S.running && !S.menuOpen && S.calendar.mode === "operating") togglePause(); return; }
   if (S.menuOpen){ // manage-mode navigation: Esc = back, 1–4 jump from the hub
     if (e.key === "Escape"){ e.preventDefault(); if (page && page !== "hub") menu.go("hub"); else menu.close(); }

@@ -273,6 +273,36 @@ data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. Se
   pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
   deterministic headless run must pin the global RNG *before* calling it.)
 
+### Changed — v5.1 Phase 7: UI overhaul (2026-10-30)
+
+Final phase of the [v5.1 rebalance](docs/plan-v5.1/README.md) — the capstone. A week of play showed
+the single-column console was overcrowded, and v5.1 added a lot (HP bar, two rolling queues, a 4×9
+upgrade matrix, the brief). This re-lays the live screen onto a **wider canvas** so everything v5.1
+added fits without feeling denser than v5 did. Layout only — no logic changes, **all 32 suites stay green**.
+
+- **Wider single-column console.** `.wrap` widens to ~1520px; the demand-vs-capacity graph sits on
+  top, the fleet below it at full width. The old fixed-height no-scroll skeleton (which fought the
+  wider canvas) is retired for natural page scroll with a height-capped canvas.
+- **Fleet in four dispatch-role lanes** (`render.js` `buildUnits`/`updateUnits` reworked) — *Baseload ·
+  firm* · *Dispatchable gas* · *Renewable* · *Storage*, mapping `u.kind` 1:1, so the lanes are stable
+  and immune to tech sprawl (coal/SMR/geo/CCS all = firm; gas = the former peaker). Each lane is its
+  own live monitor table, role-accented, with a count badge and an empty-state line; rows still build
+  once and patch each frame (no teardown) and now **auto-sort by urgency within their lane**. Columns
+  size to content so nothing truncates or overlaps at narrow lane widths. Responsive: 4 across → 2×2
+  (tablet) → single column (phone), no horizontal scroll.
+- **Grid-stability HP bar in the top strip** (`renderStabilityBar`) — the Phase 2 text readout becomes
+  an always-visible life bar that colour-ramps toward collapse, with a `data-state` fill-vs-danger pulse.
+- **Per-plant upgrade drill-down** (`renderPlantDetail`) — a firm/gas plant's new **⚙** opens a panel
+  with its four 9-tier axis ladders (pips · current tier · live KPI vs attainable cap · next-tier cost +
+  ETA) and queue-upgrade buttons routing to the Phase 3 contractor line; it re-renders in place after a
+  queue and closes on Escape / Close. The ⚙ stops the row's arm handler so opening it never fires a gas unit.
+- **`index.html`** restructured (top-strip HP bar, fleet-lanes mount below the graph, plant-detail
+  overlay); **`styles/live.css`** gains the wider grid, the four lanes, the HP-bar states, and the
+  drill-down panel, with the narrow fallback. The brief panel (Phase 5) and the quarter-review scorecard
+  (Phase 6) already carried their own panels.
+- Browser-smoked across desktop / tablet / phone: four operational lanes, the HP bar unmissable, upgrades
+  one click deep, zero console errors. **v5.1 COMPLETE (all 7 phases).**
+
 ### Added — v5.1 Phase 6: KPI → ⚡ currency (2026-10-30)
 
 Sixth phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). Fixes the **orphaned skill currency**:

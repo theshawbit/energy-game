@@ -1,6 +1,6 @@
 # Grid Operator v5.1 — Rebalance & Rework (master index)
 
-> **Status: building (grill 2026-10-30). Phases 1–6 shipped 2026-10-30.** This is the engineering decomposition of the v5.1
+> **Status: COMPLETE — all 7 phases shipped 2026-10-30 (grill 2026-10-30).** This is the engineering decomposition of the v5.1
 > rebalance grill into seven independently shippable phases. v5 shipped all nine phases
 > ([`../plan-v5/`](../plan-v5/README.md)); a week of play exposed a structural flaw — **demand
 > (compounding +6%/day) outran the only capacity lever (quarter-end builds), dropping the player
@@ -41,7 +41,7 @@ own doc below. Order follows the dependency graph.
 | 4 | **Rolling maintenance** | [phase-4-rolling-maintenance.md](phase-4-rolling-maintenance.md) | reworks `maint.js`, `crews.js` | ✅ shipped 2026-10-30 |
 | 5 | **Daily Brief loop** | [phase-5-daily-brief.md](phase-5-daily-brief.md) | `brief.js` (new) + `sim.js` orchestrator | ✅ shipped 2026-10-30 |
 | 6 | **KPI → currency economy** | [phase-6-kpi-currency.md](phase-6-kpi-currency.md) | `scorecard.js` (new, pure); `verdict.js`, `meta.js` | ✅ shipped 2026-10-30 |
-| 7 | **UI overhaul** | [phase-7-ui-overhaul.md](phase-7-ui-overhaul.md) | `render.js`, `styles/live.css`, `index.html` | ☐ planned |
+| 7 | **UI overhaul** | [phase-7-ui-overhaul.md](phase-7-ui-overhaul.md) | `render.js`, `styles/live.css`, `index.html` | ✅ shipped 2026-10-30 |
 
 ---
 

@@ -82,6 +82,29 @@ function setLamp(el, color){
   el.style.opacity = faint ? ".5" : "1";
 }
 
+// v5.1 Phase 7: the top-strip grid-stability HP gauge. Reads S.stability (0% pristine →
+// 100% collapse). Width + colour ramp track the fill; a data-state attr carries fill vs
+// drain vs danger for the CSS pulse; the label names the live mode. Pure patch (no teardown).
+export function renderStabilityBar(S){
+  const st = S.stability; const bar = $("hpbar"); if (!st || !bar) return;
+  const pct = clamp(Math.round((st.hp / st.max) * 100), 0, 100);
+  const fill = $("hp-fill"), label = $("hp-label");
+  const danger = pct >= 66, warn = pct >= 33;
+  const state = st.fillPaused
+    ? (st.hp > 0 ? "recovering" : "stable")
+    : (st.lastShortfall === "capacity" ? "collapsing" : "straining");
+  if (fill){
+    fill.style.width = pct + "%";
+    fill.style.background = danger ? css("--bad") : warn ? css("--warn") : css("--good");
+  }
+  bar.dataset.state = state;
+  bar.setAttribute("aria-valuenow", String(pct));
+  if (label){
+    const human = state === "collapsing" ? "COLLAPSING" : state;
+    label.textContent = `${pct}% · ${human}`;
+  }
+}
+
 export function render(S){
   const now = performance.now();
   const tick = now - _lastReadout >= READOUT_MS; // ~5Hz readable cadence
@@ -103,15 +126,10 @@ export function render(S){
   $("s-co2").style.color = S.co2 < 100 ? css("--good") : S.co2 < 450 ? css("--warn") : css("--bad");
   $("s-carbon").textContent = "$" + Math.round(S.carbon);
   $("s-carbon").style.color = S.carbon > 0 ? css("--warn") : css("--faint");
-  // v5.1 Phase 2: grid-stability readout. 0% pristine → 100% collapse; colour ramps as it
-  // climbs, and reads "filling"/"recovering" so the fail-state is legible without the chart.
-  const st = S.stability;
-  if (st){
-    const el = $("s-stability"); const pct = Math.round((st.hp / st.max) * 100);
-    const label = st.fillPaused ? (st.hp > 0 ? "recovering" : "stable") : (st.lastShortfall === "capacity" ? "COLLAPSING" : "straining");
-    el.textContent = `${pct}% · ${label}`;
-    el.style.color = pct >= 66 ? css("--bad") : pct >= 33 ? css("--warn") : css("--good");
-  }
+  // v5.1 Phase 7: grid-stability HP bar in the top strip (was a text readout). Always visible,
+  // colour-ramping as it fills toward collapse; reads filling vs recovering so the fail-state is
+  // legible without the chart.
+  renderStabilityBar(S);
 
   // ---- v4.2 CR-2: master status cluster ---------------------------------
   // DEMAND — level + which way it's moving this tick.
@@ -265,51 +283,81 @@ function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 // bank auto-reorders by urgency (shared attentionRank → same order as the Manage
 // table). Reorder is done with CSS `order` so DOM nodes never move.
 const unitEls = {};
-let _unitOrder = "";               // last applied row order, to skip no-op reorders
-// v4.2.4: the fleet is a live, dense MONITOR TABLE (was a card bank). One row per
-// unit, built once per game and patched each frame. Status pills + the row accent
-// update INSTANTLY (an alarm can't wait); the numeric MW / Condition / Load columns
-// and the sub-note throttle with the readout cadence so renewable output doesn't
-// strobe. Rows auto-sort by urgency (worst first, shared compareNeedsAttention) and
-// controllable units (peakers / battery) are tappable rows that arm/fire. Condition
-// and Load% are now visible at a glance — the two things the wear model made matter.
-export function buildUnits(S, onToggle){
+// v5.1 Phase 7: the fleet is grouped into FOUR dispatch-role LANES (Baseload/firm ·
+// Dispatchable gas · Renewable · Storage), matching `u.kind` 1:1 — four stable lanes
+// immune to tech sprawl (coal/SMR/geo/CCS all = firm; gas = the former peaker). Each
+// lane is its own live monitor table; rows are built once per game and patched each
+// frame (no per-frame teardown, so taps/hover stay stable), and auto-sort by urgency
+// WITHIN their lane. Status pills + row accent update INSTANTLY; numeric columns + the
+// sub-note throttle with the readout cadence. Firm/gas rows carry a ⚙ that opens the
+// per-plant upgrade drill-down (Phase 3 ladders) without arming the plant.
+const LANES = [
+  { kind: "firm",    label: "Baseload · firm" },
+  { kind: "gas",     label: "Dispatchable gas" },
+  { kind: "renew",   label: "Renewable" },
+  { kind: "battery", label: "Storage" },
+];
+const laneTbody = {};              // kind → <tbody> (the per-lane urgency sort target)
+const _laneOrder = {};             // kind → last applied row order, to skip no-op reorders
+let _onDetail = null;              // captured plant-detail opener (the ⚙ on firm/gas rows)
+
+// Build one live <tr> for a unit (shared by every lane). Registers its patch refs in
+// unitEls and, for upgradeable plants, a ⚙ that opens the drill-down (stops the row's
+// arm handler from also firing).
+function buildUnitRow(S, u, onToggle){
+  const tr = document.createElement("tr");
+  tr.className = "fu" + (u.ctrl ? " ctrl" : "");
+  const pin = u.pin ? ` <span class="pin-badge" title="pinned — Dispatch Assist leaves it alone">📌</span>` : "";
+  const key = u.ctrl && u.key ? `<span class="fkey" title="shortcut">${u.key}</span>` : "";
+  const gear = u.tiers ? `<button class="fu-gear" data-detail="${u.id}" title="Upgrade ladders" aria-label="Open ${u.name} upgrades">⚙</button>` : "";
+  const condCell = u.kpis ? kpiClusterLive() : `<span class="faint">—</span>`;
+  tr.innerHTML = `
+    <td class="fu-nm"><span class="nm">${u.name}${pin}</span>${key}${gear}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
+    <td><span class="st" data-st>—</span></td>
+    <td class="num"><b data-out>0</b><span class="faint">/${Math.round(u.cap)}</span></td>
+    <td class="num fu-cond">${condCell}</td>
+    <td class="num"><span data-load>—</span></td>`;
+  if (u.ctrl) tr.onclick = () => onToggle(u.id);
+  const g = tr.querySelector(".fu-gear");
+  if (g) g.onclick = e => { e.stopPropagation(); if (_onDetail) _onDetail(u.id); };
+  const kpi = {}, kpiq = {};
+  tr.querySelectorAll("[data-k]").forEach(i => kpi[i.dataset.k] = i);
+  tr.querySelectorAll("[data-kq]").forEach(q => kpiq[q.dataset.kq] = q);
+  unitEls[u.id] = {
+    el: tr, st: tr.querySelector("[data-st]"), out: tr.querySelector("[data-out]"),
+    sub: tr.querySelector("[data-sub]"), kpi, kpiq, load: tr.querySelector("[data-load]"),
+  };
+  return tr;
+}
+
+export function buildUnits(S, onToggle, onDetail){
   _prevDemand = null; // new game — forget the previous run's last demand sample
-  _unitOrder = "";
   _log.length = 0; _lastTicker = null; $("ticker").innerHTML = ""; // fresh annunciator log
   for (const k in unitEls) delete unitEls[k];
-  const table = document.createElement("table");
-  table.className = "fleet-live";
-  table.innerHTML = `<thead><tr>
-    <th>Plant</th><th>Status</th><th class="num">MW</th><th>Health</th><th class="num">Load</th>
-  </tr></thead>`;
-  const tb = document.createElement("tbody");
-  for (const u of S.fleet){
-    const tr = document.createElement("tr");
-    tr.className = "fu" + (u.ctrl ? " ctrl" : "");
-    const pin = u.pin ? ` <span class="pin-badge" title="pinned — Dispatch Assist leaves it alone">📌</span>` : "";
-    const key = u.ctrl && u.key ? `<span class="fkey" title="shortcut">${u.key}</span>` : "";
-    const condCell = u.kpis
-      ? kpiClusterLive()
-      : `<span class="faint">—</span>`;
-    tr.innerHTML = `
-      <td class="fu-nm"><span class="nm">${u.name}${pin}</span>${key}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
-      <td><span class="st" data-st>—</span></td>
-      <td class="num"><b data-out>0</b><span class="faint">/${Math.round(u.cap)}</span></td>
-      <td class="num fu-cond">${condCell}</td>
-      <td class="num"><span data-load>—</span></td>`;
-    if (u.ctrl) tr.onclick = () => onToggle(u.id);
-    tb.appendChild(tr);
-    const kpi = {}, kpiq = {};
-    tr.querySelectorAll("[data-k]").forEach(i => kpi[i.dataset.k] = i);
-    tr.querySelectorAll("[data-kq]").forEach(q => kpiq[q.dataset.kq] = q);
-    unitEls[u.id] = {
-      el: tr, st: tr.querySelector("[data-st]"), out: tr.querySelector("[data-out]"),
-      sub: tr.querySelector("[data-sub]"), kpi, kpiq, load: tr.querySelector("[data-load]"),
-    };
+  for (const k in laneTbody) delete laneTbody[k];
+  for (const k in _laneOrder) delete _laneOrder[k];
+  _onDetail = onDetail || null;
+
+  const host = $("units"); host.innerHTML = "";
+  for (const lane of LANES){
+    const inLane = S.fleet.filter(u => u.kind === lane.kind);
+    const sec = document.createElement("section");
+    sec.className = "lane"; sec.dataset.lane = lane.kind;
+    sec.innerHTML = `<div class="lane-h"><span class="lane-nm">${lane.label}</span><span class="lane-ct">${inLane.length}</span></div>`;
+    const table = document.createElement("table");
+    table.className = "fleet-live";
+    const tb = document.createElement("tbody");
+    if (!inLane.length){
+      const tr = document.createElement("tr"); tr.className = "lane-empty";
+      tr.innerHTML = `<td colspan="5" class="faint">— none in service —</td>`;
+      tb.appendChild(tr);
+    }
+    for (const u of inLane) tb.appendChild(buildUnitRow(S, u, onToggle));
+    table.appendChild(tb);
+    sec.appendChild(table);
+    host.appendChild(sec);
+    laneTbody[lane.kind] = tb;
   }
-  table.appendChild(tb);
-  const host = $("units"); host.innerHTML = ""; host.appendChild(table);
 }
 function updateUnits(S, tick = true){
   const fuelMult = S.mmods?.fuelMult ?? 1;
@@ -360,14 +408,16 @@ function updateUnits(S, tick = true){
     else { const mc = Math.round(marginalCost(u.tech, S.carbon, fuelMult)); sub = u.ctrl ? `$${mc}/MWh · tap ${u.key} to ${u.status === "off" ? "start" : "stop"}` : `$${mc}/MWh base`; }
     if (refs.sub.textContent != sub) refs.sub.textContent = sub;
   }
-  // auto-sort rows by urgency (worst first) — move <tr> nodes only when the order
-  // actually changes (onclick travels with the node, so taps never retarget).
-  const order = [...S.fleet].sort(compareNeedsAttention);
-  const sig = order.map(u => u.id).join(",");
-  if (sig !== _unitOrder){
-    const tb = unitEls[order[0]?.id]?.el.parentNode;
-    if (tb) order.forEach(u => { const r = unitEls[u.id]; if (r) tb.appendChild(r.el); });
-    _unitOrder = sig;
+  // auto-sort rows by urgency (worst first) WITHIN each lane — move <tr> nodes only when
+  // the order actually changes (onclick travels with the node, so taps never retarget).
+  for (const lane of LANES){
+    const tb = laneTbody[lane.kind]; if (!tb) continue;
+    const order = S.fleet.filter(u => u.kind === lane.kind).sort(compareNeedsAttention);
+    const sig = order.map(u => u.id).join(",");
+    if (sig !== _laneOrder[lane.kind]){
+      order.forEach(u => { const r = unitEls[u.id]; if (r) tb.appendChild(r.el); });
+      _laneOrder[lane.kind] = sig;
+    }
   }
 }
 
@@ -950,6 +1000,62 @@ export function renderBrief(S, actions){
   $("briefStep").onclick = actions.step;
 }
 export function hideBrief(){ $("briefOverlay").classList.remove("on"); $("vignette").style.opacity = "0"; }
+
+// v5.1 Phase 7: the per-plant upgrade DRILL-DOWN — opened from a firm/gas plant's ⚙. Shows the
+// plant's four 9-tier axis ladders (current tier · live KPI vs attainable cap · next-tier cost +
+// ETA), with queue-upgrade buttons routing to the contractor line (reflected in the brief + the
+// Development Office). Re-renders in place after a queue so it stays open on the same plant.
+const AXIS_NAME = { reliability: "Reliability", efficiency: "Efficiency", output: "Output", flexibility: "Flexibility" };
+export function renderPlantDetail(S, unitId, actions){
+  const u = S.fleet.find(x => x.id === unitId);
+  if (!u || !u.tiers){ hidePlantDetail(); return; }
+  const tierMax = upgradeTierMax, lead = CFG.v5_1.upgrade.leadDays;
+  const ladders = AXES.map(ax => {
+    const tier = u.tiers[ax] ?? 0;
+    const queued = (S.contractor || []).some(j => j.unitId === u.id && j.axis === ax);
+    const pips = Array.from({ length: tierMax }, (_, i) => {
+      const n = i + 1;
+      const cls = n <= tier ? "on" : (n === tier + 1 && queued ? "queued" : (n === tier + 1 ? "next" : ""));
+      return `<i class="pd-pip ${cls}"></i>`;
+    }).join("");
+    const now = u.kpis ? Math.round(u.kpis[ax]) : null, cap = Math.round(axisTierValue(tier));
+    let btn;
+    if (tier >= tierMax) btn = `<button class="pd-buy" disabled>Max · cap ${cap}</button>`;
+    else if (queued) btn = `<button class="pd-buy" disabled>⏳ queued → tier ${tier + 1}</button>`;
+    else {
+      const cost = upgradeCost(u, ax, S.rmods), can = canUpgrade(S, u.id, ax);
+      btn = `<button class="pd-buy" data-spec="${u.id}" data-spec-axis="${ax}" ${can ? "" : "disabled"}
+        title="tier ${tier} → ${tier + 1}: cap ${cap} → ${Math.round(axisTierValue(tier + 1))}, ${lead}d lead">Upgrade · ${money(cost)} · ${lead}d</button>`;
+    }
+    return `<div class="pd-ladder">
+      <div class="pd-axis"><b>${AXIS_NAME[ax] || ax}</b><span class="faint">tier ${tier}/${tierMax}${now != null ? ` · now ${now} / cap ${cap}` : ""}</span></div>
+      <div class="pd-pips" aria-hidden="true">${pips}</div>
+      ${btn}
+    </div>`;
+  }).join("");
+  const myJobs = (S.contractor || []).filter(j => j.unitId === u.id);
+  const queueBlock = myJobs.length
+    ? `<div class="pd-queue"><h4>In the contractor queue</h4><ul>${myJobs.map(j =>
+        `<li><span>${AXIS_NAME[j.axis] || j.axis} → tier ${j.toTier}</span><span class="faint">${Math.ceil(j.daysLeft)}d left</span></li>`).join("")}</ul></div>`
+    : "";
+
+  $("plantDetail").innerHTML = `
+    <div class="pd">
+      <div class="pd-top">
+        <div class="pl-kicker">Plant Upgrades</div>
+        <h2>${u.name}</h2>
+        <p class="pd-sub">${cap(u.tech)} · ${Math.round(u.cap)} MW · ${u.kind}${u.condition != null ? ` · condition ${Math.round(u.condition)}%` : ""}</p>
+        <p class="pd-note faint">Upgrades raise the attainable <b>cap</b> each axis restores toward — you pay to <em>wait</em> for a higher ceiling (rolling contractor line, own labor), not to have it instantly; maintenance fights the decay below it.</p>
+      </div>
+      <div class="pd-ladders">${ladders}</div>
+      ${queueBlock}
+      <button class="btn-primary" id="pdClose">Close</button>
+    </div>`;
+  $("plantDetail").querySelectorAll("[data-spec]").forEach(b => b.onclick = () => actions.upgrade(b.dataset.spec, b.dataset.specAxis));
+  $("pdClose").onclick = actions.close;
+  $("plantOverlay").classList.add("on");
+}
+export function hidePlantDetail(){ $("plantOverlay").classList.remove("on"); }
 
 // ---- progression screen (between runs): two tabs — passive Skills, and the
 // Research Unlocks that open in-run research branches. Tab state is module-level

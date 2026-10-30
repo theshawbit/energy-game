@@ -16,7 +16,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-
 @keyframes shake{0%{transform:translate(0,0)}25%{transform:translate(-3px,2px)}50%{transform:translate(3px,-2px)}75%{transform:translate(-2px,-2px)}100%{transform:translate(2px,2px)}}
 #vignette{position:fixed;inset:0;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s;
   box-shadow:inset 0 0 160px 40px rgba(255,40,40,.75);background:radial-gradient(circle at 50% 50%,transparent 55%,rgba(255,20,20,.18))}
-.wrap{max-width:1180px;margin:0 auto;padding:16px;position:relative;z-index:1}
+.wrap{max-width:1520px;margin:0 auto;padding:16px;position:relative;z-index:1}
 
 /* v4.2 CR-1 — command bar: clock + the two deliberate console controls, with the
    secondary readouts demoted to a compact strip on the right. */
@@ -52,18 +52,24 @@ header.cmdbar{display:flex;align-items:center;gap:14px 20px;flex-wrap:wrap;flex:
 .hstat .rd-sub{font-size:.58rem;font-weight:500;color:var(--accent)}
 .hdiv{align-self:stretch;width:1px;background:var(--line);margin:2px 0}
 
-.grid{display:grid;grid-template-columns:1fr 360px;gap:14px;align-items:start}
-@media (max-width:880px){.grid{grid-template-columns:1fr}}
+/* v5.1 Phase 7 — grid-stability HP bar in the top strip: a life bar, colour-ramping as it
+   fills toward collapse. data-state drives the fill-vs-danger pulse; it wraps under the stats
+   on a narrow strip. */
+.cb-hp{display:flex;flex-direction:column;gap:3px;flex:0 1 220px;min-width:150px}
+.cb-hp-k{font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.hpbar{position:relative;height:16px;border-radius:9px;background:#0a0e14;border:1px solid var(--line);overflow:hidden}
+.hp-fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--good);transition:width .3s,background .3s}
+.hp-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.6rem;font-weight:600;letter-spacing:.04em;color:var(--fg);text-shadow:0 1px 2px rgba(0,0,0,.75)}
+.hpbar[data-state="straining"] .hp-fill,.hpbar[data-state="collapsing"] .hp-fill{animation:pulse .7s ease-in-out infinite}
+.hpbar[data-state="collapsing"]{border-color:var(--bad);box-shadow:0 0 12px -2px var(--bad)}
 
-/* v4.2 CR-1 — no-scroll skeleton: on a tall-enough desktop viewport the live
-   surface is one column that fills the screen (fleet list scrolls inside its
-   own panel, not the page). Narrow/short viewports fall back to page scroll. */
-@media (min-height:720px) and (min-width:881px){
-  .wrap{height:100dvh;max-height:100dvh;display:flex;flex-direction:column;overflow:hidden}
-  .wrap > .grid{flex:1 1 auto;min-height:0}
-  .grid > .card,.grid > aside{min-height:0;max-height:100%;overflow-y:auto}
-  .wrap canvas{max-height:30vh}
-}
+/* v5.1 Phase 7 — the live console is now a single wide column: the demand-vs-capacity graph
+   on top, the four dispatch-role fleet lanes below at full width. The canvas is height-capped
+   so the fleet reads above the fold on a tall screen; the page scrolls naturally when the
+   lanes need the room (no fixed-height no-scroll skeleton, which fought the wider canvas). */
+.grid{display:grid;grid-template-columns:1fr;gap:14px;align-items:start}
+.wrap canvas{max-height:36vh}
+
 /* when the clock is held, the play area reads frozen while the bar stays lit */
 #shakeTarget.held .grid{filter:saturate(.55) brightness(.8);transition:filter .2s}
 .card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px}
@@ -104,16 +110,33 @@ canvas{width:100%;height:auto;display:block;border-radius:10px;background:#0a0e1
 /* units */
 /* v4.2.4: live fleet MONITOR TABLE (replaced the card bank) — dense, exception-sorted,
    with Condition + Load% at a glance; reserve rows (peaker/battery) are tappable. */
+/* v5.1 Phase 7 — the fleet as FOUR dispatch-role lanes below the graph. Wide: 4 across;
+   tablet: 2×2; phone: a single column. Each lane is its own compact monitor table, accented
+   by role, auto-sorting its own rows by urgency. */
+.fleet-card h2{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.fleet-hint{font-family:var(--mono);font-size:.6rem;letter-spacing:0;text-transform:none;color:var(--faint);font-weight:400}
+.fleet-lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:start}
+@media (max-width:1200px){.fleet-lanes{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.fleet-lanes{grid-template-columns:1fr}}
+.lane{border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,var(--panel-2),#0a0e15);padding:6px 8px 4px;min-width:0}
+.lane-h{display:flex;align-items:baseline;justify-content:space-between;gap:6px;padding:2px 2px 6px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.lane-nm{font-family:var(--disp);text-transform:uppercase;letter-spacing:.09em;font-size:.6rem;color:var(--muted);font-weight:600}
+.lane-ct{font-family:var(--mono);font-size:.62rem;color:var(--faint);background:#0a0e14;border:1px solid var(--line);border-radius:10px;padding:0 6px;min-width:18px;text-align:center}
+.lane[data-lane="firm"]{box-shadow:inset 3px 0 0 #3a6ea5}
+.lane[data-lane="gas"]{box-shadow:inset 3px 0 0 #c98a2b}
+.lane[data-lane="renew"]{box-shadow:inset 3px 0 0 #3fa36b}
+.lane[data-lane="battery"]{box-shadow:inset 3px 0 0 #8a6fce}
+.lane-empty td{color:var(--faint);font-style:italic;text-align:center;padding:8px 6px!important}
+.fu-gear{background:none;border:none;cursor:pointer;color:var(--faint);font-size:.78rem;line-height:1;padding:0 2px;margin-left:4px;vertical-align:middle;transition:color .12s,transform .12s}
+.fu-gear:hover{color:var(--accent);transform:rotate(45deg)}
+
 .units{display:block}
-table.fleet-live{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;table-layout:fixed}
-table.fleet-live thead th{position:sticky;top:0;z-index:1;background:var(--panel);text-align:left;
-  font-family:var(--disp);font-size:.55rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
-  padding:4px 6px;border-bottom:1px solid var(--line)}
-table.fleet-live th.num,table.fleet-live td.num{text-align:right;font-family:var(--mono)}
-table.fleet-live th:nth-child(2){width:74px}
-table.fleet-live th:nth-child(3){width:60px}
-table.fleet-live th:nth-child(4){width:72px}
-table.fleet-live th:nth-child(5){width:44px}
+/* v5.1 Phase 7: inside a narrow lane the columns size to content (not the old fixed grid, which
+   overflowed the KPI cluster into Load and truncated the MW denominator). The name cell flexes
+   and ellipsizes; the numeric cells never wrap. */
+table.fleet-live{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;table-layout:auto}
+table.fleet-live td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+table.fleet-live td.fu-nm{width:99%}
 table.fleet-live td{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
 table.fleet-live tbody tr:last-child td{border-bottom:none}
 table.fleet-live tbody tr.ctrl{cursor:pointer}
@@ -541,3 +564,29 @@ table.fleet tr.dials-row td{border-bottom:1px solid var(--line);padding:4px 8px 
 .faq .faq-a b{color:var(--fg)}
 .modal.howto #howtoBack{width:100%;margin-top:20px}
 .unit .nm .mk{font-family:var(--mono);font-size:.64rem;color:var(--accent);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:3px;vertical-align:middle}
+
+/* v5.1 Phase 7 — the per-plant upgrade drill-down panel (opened from a fleet row's ⚙).
+   Four 9-tier axis ladders with pips, live KPI vs attainable cap, and queue-upgrade buttons
+   routing to the contractor line. */
+.modal.plant-detail{max-width:560px;text-align:left}
+.pd-top h2{margin:.2em 0 .1em}
+.pd-sub{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin:0}
+.pd-note{font-size:.72rem;line-height:1.45;margin:8px 0 0}
+.pd-ladders{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+@media (max-width:560px){.pd-ladders{grid-template-columns:1fr}}
+.pd-ladder{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel-2)}
+.pd-axis{display:flex;flex-direction:column;gap:1px;margin-bottom:6px}
+.pd-axis b{font-family:var(--disp);font-size:.76rem;letter-spacing:.04em}
+.pd-axis .faint{font-family:var(--mono);font-size:.62rem}
+.pd-pips{display:flex;gap:3px;margin-bottom:8px}
+.pd-pip{flex:1;height:7px;border-radius:2px;background:#0a0e14;border:1px solid var(--line)}
+.pd-pip.on{background:var(--accent);border-color:var(--accent)}
+.pd-pip.queued{background:repeating-linear-gradient(45deg,var(--accent),var(--accent) 2px,#0a0e14 2px,#0a0e14 4px)}
+.pd-pip.next{border-color:var(--accent)}
+.pd-buy{width:100%;font-family:var(--mono);font-size:.68rem;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:#1b2433;color:var(--fg);cursor:pointer;transition:.12s}
+.pd-buy:hover:not(:disabled){border-color:var(--accent);color:#fff}
+.pd-buy:disabled{opacity:.5;cursor:default}
+.pd-queue{border-top:1px solid var(--line);padding-top:8px;margin-bottom:10px}
+.pd-queue h4{margin:0 0 4px;font-family:var(--disp);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.pd-queue ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.pd-queue li{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.72rem}
