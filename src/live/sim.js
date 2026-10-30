@@ -12,7 +12,7 @@ import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, dialSnapshot } from "./config.js";
 import { makeCrew, wageBill, TRADES } from "./crews.js";
-import { resolveQuarterTasks } from "./maint.js";
+import { tickMaint } from "./maint.js";
 import { autoMaintenancePlan, dispatchAssist } from "./progression.js";
 import { tickBuilds } from "./construct.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
@@ -107,7 +107,7 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     // ⚡ (zap) promotes standouts + raises the roster ceiling; tasks are scheduled at
     // the quarter-end review and resolve over the next quarter with downtime. ----
     crews: Array.from({ length: CFG.v5.crews.startCrews }, (_, i) => makeCrew(TRADES[i % TRADES.length], i + 1)),
-    crewSeq: CFG.v5.crews.startCrews, tasks: [], taskSeq: 0,
+    crewSeq: CFG.v5.crews.startCrews, maintQueue: [], maintSeq: 0,
     zap: 0, rosterCap: CFG.v5.crews.baseRoster,
     // v5 Phase 7 / v5.1 Phase 3: progression. `perks` holds unlocked ⚡ perks. Per-plant upgrades
     // now live on u.tiers → u.caps (seeded by freshTiers/freshCaps) and resolve through the rolling
@@ -220,12 +220,9 @@ export function surviveDay(S){
     // fleet before the review, so it's available for the coming quarter's maintenance
     // planning. In-flight projects advance (and crowded ones may slip + overrun).
     const built = tickBuilds(S, S.rng || Math.random);
-    // v5 Phase 4: settle the quarter's maintenance BEFORE the review — finished tasks
-    // restore their KPI axis + free their crew (and the crew levels for the work),
-    // in-flight ones advance, and downtime lifts. Then pay the standing wage bill
-    // (Phase 6 folds this into settleQuarter's PnL). The player schedules NEXT
-    // quarter's tasks during the planning session that follows.
-    const completed = resolveQuarterTasks(S);
+    // v5.1 Phase 4: maintenance is now ROLLING (tickMaint, each tick) — the quarter rollover no
+    // longer batches it. In-flight maint jobs simply carry across the boundary. Pay the standing
+    // wage bill here (Phase 6 folds it into settleQuarter's PnL).
     // v5 Phase 6 settlement — close the Phase 4/5 seams INTO the quarter's PnL. Crew
     // wages are the standing cost (still deducted from cash here); build overruns were
     // charged to cash as they slipped (tickBuilds) and are mirrored into the log. Then
@@ -248,20 +245,17 @@ export function surviveDay(S){
     // live (main.js rolls Q1 at game start); headless tests stay on neutral mmods.
     if (S.regime){ rollRegime(S, S.rng || Math.random); S.mmods = regimeMods(S); }
     S.calendar.mode = "planning";
-    // v5 Phase 7: Auto-Maintenance perk — with the board review now open (planning mode),
-    // auto-assign free crews to the neediest plants before handing control back. It still
-    // pays and still books downtime; the player can cancel any of these in the review.
-    const autoTasks = S.perks?.autoMaint ? autoMaintenancePlan(S).length : 0;
     autoPause(S, "Quarter closed — board review");
     const notes = [];
     if (built.length) notes.push(`${built.length} new plant${built.length > 1 ? "s" : ""} online`);
-    if (completed > 0) notes.push(`${completed} back from maintenance`);
-    if (autoTasks > 0) notes.push(`${autoTasks} auto-scheduled`);
     const money = verdict.bonus ? `+$${verdict.bonus.toLocaleString()} bonus` : verdict.fine ? `−$${verdict.fine.toLocaleString()} fine` : "rate held";
     notes.push(`board verdict: ${money}`);
     setTicker(S, `◼ Quarter closed — ${notes.join(", ")}. Board review ready.`);
     return;
   }
+  // v5.1 Phase 4: the Auto-Maintenance perk is now a DAILY rolling top-up — assign any free
+  // crews to the neediest plants (still pays, reserves crews, books downtime). No-op without it.
+  if (S.perks?.autoMaint) autoMaintenancePlan(S);
   // v5.1 Phase 1: a normal day within a quarter — refresh today's live peak off the
   // (unchanged) quarter baseline × seasonal daily noise. The baseline itself only moves
   // at the quarter rollover (above), so this is wobble, not growth.
@@ -316,9 +310,9 @@ export function step(S, dt){
 
   // unit state machines
   for (const u of S.fleet){
-    // v5 Phase 4: a plant in the shop for quarter-end maintenance is offline for the
-    // whole quarter (the downtime teeth). It holds "maint", takes no commit/spin-up,
-    // never trips, and doesn't wear — resolveQuarterTasks lifts it at the rollover.
+    // v5.1 Phase 4: a plant in the shop for ROLLING maintenance is offline while worked
+    // (the downtime teeth — days now, not a whole quarter). It holds "maint", takes no
+    // commit/spin-up, never trips, and doesn't wear — tickMaint lifts it on completion.
     if (u.maintDown){
       if (u.status !== "maint"){ u.status = "maint"; u.strainTimer = 0; }
       continue;
@@ -588,6 +582,9 @@ export function step(S, dt){
   // v5.1 Phase 3: age the rolling upgrade queue — lands a committed tier on its lead-time day
   // (its own contractor labor; never touches the maintenance crew pool).
   tickContractor(S, dtH);
+  // v5.1 Phase 4: age the rolling MAINTENANCE queue — a completed job restores its axis toward
+  // the cap, levels + frees its crew, and lifts the plant's downtime. Crews are the limiter here.
+  tickMaint(S, dtH);
 
   // insolvency (v4, Phase C): a second fail-path beside the blackout. Being in the
   // red with debt triggers a one-time default (credit cratered for the run); a

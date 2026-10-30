@@ -7,7 +7,7 @@
 // ============================================================
 import { createGame, step, setTicker, beginNextQuarter } from "./sim.js";
 import { toggleUnit, specializeUnit, buyPerk, pinUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
-import { scheduleTask, cancelTask } from "./maint.js";
+import { queueMaint, cancelTask } from "./maint.js";
 import { rollRegime, regimeMods } from "./events.js";
 import { triggerLoadShed, triggerDemandResponse } from "./crisis.js";
 import { promote, hireCrew } from "./crews.js";
@@ -127,7 +127,7 @@ function restartGame(){
 // crew roster (promote with ⚡, hire with cash), then begin the next quarter. Each
 // action mutates S and repaints the office in place; `begin` resumes the live day.
 const planningActions = {
-  schedule(unitId, axis, crewId){ scheduleTask(S, unitId, axis, crewId); renderPlanning(S, planningActions); },
+  schedule(unitId, axis, crewId){ queueMaint(S, unitId, axis, crewId); renderPlanning(S, planningActions); },
   cancelTask(taskId){ cancelTask(S, taskId); renderPlanning(S, planningActions); },
   promote(crewId){ promote(S, crewId); renderPlanning(S, planningActions); },
   hire(trade){ hireCrew(S, trade); renderPlanning(S, planningActions); },

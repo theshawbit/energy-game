@@ -142,7 +142,8 @@ Crew   = { id, name, trade, level, xp, assignment };
          // trade ∈ KPIAxis; off-trade work is allowed at a penalty (soft-specialized)
 Build  = { id, tech, quartersLeft, cost, slipRisk };
          // produces nothing until quartersLeft hits 0; slipRisk rises with overextension
-Task   = { id, axis, unitId, crewId, quartersLeft };   // a scheduled quarter-end maintenance job
+Task   = { id, axis, unitId, crewId, quartersLeft };   // v5 quarter-end maintenance job — SUPERSEDED by
+                                                       // v5.1 Phase 4's rolling MaintJob{daysLeft} (see plan-v5.1)
 Verdict= { year, quarter, kpiScore, pnl, floorRateNext, bonus, fine, note };
 KPIAxis = "reliability" | "efficiency" | "output" | "flexibility";
 ```
@@ -158,7 +159,7 @@ KPIAxis = "reliability" | "efficiency" | "output" | "flexibility";
 | `degradeKPIs(u, style, dtH)` *(mutates `u.kpis`)* | 3 | sim loop |
 | `revenueCoeffs(u.kpis) → { floor, margin, volume, capture }` | 3 | 6 |
 | `assignCrew(S, crewId, taskId) → Task` | 4 | planning UI |
-| `resolveQuarterTasks(S)` *(mutates fleet + crews)* | 4 | 1 (quarter rollover) |
+| `resolveQuarterTasks(S)` *(mutates fleet + crews)* — SUPERSEDED by v5.1 Phase 4 `tickMaint(S, dtH)` (rolling) | 4 | 1 (quarter rollover) |
 | `commitBuild(S, tech) → Build` | 5 | planning UI |
 | `tickBuilds(S)` *(mutates `S.builds`, fleet on completion)* | 5 | 1 (quarter rollover) |
 | `settleQuarter(S) → Verdict` | 6 | 1 (planning mode), 7 |

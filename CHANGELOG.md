@@ -273,6 +273,32 @@ data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. Se
   pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
   deterministic headless run must pin the global RNG *before* calling it.)
 
+### Changed — v5.1 Phase 4: rolling maintenance (2026-10-30)
+
+Fourth phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). **Reverses v5's quarter-end-only
+maintenance batch** — a plant failing on day 5 no longer limps to day 22 before it can be nursed.
+Maintenance is now the *slow-but-steady* repair channel, run on a rolling calendar by the crew pool.
+
+- **`src/live/maint.js` rewritten to a rolling model.** `queueMaint(S, unitId, axis, crewId)` books
+  the cost, reserves a crew, marks the plant offline, and spawns a `MaintJob{daysLeft}` — queueable
+  **any day**, no quarter gate. `tickMaint` (called each tick in `sim.step`) ages jobs and, on
+  completion, restores the worked axis's live KPI toward `u.caps[axis]` (Phase 3's upgraded cap —
+  maintenance fights decay, upgrades raise the ceiling), levels + frees the crew, and lifts the
+  plant's downtime. The plant is **offline while in the shop** — the teeth, now measured in days.
+- **The crew pool is the maintenance-only limiter.** `axisRestore(axis, crew)` = base × level
+  mastery × on/off-trade modifier; `maintCost`/`maintDays` scale with how far the axis has decayed
+  below its cap (a near-dead plant costs more and takes longer). Upgrades draw the separate
+  contractor line (Phase 3), so the two run truly in parallel.
+- **Retires the quarter-end batch** — `scheduleTask` / `resolveQuarterTasks` / `Task{quartersLeft}`
+  and the quarter-close resolution in `sim.surviveDay` are gone. Auto-maintenance (`autoMaint` perk)
+  moves from a once-a-quarter plan to a **daily top-up** that queues the neediest plant.
+- **`config.js`** — new `CFG.v5_1.maint` (lead/severity days, cost floor + per-point charge, per-axis
+  restore). The legacy `CFG.v5.maint` numeric fields stay only for the task catalogue's axis + label.
+- **UI** — the Fleet panel's service note and the board-review maintenance copy are reworded to the
+  rolling language (queue now, a crew works it over the next few days); cost/restore/ETA read from
+  the rolling model.
+- `maint` suite rewritten (8 tasks) + rebased `crews`/`progression` suites. **All 30 suites green.**
+
 ### Changed — v5.1 Phase 3: upgrade ladders & contractor queue (2026-10-30)
 
 Third phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). **Reworks Phase 7's progression**

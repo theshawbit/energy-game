@@ -6,7 +6,7 @@
 import { unitOutput, clamp } from "./sim.js";
 import { quarterLabel } from "./calendar.js";
 import { applyDials } from "./dispatch.js";
-import { TASKS, taskRestore } from "./maint.js";
+import { TASKS, axisRestore, maintCost } from "./maint.js";
 import { TRADES, tradeModifier } from "./crews.js";
 import { BUILDABLES, forecastDemand, concurrencySlip } from "./construct.js";
 import { CFG, BUILD_ORDER, BUILD_GATE, salvageValue } from "./config.js";
@@ -505,10 +505,15 @@ function shortfallHorizon(S, maxQ = 6){
   for (let q = 1; q <= maxQ; q++) if (forecastDemand(S, q) > cap) return q;
   return 0;
 }
-// The axes a plant still has to repair (KPI below full), each with its task + cost.
+// The axes a plant still has to repair (KPI below its upgraded cap), each with its task + the
+// rolling queue cost. v5.1 Phase 3/4: the deficit is measured against u.caps (which upgrades
+// raise), and the cost is the rolling maintCost (scales with the deficit), not a flat quarter fee.
 function kpiDeficits(u){
   return KPI_AXES
-    .map(([axis, letter]) => ({ axis, letter, deficit: Math.round(100 - u.kpis[axis]), task: Object.values(TASKS).find(t => t.axis === axis) }))
+    .map(([axis, letter]) => ({ axis, letter,
+      deficit: Math.round((u.caps?.[axis] ?? 100) - u.kpis[axis]),
+      cost: maintCost(u, axis),
+      task: Object.values(TASKS).find(t => t.axis === axis) }))
     .filter(d => d.deficit > 0 && d.task);
 }
 // v5 Phase 5: the Planning Office build queue — the honest demand forecast, the
@@ -656,7 +661,7 @@ export function renderPlanning(S, actions){
   const c = S.calendar;
   const closedQ = c.quarter === 1 ? CFG.v5.quartersPerYear : c.quarter - 1; // the quarter that just closed
   const closedY = c.quarter === 1 ? c.year - 1 : c.year;
-  const crews = S.crews || [], tasks = S.tasks || [], freeCrews = crews.filter(cr => !cr.assignment);
+  const crews = S.crews || [], tasks = S.maintQueue || [], freeCrews = crews.filter(cr => !cr.assignment);
   const cc = CFG.v5.crews;
 
   // ---- maintenance triage: plants with KPI deficits not already in the shop ----
@@ -667,9 +672,9 @@ export function renderPlanning(S, actions){
   }).join("");
   const triageRows = needy.map(u => {
     const defs = kpiDeficits(u);
-    const axisOpts = defs.map(d => `<option value="${d.axis}">${d.task.label} · ${d.letter} −${d.deficit} · ${money(d.task.cost)}</option>`).join("");
+    const axisOpts = defs.map(d => `<option value="${d.axis}">${d.task.label} · ${d.letter} −${d.deficit} · ${money(d.cost)}</option>`).join("");
     const firstAxis = defs[0].axis;
-    const canAssign = freeCrews.length > 0 && S.cash >= defs[0].task.cost;
+    const canAssign = freeCrews.length > 0 && S.cash >= defs[0].cost;
     return `<div class="tri-row" data-tri="${u.id}">
       <div class="tri-nm">${u.name}<small class="faint">${Math.round(u.cap)} MW · ${u.kind}</small></div>
       ${kpiClusterStatic(u.kpis)}
@@ -679,20 +684,21 @@ export function renderPlanning(S, actions){
     </div>`;
   }).join("") || `<p class="faint tri-empty">No plant needs maintenance — the fleet is in good health.</p>`;
 
-  // ---- scheduled tasks (resolve next quarter, with downtime) ----
-  const schedRows = tasks.map(t => {
-    const u = S.fleet.find(x => x.id === t.unitId), cr = crews.find(x => x.id === t.crewId);
-    const task = TASKS[t.name], pts = Math.round(taskRestore(task, cr));
-    return `<li><span>${u ? u.name : t.unitId} — ${task ? task.label : t.name} (+${pts} ${t.axis.slice(0,3)}, ${cr ? cr.name : "?"})</span>
-      <button class="tri-cancel" data-cancel="${t.id}">Cancel</button></li>`;
+  // ---- in-flight maint jobs (rolling; the plant is offline while worked) ----
+  const schedRows = tasks.map(j => {
+    const u = S.fleet.find(x => x.id === j.unitId), cr = crews.find(x => x.id === j.crewId);
+    const task = TASKS[j.name], pts = Math.round(axisRestore(j.axis, cr));
+    return `<li><span>${u ? u.name : j.unitId} — ${task ? task.label : j.name} (+${pts} ${j.axis.slice(0,3)}, ${cr ? cr.name : "?"})</span>
+      <span class="faint">${Math.ceil(j.daysLeft)}d</span>
+      <button class="tri-cancel" data-cancel="${j.id}">Cancel</button></li>`;
   }).join("");
   const schedBlock = tasks.length
-    ? `<div class="pl-sched"><h4>Scheduled next quarter <small class="faint">— these plants are offline while worked</small></h4><ul>${schedRows}</ul></div>`
+    ? `<div class="pl-sched"><h4>In the shop <small class="faint">— rolling jobs; these plants are offline until done</small></h4><ul>${schedRows}</ul></div>`
     : "";
 
   // ---- crew roster: trade, level, assignment; promote with ⚡, hire with cash ----
   const crewRows = crews.map(cr => {
-    const busy = cr.assignment ? S.fleet.find(u => (S.tasks || []).some(t => t.id === cr.assignment && t.unitId === u.id)) : null;
+    const busy = cr.assignment ? S.fleet.find(u => (S.maintQueue || []).some(j => j.id === cr.assignment && j.unitId === u.id)) : null;
     const xpPct = Math.round(Math.min(1, cr.xp / cc.xpCurve) * 100);
     const canPromote = cr.levelCap < cc.maxLevel && (S.zap || 0) >= cc.promoteCost;
     const promoteBtn = cr.levelCap < cc.maxLevel
@@ -717,9 +723,9 @@ export function renderPlanning(S, actions){
       <div class="pl-kicker">Planning Office</div>
       <h2>Quarter Review</h2>
       <p class="pl-lead">Y${closedY} · Q${closedQ} has closed. The board has graded the quarter — settle the
-        verdict below, then triage the fleet's wear: assign crews to per-KPI jobs that resolve over Y${c.year} ·
-        Q${c.quarter}, with the plant offline while it's in the shop. There's no mid-quarter buy-out, so repair
-        what will hurt most and build ahead of the curve.</p>
+        verdict below, then triage the fleet's wear: assign crews to per-KPI jobs that now resolve on a
+        <em>rolling</em> schedule (days, not a whole quarter), with the plant offline while it's in the shop.
+        Crews are the maintenance limiter — repair what will hurt most and build ahead of the curve.</p>
 
       ${verdictCard(S)}
 
@@ -1027,9 +1033,9 @@ function dialsRow(S, u){
   </div></td></tr>`;
 }
 function fleetBody(S){
-  // v5 Phase 4: maintenance moved to the quarter-end Planning Office; a short note
-  // points the player there instead of offering mid-quarter service.
-  const svcNote = `<p class="svc-note faint">⚙ Maintenance is scheduled at the quarter-end board review — nurse a broken plant to the quarter close.</p>`;
+  // v5.1 Phase 4: maintenance is ROLLING — queued from the board review and worked by a
+  // crew over a few days, independent of the quarter. A short note points the player there.
+  const svcNote = `<p class="svc-note faint">⚙ Maintenance runs on a rolling schedule — queue a plant at the board review and a crew works it over the next few days.</p>`;
   const cmp = makeFleetComparator(fleetSort.col, fleetSort.dir, u => unitOutput(S, u));
   const rows = [...S.fleet].sort(cmp).map(u => fleetRow(S, u)).join("");
   const arr = c => fleetSort.col === c ? (fleetSort.dir > 0 ? " ▲" : " ▼") : "";

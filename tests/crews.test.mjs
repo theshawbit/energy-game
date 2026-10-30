@@ -2,7 +2,7 @@
 // (src/live/crews.js). A crew is best at one trade but fungible across all; it levels
 // through use; ⚡ promotes standouts; the roster ceiling and wages bite. Run: `npm test`.
 import { makeCrew, tradeModifier, gainXP, canLevelUp, promote, hireCrew, wageBill, TRADES } from "../src/live/crews.js";
-import { taskRestore, TASKS } from "../src/live/maint.js";
+import { axisRestore } from "../src/live/maint.js";
 import { CFG } from "../src/live/config.js";
 
 let failed = 0;
@@ -16,7 +16,7 @@ const cc = CFG.v5.crews;
 {
   const onCrew = makeCrew("reliability", 1);   // overhaul restores reliability → on-trade
   const offCrew = makeCrew("efficiency", 2);   // … → off-trade
-  const on = taskRestore(TASKS.overhaul, onCrew), off = taskRestore(TASKS.overhaul, offCrew);
+  const on = axisRestore("reliability", onCrew), off = axisRestore("reliability", offCrew);
   check("tradeModifier is 1.0 on-trade, the penalty off-trade (never 0)",
     tradeModifier(onCrew, "reliability") === 1 && tradeModifier(onCrew, "efficiency") === cc.offTrade && cc.offTrade > 0);
   check("a crew restores more on its trade than off it, and off-trade still > 0", on > off && off > 0,
@@ -26,10 +26,10 @@ const cc = CFG.v5.crews;
 // 7) Crews level passively through use — crossing the XP curve raises the level + edge.
 {
   const crew = makeCrew("output", 3);
-  const before = taskRestore(TASKS.uprate, crew); // level 1 on-trade
+  const before = axisRestore("output", crew); // level 1 on-trade (uprate → output)
   gainXP(crew, cc.xpCurve);                        // exactly one level's worth of work
   check("banking a full XP curve raises the crew's level", crew.level === 2, `Lv ${crew.level}`);
-  const after = taskRestore(TASKS.uprate, crew);
+  const after = axisRestore("output", crew);
   check("a higher level sharpens the on-trade edge", after > before, `${before.toFixed(1)} → ${after.toFixed(1)}`);
   // XP alone can't climb past the fresh ceiling …
   gainXP(crew, cc.xpCurve * 10);
