@@ -4,6 +4,7 @@
 // ============================================================
 import { SOLAR_CF, WIND_CF, TECH } from "../constants.js";
 import { defaultDials } from "./dispatch.js";
+import { freshKPIs } from "./kpi.js";
 
 // ---- tuning (meant to be played with) ----
 export const CFG = {
@@ -202,6 +203,26 @@ export const CFG = {
       recover: [1.5, 3],      // game-hours to come back from a trip
       startTime: 1.6,         // game-hours to spin up from cold (the "fast" in fast gas)
     },
+    // Phase 3: the degradation keystone. Per-axis decay keyed to operating STYLE —
+    // replaces the single wearRate. Wear is EARNED by how you dial a plant, never
+    // ambient: push a high-load plant and Reliability/Output bleed; run it at part-
+    // load and Efficiency drifts; cycle it and Flexibility (and a little Reliability)
+    // takes the hit. Rates are %/game-hour at full stress; the hits are %/event.
+    decay: {
+      idleFloor:   0.12,      // a spinning-idle plant still carries this load share
+      loadRefHigh: 0.70,      // loadFrac above this counts as "high load" (push bites here)
+      partLoadRef: 0.50,      // loadFrac below this is "part-load" (efficiency drifts)
+      reliability: 0.55,      // %/gh when push×high-load = 1
+      output:      0.40,      // %/gh when push×high-load = 1
+      efficiency:  0.45,      // %/gh at full part-load (loadFrac → idleFloor)
+      rampHit:     1.0,       // flexibility % lost per ramp (band move)
+      startHit:    2.5,       // flexibility % lost per start (cold → committed)
+      startRelHit: 0.4,       // reliability % nicked per start
+    },
+    // Phase 3: KPI → effect curves. outputMin = derate floor at Output 0; heatRateMax
+    // = extra $/MWh fraction at Efficiency 0; rampMin = ramp-speed floor at Flex 0;
+    // minLoadMax = min stable load (as a cap fraction) at Flex 0.
+    kpiCurve: { outputMin: 0.6, heatRateMax: 0.5, rampMin: 0.5, minLoadMax: 0.4 },
   },
 };
 
@@ -339,9 +360,18 @@ export function makeFleet() {
     { id:"pk3",  name:"Forgewell Gas",      kind:"gas",    tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:g.spin, tier:1, condition:100, status:"off", ctrl:true, fail:g.fail, recover:[...g.recover], startTime:g.startTime, key:"3" },
     { id:"bat",  name:"Weircross Battery",  kind:"battery",tech:"battery", cap:120, mc:TECH.battery.mc, tier:1, status:"off",    ctrl:true,  energy:240, maxEnergy:240, key:"B" },
   ];
-  for (const u of fleet) u.dials = defaultDials(u); // Phase 2: Core+ dials on every unit
+  for (const u of fleet){
+    u.dials = defaultDials(u);                       // Phase 2: Core+ dials on every unit
+    if (u.condition != null){
+      u.kpis = freshKPIs();                           // Phase 3: four KPI axes on mechanical plants
+      u.prevDials = dialSnapshot(u.dials);            // Phase 3: baseline for cycle (ramp/start) detection
+    }
+  }
   return fleet;
 }
+
+// A minimal dials snapshot the sim diffs each tick to spot ramps/starts (cycleCost).
+export function dialSnapshot(d){ return { commit: d.commit, bandMin: d.bandMin, bandMax: d.bandMax }; }
 
 // Factory for a unit added mid-run via the build catalogue. `n` numbers the
 // unit for display; `seq` makes its id unique.
@@ -353,11 +383,12 @@ export function makeUnit(tech, n, seq){
   const u = { id:`${tech}-${seq}`, name:plantName(tech, n), kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
               status: (kind === "gas" || kind === "battery") ? "off" : "online",
               ctrl: (kind === "gas" || kind === "battery"), key:null };
-  if (kind === "firm" || kind === "gas"){ u.condition = 100; u.ageHours = 0; } // mechanical plants wear & can be serviced
+  if (kind === "firm" || kind === "gas"){ u.condition = 100; u.ageHours = 0; u.kpis = freshKPIs(); } // mechanical plants wear (Phase 3 KPIs) & can be serviced
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
   if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
   if (kind === "firm"){ const p = FIRM_PARAMS[tech] || FIRM_PARAMS.coal; u.spin = p.spin; u.fail = p.fail; u.recover = [...p.recover]; }
   if (kind === "gas"){ const g = CFG.v5.gas; u.spin = g.spin; u.fail = g.fail; u.recover = [...g.recover]; u.startTime = g.startTime; }
   u.dials = defaultDials(u); // Phase 2: Core+ dials
+  if (u.kpis) u.prevDials = dialSnapshot(u.dials); // Phase 3: cycle-detection baseline
   return u;
 }

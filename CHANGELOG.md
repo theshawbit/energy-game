@@ -65,6 +65,30 @@ peaker is retired. See [`docs/plan-v5/phase-2-dispatch-dials.md`](docs/plan-v5/p
 - New `dispatch` suite (8 tasks) + sim/mutators assertions updated for the gas kind; all 17 green.
 - **Push has no mechanical effect yet** — it is a stored dial until the Phase 3 degradation keystone.
 
+### Added — v5 Phase 3: KPIs & style-driven degradation (2026-10-29)
+
+The single `condition %` becomes **four axis-aligned KPIs**, and how you *run* a plant decides
+which one decays — the degradation keystone the dials were built for. See
+[`docs/plan-v5/phase-3-kpis-degradation.md`](docs/plan-v5/phase-3-kpis-degradation.md).
+
+- **`kpi.js` (new, pure, RNG-free)** — the four axes (`reliability` · `efficiency` · `output` ·
+  `flexibility`) and their effects: Output derates effective max (`effectiveMax`), Efficiency
+  re-prices fuel (`heatRateMult`), Flexibility sets ramp speed + min stable load, Reliability
+  gates trips. `degradeKPIs(u, style, dtH)` is the keystone: **push + sustained high load** wears
+  Reliability & Output, **part-load** wears Efficiency, **cycling** (ramps/starts) beats up
+  Flexibility (a start also nicks Reliability). `revenueCoeffs` is the clean 1:1 axis→money map
+  Phase 6 will bet on.
+- **Wear is earned by style, never ambient.** The old age-driven wear is gone — `ageHours` is
+  still tracked (Phase 4 reads it) but no longer decays a plant by itself; a calm neutral day
+  barely moves the KPIs.
+- **`engine.js` stays sacred.** The Efficiency penalty is charged as an operator fuel *surcharge*
+  on cash, not by reordering the merit order; the engine's clearing price is untouched.
+- **`condition` lives on as a derived worst-axis proxy** (`min` of the four), so the dormant v4
+  service / auto-service / UI code keeps working unchanged until Phase 4 replaces maintenance.
+- **KPI UI** — the single condition bar becomes a compact 2×2 **R·E·O·F** micro-bar cluster, in
+  both the live fleet rail and Manage ▸ Fleet (the "Health" column), each bar banded by its value.
+- New `kpi` suite (10 tasks); the stale v4 age-wear test is re-pointed at the new style model; all 18 green.
+
 ## [4.2.6] — 2026-10-26
 
 - Proper generated plant names (`Harrowgate Nuclear`, `Blackmoor Coal`, …) via a

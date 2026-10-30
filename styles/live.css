@@ -128,6 +128,13 @@ table.fleet-live .faint{color:var(--faint);font-weight:400}
 .fu-cond{white-space:nowrap}
 .cbar{display:inline-block;width:24px;height:3px;border-radius:3px;background:#0a0e14;overflow:hidden;margin-left:5px;vertical-align:middle}
 .cbar i{display:block;height:100%;width:100%;border-radius:3px;transition:width .2s,background .2s}
+/* v5 Phase 3: the four KPI axes (R·E·O·F) as a compact 2×2 micro-bar cluster. */
+.kpis{display:inline-grid;grid-template-columns:repeat(2,auto);gap:2px 7px;justify-content:end;vertical-align:middle}
+.kq{display:flex;align-items:center;gap:3px}
+.kq>b{font:600 9px/1 var(--mono);color:var(--faint);width:7px;text-align:center}
+.kb{display:inline-block;width:30px;height:3px;border-radius:3px;background:#0a0e14;overflow:hidden}
+.kb i{display:block;height:100%;width:0;border-radius:3px;transition:width .2s,background .2s}
+table.fleet .kpis{justify-content:flex-start}
 /* status pill (shared color classes below are reused by the Manage table too) */
 table.fleet-live .st{display:inline-block;font-family:var(--mono);font-size:.53rem;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;border-radius:20px;border:1px solid;white-space:nowrap}
 .st-online{color:var(--online);border-color:#1f4a33;background:#0f2619}

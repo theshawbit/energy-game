@@ -10,10 +10,11 @@
 // ============================================================
 import { DEMAND_SHAPE } from "../constants.js";
 import { dispatchHour } from "../engine.js";
-import { CFG, makeFleet, serviceCost, serviceTimeFor } from "./config.js";
+import { CFG, makeFleet, serviceCost, serviceTimeFor, dialSnapshot } from "./config.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
 import { freshClock, tickClock, autoPause } from "./clock.js";
-import { applyDials } from "./dispatch.js";
+import { applyDials, cycleCost } from "./dispatch.js";
+import { degradeKPIs, freshKPIs, heatRateMult } from "./kpi.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
@@ -137,8 +138,11 @@ export function dailyStrainProb(cond){
 // lifted by `diff` as the run climbs. Healthy plants are near-immune; the mid-band
 // is punishing. A trip is the symptom of neglect, not bad luck.
 export function tripHazard(u, diff){
-  if (u.condition == null) return 0; // only thermal plants wear and trip
-  const pDay = dailyStrainProb(u.condition);
+  // v5 Phase 3: trip risk is gated by the RELIABILITY KPI (condition is retired from
+  // the live path). Renewables/batteries carry no kpis and never trip.
+  const rel = u.kpis ? u.kpis.reliability : u.condition;
+  if (rel == null) return 0;
+  const pDay = dailyStrainProb(rel);
   const baseRate = -Math.log(1 - pDay) / CFG.secondsPerDay; // rate → pDay over one game-day at diff 1
   return baseRate * diff * (u.fail / CFG.tripRefFail);
 }
@@ -247,7 +251,7 @@ export function step(S, dt){
       }
     }
     if (u.status === "starting"){ u.startTimer -= dtH; if (u.startTimer <= 0) u.status = "online"; }
-    else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; u.ageHours = (u.ageHours || 0) * CFG.serviceAgeRelief; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
+    else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; if (u.kpis) u.kpis = freshKPIs(); u.ageHours = (u.ageHours || 0) * CFG.serviceAgeRelief; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
     else if (u.status === "tripped"){ u.tripTimer -= dtH; if (u.tripTimer <= 0) u.status = u.ctrl ? "off" : "online"; }
     // v4.1 telegraphed trip: a strained plant is still generating but on borrowed
     // time — it drops when the warning window runs out. The window is your cue to
@@ -291,25 +295,29 @@ export function step(S, dt){
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
   S.co2Total += hr.emissions * dtH;                           // run total, tCO₂ (emissions is tCO₂/h)
 
-  // ---- WEAR (v4.2.1): deterioration weighted by LOAD × AGE ----
-  // Only generating thermal plants wear. loadMult = gridUtil (how hard the whole
-  // grid is leaning on its online capacity) × assetLoad (this unit's own dispatch
-  // share of its cap — derived by splitting each tech's dispatched MW across that
-  // tech's online units). ageMult rises with accumulated runtime (ageHours), which
-  // persists through service/upgrade but is partially relieved each time.
-  const gridUtil = clamp(S.capacity > 0 ? S.demand / S.capacity : 0, CFG.wearLoadFloor, CFG.wearLoadMax);
+  // ---- DEGRADATION (v5 Phase 3): KPIs decay by operating STYLE ----
+  // How you DIAL a plant decides which axis bleeds (kpi.degradeKPIs): push a high-load
+  // plant → Reliability/Output; run it part-load → Efficiency; cycle it → Flexibility.
+  // Only generating thermal plants degrade. effSurcharge is the extra fuel a low-
+  // Efficiency plant burns, charged to cash below — the engine's clearing price is
+  // untouched (sacred); only the operator's cost rises. u.condition becomes a derived
+  // worst-axis proxy for the dormant service/UI code (Phase 4 replaces maintenance).
   const wearMods = S.mods.wearMult * (S.rmods?.wearMult ?? 1);
+  let effSurcharge = 0;
   for (const u of S.fleet){
-    if (u.condition == null || !(u.status === "online" || u.status === "strained")) continue;
+    if (!u.kpis || !(u.status === "online" || u.status === "strained")) continue;
     const techAvail = avail[u.tech] || 0;                     // MW this tech offered the merit order
     const share = techAvail > 0 ? (hr.stack?.[u.tech] || 0) / techAvail : 0; // 0..1 dispatched fraction
     u.loadFrac = share;                                                      // expose for UI/tests
-    const assetLoad = Math.max(CFG.wearIdleFloor, Math.min(1, share));       // spinning-idle floor
-    u.ageHours = (u.ageHours || 0) + dtH;                     // accrues only while generating; persists
-    const ageMult = 1 + CFG.ageWearK * (u.ageHours / CFG.ageRef);
-    const strainMult = u.status === "strained" ? 1.5 : 1;     // a straining plant wears a touch faster
-    const wear = CFG.wearRate * gridUtil * assetLoad * ageMult * strainMult * wearMods * dtH;
-    u.condition = Math.max(0, u.condition - wear);
+    u.ageHours = (u.ageHours || 0) + dtH;                     // still tracked (Phase 4 reads it); no longer wears directly
+    // ramp/start events since this unit last generated (dispatch.cycleCost)
+    const prev = u.prevDials || dialSnapshot(u.dials);
+    const cyc = cycleCost(u, prev, u.dials);
+    degradeKPIs(u, { loadFrac: share, push: u.dials?.push ?? 0, ramped: cyc.ramped, started: cyc.started }, dtH * wearMods);
+    u.prevDials = dialSnapshot(u.dials);
+    // efficiency re-prices: extra fuel ∝ (heatRateMult − 1) × this unit's dispatched MW
+    effSurcharge += unitOutput(S, u) * share * (u.mc || 0) * (heatRateMult(u.kpis.efficiency) - 1);
+    u.condition = Math.min(u.kpis.reliability, u.kpis.efficiency, u.kpis.output, u.kpis.flexibility);
   }
 
   // spin: cost of keeping a thermal plant synced while it's generating (online or
@@ -356,14 +364,14 @@ export function step(S, dt){
   S.contractedMW = contractedMW;                            // exposed for D's spot-kill track
   const residualMW = Math.max(0, hr.served - contractedMW); // never negative, never unserved
   const revenue = contractRevenue + residualMW * spot;
-  S.cash += (revenue - hr.varCost - spin - fixedOM) * dtH;  // unserved load earns nothing
+  S.cash += (revenue - hr.varCost - effSurcharge - spin - fixedOM) * dtH;  // unserved load earns nothing; effSurcharge = Phase 3 efficiency-KPI fuel penalty
 
   // v4.2 (CR-2): surface the existing hour's figures as read-only live readouts.
   // Not new mechanics — just the numbers already summed above, exposed as rates so
   // the status cluster can show cash flow ($/h), spot exposure, and blended price.
   S.served = hr.served;                                     // MW actually delivered
   S.contractRevenue = contractRevenue;                      // $/h locked at contract prices
-  let flowPerH = revenue - hr.varCost - spin - fixedOM;     // instantaneous net cash, $/game-hour
+  let flowPerH = revenue - hr.varCost - effSurcharge - spin - fixedOM; // instantaneous net cash, $/game-hour
 
   // financing (v4, Phase C): interest on outstanding debt is the fixed obligation
   // that makes the hedge floor matter. Rate comes off the live credit standing;

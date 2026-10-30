@@ -1,7 +1,8 @@
 // Unit tests for v5 Phase 2 — dial-able dispatch (src/live/dispatch.js) and its
 // wiring into the sim. The dials shape the OFFER; the SACRED engine still clears.
 // Determinism is pinned with S.calm + a fixed Math.random. Run: `npm test`.
-import { applyDials, defaultDials, cycleCost, effectiveMax } from "../src/live/dispatch.js";
+import { applyDials, defaultDials, cycleCost } from "../src/live/dispatch.js";
+import { effectiveMax } from "../src/live/kpi.js"; // Phase 3 moved the Output-derated cap here
 import { makeFleet, makeUnit, CFG } from "../src/live/config.js";
 import { createGame, step } from "../src/live/sim.js";
 import { dispatchHour } from "../src/engine.js";
