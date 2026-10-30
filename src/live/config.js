@@ -312,8 +312,11 @@ export const CFG = {
       step:        10,        // KPI points an axis's cap rises per cash upgrade
       cost0:       28000,     // $ for the first upgrade on an axis (at base) …
       costGrowth:  1.5,       // … and each further upgrade on that axis costs this much more
-      baseCeiling: 120,       // cash alone can push an axis this high (no research) …
-      axisMax:     150,       // … and nothing ever past here, even fully researched
+      baseCeiling: 120,       // (legacy Phase 7 RP-ceiling knobs — retired by v5.1 Phase 3's tier ladder)
+      // v5.1 Phase 3: the KPI effect curves (kpi.js axisClamp) read up to here. It must cover the
+      // upgrade ladder's TOP cap = base × (1 + tierMax × tierStep) ≈ 262 at the shipped v5_1.upgrade
+      // values, so a tier-9 axis isn't silently clamped. Retune both together if the ladder changes.
+      axisMax:     262,
       ceilingStep: 15,        // RP raises a tech-family axis's hard ceiling by this many points
       ceilingCost0: 55,       // RP for the first ceiling raise on a tech+axis …
       ceilingGrowth: 1.5,     // … steepening per raise
@@ -467,6 +470,20 @@ export const CFG = {
       verdictHeal: 25,     // max hp healed by a perfect quarter (scaled by grade above par)
       verdictDamage: 15,   // max hp damage from a zero-grade quarter (scaled by grade below par)
       verdictFillBump: 0.5,// max added to fillMult by a zero-grade quarter (accelerates next quarter)
+    },
+    // Phase 3 — per-plant UPGRADE LADDERS + the contractor queue. Reworks Phase 7's instant
+    // cash specialization into FOUR parallel 9-tier ladders (one per KPI axis), applied on a
+    // rolling contractor line (its own labor, never the maintenance crew pool). u.tiers[axis]
+    // (0..9) drives u.caps[axis] via axisTierValue; each tier ~+tierStep of base (nine tiers →
+    // ~2.6× base), with a GEOMETRIC cost so you can't rush to max. Numbers are balance data —
+    // the tests pin "nine tiers, geometric cost, ~2–3× at max" + the lead time, not the figures.
+    upgrade: {
+      base:       100,      // tier 0 cap (a fresh plant's KPI base) — matches CFG.v5.upgrade.base
+      tierMax:    9,        // nine cash tiers per axis; tier 9 is the cap
+      tierStep:   0.18,     // each tier adds this fraction of base to the axis cap → tier 9 ≈ 2.6× base
+      costBase:   20000,    // $ for the first tier (tier 0 → 1) …
+      costGrowth: 1.55,     // … geometric steepening per tier (money + time gate, not a single buy)
+      leadDays:   6,        // contractor lead time per upgrade job (rolling; lands mid-quarter)
     },
   },
 };
@@ -622,7 +639,8 @@ export function makeFleet() {
     u.dials = defaultDials(u);                       // Phase 2: Core+ dials on every unit
     if (u.condition != null){
       u.kpis = freshKPIs();                           // Phase 3: four KPI axes on mechanical plants
-      u.caps = freshCaps();                           // Phase 7: per-axis attainable-max (cash-upgraded)
+      u.caps = freshCaps();                           // Phase 7: per-axis attainable-max (maint restore target)
+      u.tiers = freshTiers();                         // v5.1 Phase 3: per-axis upgrade tier (0..9) drives caps
       u.prevDials = dialSnapshot(u.dials);            // Phase 3: baseline for cycle (ramp/start) detection
     }
   }
@@ -632,9 +650,13 @@ export function makeFleet() {
 // A minimal dials snapshot the sim diffs each tick to spot ramps/starts (cycleCost).
 export function dialSnapshot(d){ return { commit: d.commit, bandMin: d.bandMin, bandMax: d.bandMax }; }
 
-// Phase 7: a fresh plant's per-axis attainable-max — the ceiling maintenance restores
-// toward and cash upgrades (progression.applyUpgrade) raise. Every axis starts at base 100.
+// Phase 7 / v5.1 Phase 3: a fresh plant's per-axis attainable-max — the ceiling maintenance
+// restores toward. Every axis starts at base (= tier 0). The caps are now DERIVED from
+// u.tiers via progression.axisTierValue once upgrades land; freshCaps seeds the tier-0 value.
 export function freshCaps(){ const b = CFG.v5.upgrade.base; return { reliability: b, efficiency: b, output: b, flexibility: b }; }
+// v5.1 Phase 3: a fresh plant's per-axis UPGRADE TIER (0..9). Contractor jobs raise a tier,
+// which recomputes the matching cap. Every axis starts untiered.
+export function freshTiers(){ return { reliability: 0, efficiency: 0, output: 0, flexibility: 0 }; }
 
 // Factory for a unit added mid-run via the build catalogue. `n` numbers the
 // unit for display; `seq` makes its id unique. v5 Phase 9: `era` (from world.eraOf)
@@ -648,7 +670,7 @@ export function makeUnit(tech, n, seq, era){
   const u = { id:`${tech}-${seq}`, name:plantName(tech, n, era), kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
               status: (kind === "gas" || kind === "battery") ? "off" : "online",
               ctrl: (kind === "gas" || kind === "battery"), key:null };
-  if (kind === "firm" || kind === "gas"){ u.condition = 100; u.ageHours = 0; u.kpis = freshKPIs(); u.caps = freshCaps(); } // mechanical plants wear (Phase 3 KPIs) & specialize (Phase 7 caps)
+  if (kind === "firm" || kind === "gas"){ u.condition = 100; u.ageHours = 0; u.kpis = freshKPIs(); u.caps = freshCaps(); u.tiers = freshTiers(); } // mechanical plants wear (Phase 3 KPIs) & upgrade (v5.1 P3 tiers→caps)
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
   if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
   if (kind === "firm"){ const p = FIRM_PARAMS[tech] || FIRM_PARAMS.coal; u.spin = p.spin; u.fail = p.fail; u.recover = [...p.recover]; }

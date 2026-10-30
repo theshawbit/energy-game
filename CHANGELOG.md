@@ -273,6 +273,35 @@ data in `CFG.v5.world`**, and a pure selector (`src/live/world.js`) reads it. Se
   pin the global RNG — is unrelated; note `createGame` draws `Math.random` at construction, so a
   deterministic headless run must pin the global RNG *before* calling it.)
 
+### Changed — v5.1 Phase 3: upgrade ladders & contractor queue (2026-10-30)
+
+Third phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). **Reworks Phase 7's progression**
+into the *fast* capacity channel — sweat existing assets between builds — on a rolling line with
+its own labor.
+
+- **Four parallel 9-tier cash ladders per plant.** Each KPI axis (Output / Reliability /
+  Efficiency / Flexibility) now has its own `u.tiers[axis]` (0..9) driving `u.caps[axis]` via
+  `axisTierValue` (each tier +`tierStep` of base → tier 9 ≈ **2.6×** base). Cost steepens
+  **geometrically** per tier (`upgradeCost`, Infinity at the cap), so you can't rush to max.
+- **New `src/live/contractor.js` (pure).** `queueUpgrade` commits cash up front and spawns an
+  `UpgradeJob` on a rolling calendar; `tickContractor` (called each tick in `sim.step`) ages jobs
+  and, on completion, applies the tier + raises the cap. **Separate labor — never the maintenance
+  crew pool (Phase 4)**, so upgrades and maintenance run truly in parallel. You pay to *wait* for
+  a higher ceiling, not to *have* it; degradation still pulls the live KPI below the raised cap.
+- **`progression.js` reworked** — adds the ladder (`axisTierValue`, `upgradeTierMax`,
+  `upgradeCost(u, axis, rmods?)`, `canUpgrade`); **retires** Phase 7's instant `applyUpgrade` and
+  the RP family-ceiling lane (`raiseCeiling`/`axisHardCeiling`/`S.capCeil`) — the 9-tier ladder
+  defines the ceiling directly. The Modular Upgrades research discount is preserved (threaded via
+  the optional `rmods` arg). **⚡ perks survive unchanged** on `S.zap` (their funding rehomes to
+  the Phase 6 quarterly currency — called out here, not silently dropped).
+- **`config.js`** — `CFG.v5_1.upgrade` (tier step, geometric cost, lead days); `freshTiers()`;
+  `CFG.v5.upgrade.axisMax` lifted to 262 so the KPI effect curves read the full tier-9 cap.
+- **UI** — the quarter-review Development Office now shows per-plant axis ladders (tier N/9 +
+  next-tier cost + ETA) that queue onto the contractor line, plus the in-flight queue; the RP
+  family-ceiling controls are gone. Phase 7 gives this the full per-plant drill-down.
+- New `contractor` suite (6 tasks) + rebased `progression`/`sim`/`research` suites. **All 30
+  suites green.**
+
 ### Added — v5.1 Phase 2: fail-state & grid-stability HP bar (2026-10-30)
 
 Second phase of the [v5.1 rebalance](docs/plan-v5.1/README.md). **Reverses the single most

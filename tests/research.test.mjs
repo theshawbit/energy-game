@@ -83,13 +83,13 @@ S = createGame(); S.rp = 1e6; S.over = true;
 r = researchNode(S, "buff-wear");
 check("research refused after the run ends", !r.ok && !S.research["buff-wear"]);
 
-// 11) v5 Phase 7: the Modular Upgrades node discounts the CASH cost of a specialization
-// upgrade (the Mk ladder it used to amplify is retired; progression.upgradeCost reads the mod).
+// 11) v5.1 Phase 3: the Modular Upgrades node discounts the CASH cost of a contractor upgrade
+// (progression.upgradeCost reads rmods.upgradeDiscount; passed by the queue/UI from S.rmods).
 S = createGame();
-const specUnit = S.fleet.find(u => u.caps);           // any thermal plant has per-axis caps
-const plainCost = upgradeCost(S, specUnit, "output"); // no research yet
+const specUnit = S.fleet.find(u => u.tiers);          // any thermal plant has per-axis tiers
+const plainCost = upgradeCost(specUnit, "output");    // no research yet
 S.research = { "amp-upgrades": true }; S.rmods = computeResearchMods(S.research);
-const discountedCost = upgradeCost(S, specUnit, "output");
+const discountedCost = upgradeCost(specUnit, "output", S.rmods);
 check("Modular Upgrades discounts specialization cost", discountedCost < plainCost,
   `$${plainCost} → $${discountedCost} (−15%)`);
 

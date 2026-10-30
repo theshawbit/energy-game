@@ -1,16 +1,17 @@
 // ============================================================
-// PROGRESSION (v5 Phase 7) — the three growth lanes, retiring the v4 Mk ladder.
+// PROGRESSION (v5 Phase 7, reworked by v5.1 Phase 3) — the growth lanes.
 //
-//  • SPECIALIZATION (cash) — raise any of a thermal plant's four KPI attainable-maxes
-//    (`u.caps[axis]`) along a STEEPENING per-axis curve. Free development, no branch
-//    lock: a plant can take any mix of axes, but spreading thin costs more. The KPI
-//    effect curves (kpi.js) read past 100, so a raised cap is a real edge.
-//  • RESEARCH (RP) — `raiseCeiling` lifts a tech-family axis's HARD ceiling (how far
-//    cash can push it), up to CFG.v5.upgrade.axisMax. (The named v3 tech tree —
-//    research.js — stays as-is for build unlocks / buffs.)
+//  • UPGRADE LADDERS (cash, v5.1 Phase 3) — four parallel 9-tier ladders per plant, one
+//    per KPI axis. `u.tiers[axis]` (0..9) drives `u.caps[axis]` (axisTierValue); each tier
+//    ~+tierStep of base with a GEOMETRIC cost, so nine tiers (~2.6× base) is a long climb.
+//    The KPI effect curves (kpi.js) read past 100, so a raised cap is a real edge. Tiers are
+//    bought through the rolling CONTRACTOR queue (contractor.js) — its own labor, never the
+//    maintenance crew pool — the fast capacity channel between builds. (This RETIRES Phase 7's
+//    instant cash specialization + the RP-family-ceiling lane; RP stays the v3 tech tree.)
 //  • ⚡ PERKS — crew roster, research-branch unlocks, and AUTOMATION (auto-maintenance,
-//    dispatch assist) that is GROWTH-TIER-GATED: a small grid can't automate, so you
-//    feel the clerical burden of scale before you earn the relief.
+//    dispatch assist) that is GROWTH-TIER-GATED: a small grid can't automate, so you feel
+//    the clerical burden of scale before you earn the relief. (⚡ funding rehomes to the
+//    Phase 6 quarterly currency; kept on S.zap in the interim — see the Phase 3 PR note.)
 //
 // Pure over `S` (no DOM, no RNG). Automation routes through the Phase 4 scheduleTask /
 // Phase 2 dials — relief, never a cheat (it still pays, still obeys quarter-end timing).
@@ -22,82 +23,44 @@ import { scheduleTask } from "./maint.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const AXES = ["reliability", "efficiency", "output", "flexibility"];
 
-// ---- specialization (cash) ----
+// ---- the per-axis upgrade ladder (v5.1 Phase 3) ----
+//
+// Four parallel 9-tier cash ladders per plant (one per KPI axis). `u.tiers[axis]` (0..9) is the
+// source of truth; it drives `u.caps[axis]` (the attainable max maintenance restores toward) via
+// axisTierValue. A tier is BOUGHT through the rolling contractor queue (contractor.js) — this
+// module owns the ladder curve + cost + eligibility; the queue owns the money + lead time.
 
-// How many cash upgrades an axis has already taken (0 at a fresh plant's base).
-function axisSteps(u, axis){
-  const up = CFG.v5.upgrade;
-  return Math.max(0, Math.round(((u.caps?.[axis] ?? up.base) - up.base) / up.step));
+// Nine cash tiers per axis; tier 9 is the cap.
+export const upgradeTierMax = CFG.v5_1.upgrade.tierMax;
+
+// The attainable-max an axis reaches at a given tier (0..tierMax): base at tier 0, each tier
+// adds `tierStep` of base, so tier 9 lands at ~2.6× base. Pure in config (no RNG).
+export function axisTierValue(tier){
+  const up = CFG.v5_1.upgrade;
+  const t = clamp(Math.round(tier || 0), 0, up.tierMax);
+  return Math.round(up.base * (1 + t * up.tierStep));
 }
 
-// The steepening cash cost of the NEXT upgrade on an axis — each point costs more than
-// the last. The research "Modular Upgrades" node discounts it (rmods.upgradeDiscount).
-export function upgradeCost(S, u, axis){
-  const up = CFG.v5.upgrade;
-  const raw = up.cost0 * Math.pow(up.costGrowth, axisSteps(u, axis));
-  return Math.round(raw * (1 - (S.rmods?.upgradeDiscount ?? 0)));
+// The steepening cash cost to buy the NEXT tier on `u`'s `axis` — geometric in the current
+// tier, so you can't rush to max. Returns Infinity at the cap (tier 9) so callers refuse it.
+// `rmods` is optional (stays pure): the Modular Upgrades research node discounts the cost via
+// rmods.upgradeDiscount; omitted → the undiscounted ladder cost.
+export function upgradeCost(u, axis, rmods){
+  const up = CFG.v5_1.upgrade;
+  const tier = u?.tiers?.[axis] ?? 0;
+  if (tier >= up.tierMax) return Infinity;
+  const raw = up.costBase * Math.pow(up.costGrowth, tier);
+  return Math.round(raw * (1 - (rmods?.upgradeDiscount ?? 0)));
 }
 
-// The hard ceiling an axis can be cash-upgraded to for a tech family: cash alone reaches
-// baseCeiling; each RP ceiling-raise (S.capCeil) lifts it by `ceilingStep`, never past axisMax.
-export function axisHardCeiling(S, tech, axis){
-  const up = CFG.v5.upgrade;
-  return Math.min(up.axisMax, up.baseCeiling + (S.capCeil?.[tech]?.[axis] ?? 0));
-}
-
-// Can this plant take another upgrade on `axis` right now? (thermal, below the hard
-// ceiling, cash on hand).
+// Can this plant take another tier on `axis` right now? Thermal, below tier 9, cash on hand,
+// and not ALREADY queued for that axis (one in-flight upgrade job per axis at a time).
 export function canUpgrade(S, unitId, axis){
   const u = typeof unitId === "object" ? unitId : S.fleet.find(x => x.id === unitId);
-  if (!u || !u.caps || !AXES.includes(axis)) return false;
-  if (u.caps[axis] + CFG.v5.upgrade.step > axisHardCeiling(S, u.tech, axis)) return false;
-  return S.cash >= upgradeCost(S, u, axis);
-}
-
-// Spend cash to raise an axis's attainable max by one step, and bump the live KPI up to
-// it (the immediate benefit). Refused at the hard ceiling or when short on cash. Returns bool.
-export function applyUpgrade(S, unitId, axis){
-  const u = S.fleet.find(x => x.id === unitId);
-  if (!u || !u.caps || !AXES.includes(axis)) return false;
-  const step = CFG.v5.upgrade.step;
-  if (u.caps[axis] + step > axisHardCeiling(S, u.tech, axis)) return false; // ceiling blocks
-  const cost = upgradeCost(S, u, axis);
-  if (S.cash < cost) return false;
-  S.cash -= cost;
-  u.caps[axis] += step;
-  if (u.kpis) u.kpis[axis] = Math.min(u.caps[axis], (u.kpis[axis] ?? 0) + step); // immediate edge
-  if (u.kpis) u.condition = Math.min(u.kpis.reliability, u.kpis.efficiency, u.kpis.output, u.kpis.flexibility);
-  return true;
-}
-
-// ---- research (RP) — the per-tech axis ceiling ----
-
-// How many ceiling-raises a tech+axis has already taken.
-function ceilingRaises(S, tech, axis){
-  return Math.round((S.capCeil?.[tech]?.[axis] ?? 0) / CFG.v5.upgrade.ceilingStep);
-}
-
-// Steepening RP cost of the next ceiling-raise for a tech+axis.
-export function ceilingCost(S, tech, axis){
-  const up = CFG.v5.upgrade;
-  return Math.round(up.ceilingCost0 * Math.pow(up.ceilingGrowth, ceilingRaises(S, tech, axis)));
-}
-
-export function canRaiseCeiling(S, tech, axis){
-  if (!AXES.includes(axis)) return false;
-  if (axisHardCeiling(S, tech, axis) >= CFG.v5.upgrade.axisMax) return false; // already at the absolute max
-  return (S.rp || 0) >= ceilingCost(S, tech, axis);
-}
-
-// Spend RP to lift a whole tech family's hard ceiling on an axis by one step (never past
-// axisMax). Lets a subsequent cash upgrade climb higher. Returns bool.
-export function raiseCeiling(S, tech, axis){
-  if (!canRaiseCeiling(S, tech, axis)) return false;
-  S.rp -= ceilingCost(S, tech, axis);
-  (S.capCeil ||= {});
-  (S.capCeil[tech] ||= { reliability: 0, efficiency: 0, output: 0, flexibility: 0 });
-  S.capCeil[tech][axis] += CFG.v5.upgrade.ceilingStep;
-  return true;
+  if (!u || !u.tiers || !AXES.includes(axis)) return false;
+  if ((u.tiers[axis] ?? 0) >= CFG.v5_1.upgrade.tierMax) return false;
+  if ((S.contractor || []).some(j => j.unitId === u.id && j.axis === axis)) return false;
+  return S.cash >= upgradeCost(u, axis, S.rmods);
 }
 
 // ---- ⚡ perks + the automation growth-gate ----
