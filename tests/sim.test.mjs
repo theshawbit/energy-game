@@ -54,13 +54,15 @@ check("carbon begins once carbonStartDay is reached", S.carbon >= CFG.carbonPerD
 const c1 = S.carbon; surviveDay(S);
 check("carbon keeps climbing each day", S.carbon > c1, `$${c1} → $${S.carbon}/t`);
 
-// 6) A controllable peaker arms (off → starting) only during live play
-S = createGame();
+// 6) A controllable gas unit arms (commit → spin-up) only during live play. v5 Phase 2:
+// toggleUnit flips the commit dial; the commit→status spin-up happens in step().
+S = createGame(); S.calm = true;
 toggleUnit(S, "pk1");
-check("toggle is a no-op before the shift starts", S.fleet.find(u => u.id === "pk1").status === "off");
+check("toggle is a no-op before the shift starts", S.fleet.find(u => u.id === "pk1").dials.commit === false);
 S.running = true;
-toggleUnit(S, "pk1");
-check("toggle arms a peaker during live play (off → starting)", S.fleet.find(u => u.id === "pk1").status === "starting");
+toggleUnit(S, "pk1"); step(S, 0.0005);
+check("toggle arms a gas unit during live play (commit → starting)",
+  S.fleet.find(u => u.id === "pk1").dials.commit === true && S.fleet.find(u => u.id === "pk1").status === "starting");
 
 // 7) totalCapacity sums available MW across the fleet
 S = createGame(); S.t = 18; S.weather = { sun: 1, wind: 1 };
@@ -363,12 +365,14 @@ const gc = buildCapacity(S, "ccs_coal"), gg = buildCapacity(S, "ccs_gas"), gq = 
 check("Carbon Capture unlocks both coal+CCS and gas+CCS", gc.ok && gg.ok && S.fleet.some(u => u.tech === "ccs_coal") && S.fleet.some(u => u.tech === "ccs_gas"));
 check("geo stays gated under a CCS-only unlock", !gq.ok && !S.fleet.some(u => u.tech === "geo"));
 
-// 35) fast-ramp research shortens a peaker's spin-up time
-S = createGame(); S.running = true; toggleUnit(S, "pk1");
+// 35) fast-ramp research shortens a gas unit's spin-up time. v5 Phase 2: toggleUnit
+// now flips the commit dial; the spin-up (startTimer) is set in step()'s reconciliation,
+// so step a hair to let it apply before reading.
+S = createGame(); S.running = true; S.calm = true; toggleUnit(S, "pk1"); step(S, 0.0005);
 const t1 = S.fleet.find(u => u.id === "pk1").startTimer;
-let S2 = createGame(); S2.running = true; S2.rmods = computeResearchMods({ "fast-ramp": true }); toggleUnit(S2, "pk1");
+let S2 = createGame(); S2.running = true; S2.calm = true; S2.rmods = computeResearchMods({ "fast-ramp": true }); toggleUnit(S2, "pk1"); step(S2, 0.0005);
 const t2 = S2.fleet.find(u => u.id === "pk1").startTimer;
-check("fast-ramp cuts peaker spin-up 20%", near(t2, t1 * 0.80, 1e-9), `${t1.toFixed(2)}h → ${t2.toFixed(2)}h`);
+check("fast-ramp cuts gas spin-up 20%", near(t2, t1 * 0.80, 1e-2) && t2 < t1, `${t1.toFixed(2)}h → ${t2.toFixed(2)}h`);
 
 // ---- C1: research-branch meta unlocks + gating carried onto the game ----
 
@@ -448,9 +452,11 @@ check("fast-ramp cuts peaker spin-up 20%", near(t2, t1 * 0.80, 1e-9), `${t1.toFi
 function controlled(peak){
   const g = createGame(); g.peak = peak; g.t = 3; g.running = true; g.rdFunding = 0; g.calm = true; // v4.2.2: suppress net-load volatility for a deterministic cash line
   for (const u of g.fleet){
-    if (u.id === "nuc"){ u.status = "online"; u.fail = 0; }
+    // v5 Phase 2: a dial-able unit is taken offline via its COMMIT dial — otherwise
+    // step()'s reconciliation re-arms a committed unit we tried to park at status:"off".
+    if (u.id === "nuc"){ u.status = "online"; u.fail = 0; if (u.dials) u.dials.commit = true; }
     else if (u.kind === "renew"){ u.cap = 0; }
-    else u.status = "off";
+    else { u.status = "off"; if (u.dials) u.dials.commit = false; }
   }
   return g;
 }
@@ -656,7 +662,7 @@ function insolvent(debt){
 {
   S = controlled(400); S.economyUnlocked = { "capacity-market": true };
   // pledge more firm reserve than exists so a call is always short
-  const firm = S.fleet.reduce((a, u) => a + ((u.kind === "firm" || u.kind === "peaker") && u.status !== "tripped" && u.status !== "service" ? u.cap : 0), 0);
+  const firm = S.fleet.reduce((a, u) => a + ((u.kind === "firm" || u.kind === "gas") && u.status !== "tripped" && u.status !== "service" ? u.cap : 0), 0);
   S.capacityObligation = { reserveMW: firm + 300, pricePerMW: CFG.capacity.pricePerMW, termDays: 4, daysLeft: 4, calledToday: false };
   S.capHour = -1; S.rng = () => 0.0; // force a call this new hour
   const pay = 0; // isolate: compare against a no-call baseline is complex; instead assert the fine magnitude via net move sign + not-over
@@ -680,13 +686,15 @@ function insolvent(debt){
   check("strain trips the plant when the window runs out", u.status === "tripped" && u.tripTimer > 0);
 }
 
-// 60) v4.1 agency: standing a strained PEAKER down clears the strain (your terms)
+// 60) v4.1 agency: standing a strained GAS unit down clears the strain (your terms).
+// v5 Phase 2: it must be committed (armed) to strain; toggleUnit uncommits it and
+// step() reconciles commit→off, clearing the strain.
 {
-  const S = createGame(); S.running = true;
+  const S = createGame(); S.running = true; S.calm = true;
   const pk = S.fleet.find(x => x.id === "pk1");
-  pk.status = "strained"; pk.strainTimer = CFG.strainWarn;
-  toggleUnit(S, pk.id);
-  check("standing a strained peaker down clears the strain", pk.status === "off" && pk.strainTimer === 0);
+  pk.dials.commit = true; pk.status = "strained"; pk.strainTimer = CFG.strainWarn;
+  toggleUnit(S, pk.id); step(S, 0.0005);
+  check("standing a strained gas unit down clears the strain", pk.status === "off" && pk.strainTimer === 0);
 }
 
 // 61) v4.1 fixed O&M: an idle reserve costs only CFG.fixedOMIdle of the full rate

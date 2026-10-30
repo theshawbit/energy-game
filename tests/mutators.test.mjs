@@ -52,11 +52,11 @@ check("unknown mutator id ignored", computeMutatorMods(["no-such"]).demandMult =
 }
 
 // 7) FAIRNESS: under any single mutator, day-1 peak demand is coverable by the
-// controllable fleet alone (firm + peakers + battery), with zero help from
+// controllable fleet alone (firm + gas + battery), with zero help from
 // weather-dependent renewables — so no mutator is an unwinnable day-1 sentence.
 {
   const fleet = makeFleet();
-  const controllable = fleet.filter(u => u.kind === "firm" || u.kind === "peaker" || u.kind === "battery")
+  const controllable = fleet.filter(u => u.kind === "firm" || u.kind === "gas" || u.kind === "battery")
     .reduce((a, u) => a + u.cap, 0);
   const peakShape = Math.max(...DEMAND_SHAPE);
   let fair = true, worst = "";

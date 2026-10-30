@@ -3,6 +3,7 @@
 // newly-built units. Pure data (plus factories). No state, no DOM.
 // ============================================================
 import { SOLAR_CF, WIND_CF, TECH } from "../constants.js";
+import { defaultDials } from "./dispatch.js";
 
 // ---- tuning (meant to be played with) ----
 export const CFG = {
@@ -192,6 +193,15 @@ export const CFG = {
     fastSpeed: 3,             // fast-forward multiplier (skip calm hours); 1× is the ~3-min day
     startYear: 1,             // the long arc begins at Year 1 …
     startQuarter: 1,          // … Quarter 1, Day 1
+    // Phase 2: the dedicated peaker KIND is retired — fast gas is just a dial-able
+    // thermal plant with a quick spin-up. These inherit the old peaker's ramp/start
+    // characteristics so a gas unit dialled to a narrow high band is the former peaker.
+    gas: {
+      spin: 11,               // $/MW/h to keep synced (pricey top-up, as the old peaker)
+      fail: 0.0030,           // per-tick trip reference (between coal and nuclear)
+      recover: [1.5, 3],      // game-hours to come back from a trip
+      startTime: 1.6,         // game-hours to spin up from cold (the "fast" in fast gas)
+    },
   },
 };
 
@@ -232,7 +242,7 @@ export const BUILD = {
   battery: { label:"Battery",    mw:60,  cost:60000, hours:2 },
   nuclear: { label:"Nuclear",    mw:100, cost:220000 },
   coal:    { label:"Coal",       mw:60,  cost:70000 },
-  peaker:  { label:"Peaker",     mw:55,  cost:45000 },
+  peaker:  { label:"Gas (fast)", mw:55,  cost:45000 }, // builds dial-able fast gas (the former peaker)
   // ---- v3 advanced generation: buildable only once their research unlocks them ----
   smr:      { label:"SMR",       mw:90,  cost:240000 },
   geo:      { label:"Geothermal",mw:80,  cost:180000 },
@@ -280,7 +290,7 @@ export function upgradeCost(tier){ return Math.round(UPGRADE.cost * Math.pow(UPG
 // the clarifier; the fleet table's sub-line carries kind + MW separately. Pure
 // data — a fuller named-territory scheme is the v5 "Identity" work.
 const FUEL_WORD = {
-  nuclear:"Nuclear", coal:"Coal", solar:"Solar", wind:"Wind", peaker:"Peaker",
+  nuclear:"Nuclear", coal:"Coal", solar:"Solar", wind:"Wind", peaker:"Gas",
   battery:"Battery", smr:"SMR", geo:"Geothermal", ccs_coal:"Coal CCS", ccs_gas:"Gas CCS",
 };
 // Place-name pools for units built mid-run. Indexed by the per-tech build count,
@@ -310,21 +320,27 @@ export function plantName(tech, n){
 }
 
 // ---- fleet definition ----
-// kind: firm (always-on thermal), renew (variable), peaker (reserve), battery
+// kind: firm (dial-able baseload thermal), gas (dial-able FAST thermal — the former
+// peaker, retired as a kind in v5 Phase 2), renew (variable), battery.
 // `tech` maps each unit onto an engine resource; `mc` mirrors TECH so the cards
-// and the dispatchHour() clearing agree on one set of economics.
+// and the dispatchHour() clearing agree on one set of economics. Every dispatchable
+// unit carries its Core+ dials (defaultDials); baseload commits by default, gas
+// sits in reserve, so a fresh fleet runs like v4 until the player dials it.
 export function makeFleet() {
-  return [
+  const g = CFG.v5.gas;
+  const fleet = [
     { id:"nuc",  name:"Harrowgate Nuclear", kind:"firm",   tech:"nuclear", cap:250, mc:TECH.nuclear.mc, spin:2,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0020, recover:[5,9],  key:null },
     { id:"colA", name:"Blackmoor Coal",     kind:"firm",   tech:"coal",    cap:180, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0045, recover:[1.5,3], key:null },
     { id:"colB", name:"Cinderhope Coal",    kind:"firm",   tech:"coal",    cap:140, mc:TECH.coal.mc,    spin:4,  tier:1, condition:100, status:"online", ctrl:false, fail:0.0045, recover:[1.5,3], key:null },
     { id:"sol",  name:"Meadowbank Solar",   kind:"renew",  tech:"solar",   cap:220, mc:TECH.solar.mc,   tier:1, status:"online", ctrl:false, cf:SOLAR_CF, key:null },
     { id:"wnd",  name:"Fellcrest Wind",     kind:"renew",  tech:"wind",    cap:160, mc:TECH.wind.mc,    tier:1, status:"online", ctrl:false, cf:WIND_CF,  key:null },
-    { id:"pk1",  name:"Ashgate Peaker",     kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"1" },
-    { id:"pk2",  name:"Kilnbrook Peaker",   kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"2" },
-    { id:"pk3",  name:"Forgewell Peaker",   kind:"peaker", tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:11, tier:1, condition:100, status:"off",    ctrl:true,  fail:0.0030, recover:[1.5,3], startTime:1.6, key:"3" },
+    { id:"pk1",  name:"Ashgate Gas",        kind:"gas",    tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:g.spin, tier:1, condition:100, status:"off", ctrl:true, fail:g.fail, recover:[...g.recover], startTime:g.startTime, key:"1" },
+    { id:"pk2",  name:"Kilnbrook Gas",      kind:"gas",    tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:g.spin, tier:1, condition:100, status:"off", ctrl:true, fail:g.fail, recover:[...g.recover], startTime:g.startTime, key:"2" },
+    { id:"pk3",  name:"Forgewell Gas",      kind:"gas",    tech:"peaker",  cap:110, mc:TECH.peaker.mc,  spin:g.spin, tier:1, condition:100, status:"off", ctrl:true, fail:g.fail, recover:[...g.recover], startTime:g.startTime, key:"3" },
     { id:"bat",  name:"Weircross Battery",  kind:"battery",tech:"battery", cap:120, mc:TECH.battery.mc, tier:1, status:"off",    ctrl:true,  energy:240, maxEnergy:240, key:"B" },
   ];
+  for (const u of fleet) u.dials = defaultDials(u); // Phase 2: Core+ dials on every unit
+  return fleet;
 }
 
 // Factory for a unit added mid-run via the build catalogue. `n` numbers the
@@ -332,15 +348,16 @@ export function makeFleet() {
 export function makeUnit(tech, n, seq){
   const b = BUILD[tech];
   const kind = (tech === "solar" || tech === "wind") ? "renew"
-             : tech === "peaker" ? "peaker"
+             : tech === "peaker" ? "gas"       // v5 Phase 2: "peaker" builds dial-able fast gas
              : tech === "battery" ? "battery" : "firm";
   const u = { id:`${tech}-${seq}`, name:plantName(tech, n), kind, tech, cap:b.mw, mc:TECH[tech].mc, tier:1,
-              status: (kind === "peaker" || kind === "battery") ? "off" : "online",
-              ctrl: (kind === "peaker" || kind === "battery"), key:null };
-  if (kind === "firm" || kind === "peaker"){ u.condition = 100; u.ageHours = 0; } // mechanical plants wear & can be serviced
+              status: (kind === "gas" || kind === "battery") ? "off" : "online",
+              ctrl: (kind === "gas" || kind === "battery"), key:null };
+  if (kind === "firm" || kind === "gas"){ u.condition = 100; u.ageHours = 0; } // mechanical plants wear & can be serviced
   if (kind === "renew") u.cf = tech === "solar" ? SOLAR_CF : WIND_CF;
   if (kind === "battery"){ u.maxEnergy = u.energy = Math.round(b.mw * (b.hours || 2)); }
   if (kind === "firm"){ const p = FIRM_PARAMS[tech] || FIRM_PARAMS.coal; u.spin = p.spin; u.fail = p.fail; u.recover = [...p.recover]; }
-  if (kind === "peaker"){ u.spin = 11; u.fail = 0.0030; u.recover = [1.5, 3]; u.startTime = 1.6; }
+  if (kind === "gas"){ const g = CFG.v5.gas; u.spin = g.spin; u.fail = g.fail; u.recover = [...g.recover]; u.startTime = g.startTime; }
+  u.dials = defaultDials(u); // Phase 2: Core+ dials
   return u;
 }

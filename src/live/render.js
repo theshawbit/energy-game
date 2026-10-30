@@ -5,6 +5,7 @@
 // ============================================================
 import { unitOutput, clamp } from "./sim.js";
 import { quarterLabel } from "./calendar.js";
+import { applyDials } from "./dispatch.js";
 import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, serviceCost, salvageValue } from "./config.js";
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
@@ -631,12 +632,40 @@ function fleetRow(S, u){
   }
   const lastBattery = u.kind === "battery" && S.fleet.filter(x => x.kind === "battery").length <= 1;
   const decBtn = `<button class="dec" data-dec="${u.id}" ${lastBattery ? "disabled" : ""}>Sell · ${money(salvageValue(u))}</button>`;
-  return `<tr>
+  const main = `<tr>
     <td class="fl-nm">${u.name}${mk}<br><small class="faint">${Math.round(u.cap)} MW · ${u.kind}</small></td>
     <td><span class="st ${stClass}">${stText}</span></td>
     <td class="num">${out}/${u.cap}</td>
     <td class="num">${cond}</td>
     <td><div class="fleet-acts">${upBtn}${svcBtn}${decBtn}</div></td></tr>`;
+  return main + dialsRow(S, u);
+}
+
+// v5 Phase 2: the Core+ dials for a dial-able thermal unit (firm/gas), as a sub-row
+// under its fleet row. Commit arms/stands it down; the band ceiling, reserve hold and
+// push shape the offer the engine clears within. Lives in the paused Manage view so the
+// sliders don't fight the live frame repaint; the readouts update in-place on drag.
+function dialsRow(S, u){
+  if (u.kind !== "firm" && u.kind !== "gas") return "";
+  const d = u.dials || {}, o = applyDials(u);
+  const committed = !!d.commit;
+  const bandMax = Math.round(d.bandMax ?? u.cap);
+  const holdPct = Math.round((d.reserveHold ?? 0) * 100);
+  const pushPct = Math.round((d.push ?? 0) * 100);
+  const bandNote = committed ? `offer ${Math.round(o.max)} · hold ${Math.round(o.held)} MW` : "offline";
+  return `<tr class="dials-row"><td colspan="5"><div class="dials">
+    <button class="dial-commit${committed ? " on" : ""}" data-commit="${u.id}">${committed ? "● Committed" : "○ Reserve"}</button>
+    <label class="dial"><span class="dk">Band</span>
+      <input type="range" min="0" max="${Math.round(u.cap)}" value="${bandMax}" data-dial="bandMax" data-id="${u.id}" ${committed ? "" : "disabled"}>
+      <span class="dv" data-dv="bandMax-${u.id}">${bandMax} MW</span></label>
+    <label class="dial"><span class="dk">Reserve hold</span>
+      <input type="range" min="0" max="100" value="${holdPct}" data-dial="reserveHold" data-id="${u.id}" ${committed ? "" : "disabled"}>
+      <span class="dv" data-dv="reserveHold-${u.id}">${holdPct}%</span></label>
+    <label class="dial"><span class="dk">Push</span>
+      <input type="range" min="0" max="100" value="${pushPct}" data-dial="push" data-id="${u.id}">
+      <span class="dv" data-dv="push-${u.id}">${pushPct}%</span></label>
+    <span class="dial-note" data-note="${u.id}">${bandNote}</span>
+  </div></td></tr>`;
 }
 function fleetBody(S){
   const svcNote = S.mods?.autoServiceAt
@@ -656,6 +685,18 @@ function wireFleet(S, actions){
   m.querySelectorAll("[data-up]").forEach(b => b.onclick = () => actions.upgrade(b.dataset.up));
   m.querySelectorAll("[data-svc]").forEach(b => b.onclick = () => actions.service(b.dataset.svc));
   m.querySelectorAll("[data-dec]").forEach(b => b.onclick = () => actions.decommission(b.dataset.dec));
+  // v5 Phase 2 dials: commit re-renders (band/push enable toggles); the sliders write
+  // u.dials and patch their readout in-place (no re-render, so the drag isn't interrupted).
+  m.querySelectorAll("[data-commit]").forEach(b => b.onclick = () => actions.commit(b.dataset.commit));
+  m.querySelectorAll("input[data-dial]").forEach(inp => inp.oninput = () => {
+    const id = inp.dataset.id, key = inp.dataset.dial, raw = Number(inp.value);
+    const val = (key === "reserveHold" || key === "push") ? raw / 100 : raw;
+    actions.setDial(id, key, val);
+    const dv = m.querySelector(`[data-dv="${key}-${id}"]`);
+    if (dv) dv.textContent = (key === "bandMax") ? `${Math.round(val)} MW` : `${Math.round(raw)}%`;
+    const u = S.fleet.find(x => x.id === id), note = m.querySelector(`[data-note="${id}"]`);
+    if (u && note){ const o = applyDials(u); note.textContent = u.dials.commit ? `offer ${Math.round(o.max)} · hold ${Math.round(o.held)} MW` : "offline"; }
+  });
   m.querySelectorAll("th[data-sort]").forEach(th => th.onclick = () => {
     const c = th.dataset.sort;
     if (fleetSort.col === c) fleetSort.dir = -fleetSort.dir; else fleetSort = { col: c, dir: 1 };
