@@ -34,9 +34,16 @@
         <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
         <div class="hstat"><span class="k">Carbon $/t</span><span class="v" id="s-carbon">$0</span></div>
         <div class="hstat"><span class="k">Satisfaction</span><span class="v" id="s-sat">100%</span></div>
-        <!-- v5.1 Phase 2: grid-stability HP bar. 0% = pristine, 100% = collapse. Fills on a
-             shortfall, drains on served hours; topping out ends the run. Phase 7 styles it. -->
-        <div class="hstat hstat-stability"><span class="k">Grid Stability</span><span class="v" id="s-stability">OK</span></div>
+      </div>
+      <!-- v5.1 Phase 7: grid-stability HP bar, seated in the top strip as a life bar — always
+           visible, colour-ramping as it fills toward collapse (0% pristine → 100% collapse).
+           Fills on a shortfall, drains on served hours; topping out ends the run. -->
+      <div class="cb-hp" id="hp-wrap" title="Grid stability — fills on shortfalls, tops out = collapse">
+        <span class="cb-hp-k">Grid Stability</span>
+        <div class="hpbar" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="hpbar">
+          <i class="hp-fill" id="hp-fill"></i>
+          <span class="hp-label" id="hp-label">stable</span>
+        </div>
       </div>
     </header>
 
@@ -105,17 +112,18 @@
         <div class="ticker" id="ticker"></div>
       </section>
 
-      <aside>
-        <section class="card" style="margin-bottom:14px">
-          <h2>Generating fleet</h2>
-          <div class="units" id="units"></div>
-          <div class="hintbar">
-            Click a <b>reserve</b> plant (gas / battery) to bring it online. Keys
-            <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> toggle peakers, <kbd>B</kbd> fires the battery,
-            <kbd>Space</kbd> pauses.
-          </div>
-        </section>
-      </aside>
+      <!-- v5.1 Phase 7: the fleet moves BELOW the demand-vs-capacity graph, full width, grouped
+           into four dispatch-role lanes (Baseload/firm · Dispatchable gas · Renewable · Storage) —
+           four stable lanes matching the console mental model, immune to tech sprawl. -->
+      <section class="card fleet-card">
+        <h2>Generating fleet <small class="fleet-hint">— tap a reserve (gas / battery) to arm · ⚙ opens a plant's upgrade ladders</small></h2>
+        <div class="fleet-lanes" id="units"></div>
+        <div class="hintbar">
+          Click a <b>reserve</b> plant (gas / battery) to bring it online. Keys
+          <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> toggle peakers, <kbd>B</kbd> fires the battery,
+          <kbd>Space</kbd> pauses.
+        </div>
+      </section>
     </div>
   </div>
 
@@ -126,6 +134,9 @@
   <!-- v5.1 Phase 5: the daily brief — a blocking-but-skippable daily planning beat feeding the
        two rolling queues (maintenance crews + contractor upgrades). Builds are surfaced, not committed. -->
   <div class="overlay" id="briefOverlay"><div class="modal brief" id="brief"></div></div>
+  <!-- v5.1 Phase 7: per-plant upgrade drill-down — click a firm/gas plant's ⚙ to open its four
+       9-tier axis ladders (current tier · next-tier cost + ETA · queue → contractor line). -->
+  <div class="overlay" id="plantOverlay"><div class="modal plant-detail" id="plantDetail"></div></div>
   <div class="overlay" id="menuOverlay"><div class="modal menu" id="menu"></div></div>
   <div class="overlay" id="metaOverlay"><div class="modal menu" id="meta"></div></div>
   <div class="overlay" id="homeOverlay"><div class="modal home" id="home"></div></div>
