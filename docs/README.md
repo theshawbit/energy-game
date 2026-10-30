@@ -7,11 +7,13 @@ game, what's **planned**, and what's been **superseded**.
 > **Game status:** the live game shipped through **v4.2.6** was a real-time **survival
 > roguelike**; the **v5 genre pivot is now building**. Phase 1 (time & calendar, no
 > game-over), Phase 2 (dial-able dispatch; the peaker retired for fast gas), Phase 3
-> (four KPIs + style-driven degradation replacing `condition`), and Phase 4 (cut-throat
-> quarter-end maintenance worked by a levelling crew pool) shipped 2026-10-29 — the
+> (four KPIs + style-driven degradation replacing `condition`), Phase 4 (cut-throat
+> quarter-end maintenance worked by a levelling crew pool), and Phase 5 (lead-time
+> construction with an overextension soft-cap) shipped 2026-10-29 — the
 > grid is persistent, the run reset is gone, every plant dispatches on dials, how you
-> run a plant decides which KPI decays, and repairs are triaged at the board review;
-> Phases 5–9 remain planned. See [`ROADMAP-v5.md`](ROADMAP-v5.md) and
+> run a plant decides which KPI decays, repairs are triaged at the board review, and
+> new plant is a multi-quarter capital project committed there too;
+> Phases 6–9 remain planned. See [`ROADMAP-v5.md`](ROADMAP-v5.md) and
 > [`plan-v5/`](plan-v5/README.md). Some roguelike docs below still describe superseded
 > run-based mechanics.
 
@@ -32,7 +34,7 @@ game, what's **planned**, and what's been **superseded**.
 | [`PLAN-v4.md`](PLAN-v4.md) | v4 | ✅ Built (phases A–G) |
 | [`PLAN-v4.2-control-room.md`](PLAN-v4.2-control-room.md) | v4.2 | ✅ Built — Control Room UI redesign (CR-1…CR-4) |
 | [`PLAN-v4.2.1-reliability-and-volatility.md`](PLAN-v4.2.1-reliability-and-volatility.md) | v4.2.1–4.2.3 | ✅ Built — wear = load × age, rare trips, volatile net-load |
-| [`plan-v5/`](plan-v5/README.md) | v5 | 🚧 Building — phased implementation spec (9 phases); Phases 1–4 shipped 2026-10-29, 5–9 planned |
+| [`plan-v5/`](plan-v5/README.md) | v5 | 🚧 Building — phased implementation spec (9 phases); Phases 1–5 shipped 2026-10-29, 6–9 planned |
 
 ## Narrative bibles (later flavour layer)
 

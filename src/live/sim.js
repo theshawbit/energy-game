@@ -13,6 +13,7 @@ import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, dialSnapshot } from "./config.js";
 import { makeCrew, wageBill, TRADES } from "./crews.js";
 import { resolveQuarterTasks } from "./maint.js";
+import { tickBuilds } from "./construct.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
 import { freshClock, tickClock, autoPause } from "./clock.js";
 import { applyDials, cycleCost } from "./dispatch.js";
@@ -92,6 +93,9 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     crews: Array.from({ length: CFG.v5.crews.startCrews }, (_, i) => makeCrew(TRADES[i % TRADES.length], i + 1)),
     crewSeq: CFG.v5.crews.startCrews, tasks: [], taskSeq: 0,
     zap: 0, rosterCap: CFG.v5.crews.baseRoster,
+    // v5 Phase 5: in-flight lead-time construction projects. Committed at the quarter
+    // review; tickBuilds advances them at each rollover and lands a live unit on completion.
+    builds: [], buildSeqV5: 0,
     hist:[], sampleAcc:0, upAcc:0, downAcc:0, autoSvcAcc:0,
     ticker:"", tickerT:0,
   };
@@ -177,6 +181,10 @@ export function surviveDay(S){
   // Office (the quarter-end board review). This is a BEAT, not an ending — the
   // grid is persistent; nothing is ever lost. Phase 6 fills the review.
   if (rolled.rolledQuarter){
+    // v5 Phase 5: land any finished construction FIRST — a completed plant is in the
+    // fleet before the review, so it's available for the coming quarter's maintenance
+    // planning. In-flight projects advance (and crowded ones may slip + overrun).
+    const built = tickBuilds(S, S.rng || Math.random);
     // v5 Phase 4: settle the quarter's maintenance BEFORE the review — finished tasks
     // restore their KPI axis + free their crew (and the crew levels for the work),
     // in-flight ones advance, and downtime lifts. Then pay the standing wage bill
@@ -186,8 +194,11 @@ export function surviveDay(S){
     const wages = wageBill(S); S.cash -= wages;
     S.calendar.mode = "planning";
     autoPause(S, "Quarter closed — board review");
-    setTicker(S, completed > 0
-      ? `◼ Quarter closed — ${completed} plant${completed > 1 ? "s" : ""} back from maintenance. Board review ready.`
+    const notes = [];
+    if (built.length) notes.push(`${built.length} new plant${built.length > 1 ? "s" : ""} online`);
+    if (completed > 0) notes.push(`${completed} back from maintenance`);
+    setTicker(S, notes.length
+      ? `◼ Quarter closed — ${notes.join(", ")}. Board review ready.`
       : "◼ Quarter closed — the board review is ready.");
     return;
   }

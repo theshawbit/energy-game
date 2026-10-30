@@ -6,9 +6,10 @@
 // phase) and resumes into the next quarter.
 // ============================================================
 import { createGame, step, setTicker, beginNextQuarter } from "./sim.js";
-import { toggleUnit, buildCapacity, upgradeUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
+import { toggleUnit, upgradeUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
 import { scheduleTask, cancelTask } from "./maint.js";
 import { promote, hireCrew } from "./crews.js";
+import { commitBuild } from "./construct.js";
 import { setSpeed } from "./clock.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
@@ -52,7 +53,6 @@ function rollDailyOffer(){
 
 // manage mode (opens paused): hub-and-spoke navigation + per-page actions
 const menu = {
-  build(tech){ buildCapacity(S, tech); buildUnits(S, act); refreshPage(); render(S); },
   upgrade(id){ upgradeUnit(S, id); buildUnits(S, act); refreshPage(); render(S); },
   decommission(id){ decommissionUnit(S, id); buildUnits(S, act); refreshPage(); render(S); },
   // v5 Phase 2 dials: commit re-renders the page (band/push enable with it); the
@@ -105,6 +105,7 @@ const planningActions = {
   cancelTask(taskId){ cancelTask(S, taskId); renderPlanning(S, planningActions); },
   promote(crewId){ promote(S, crewId); renderPlanning(S, planningActions); },
   hire(trade){ hireCrew(S, trade); renderPlanning(S, planningActions); },
+  commitBuild(tech){ commitBuild(S, tech); renderPlanning(S, planningActions); },
   begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; buildUnits(S, act); render(S); },
 };
 

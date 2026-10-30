@@ -8,7 +8,8 @@ import { quarterLabel } from "./calendar.js";
 import { applyDials } from "./dispatch.js";
 import { TASKS, taskRestore } from "./maint.js";
 import { TRADES, tradeModifier } from "./crews.js";
-import { CFG, BUILD, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, salvageValue } from "./config.js";
+import { BUILDABLES, forecastDemand, concurrencySlip } from "./construct.js";
+import { CFG, BUILD_ORDER, BUILD_GATE, UPGRADE, upgradeCost, salvageValue } from "./config.js";
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
@@ -441,11 +442,63 @@ function line(ctx, data, x, y, key, color, lw){
 // The grid never ends; completing a quarter pauses here. Phase 6 fills this with
 // the overlord's KPI verdict, maintenance triage, build queue, research and ⚡
 // perks. For now it reports the close and hands control back to the next quarter.
+// Nameplate capacity now (whole fleet) + the MW already in flight as construction.
+function capacityPicture(S){
+  const nameplate = S.fleet.reduce((a, u) => a + u.cap, 0);
+  const inFlight = (S.builds || []).reduce((a, b) => a + (b.mw || 0), 0);
+  return { nameplate, inFlight, total: nameplate + inFlight };
+}
+// The first quarter ahead where forecast peak outgrows committed+in-flight capacity
+// (0 = already short / covered through the horizon). Build-ahead signal.
+function shortfallHorizon(S, maxQ = 6){
+  const cap = capacityPicture(S).total;
+  for (let q = 1; q <= maxQ; q++) if (forecastDemand(S, q) > cap) return q;
+  return 0;
+}
 // The axes a plant still has to repair (KPI below full), each with its task + cost.
 function kpiDeficits(u){
   return KPI_AXES
     .map(([axis, letter]) => ({ axis, letter, deficit: Math.round(100 - u.kpis[axis]), task: Object.values(TASKS).find(t => t.axis === axis) }))
     .filter(d => d.deficit > 0 && d.task);
+}
+// v5 Phase 5: the Planning Office build queue — the honest demand forecast, the
+// in-flight projects (quarters left + slip warning), and the commit buttons. Building
+// is quarter-end only now, so this is where capacity gets committed.
+function buildSection(S){
+  const cap = capacityPicture(S);
+  const short = shortfallHorizon(S);
+  const builds = S.builds || [];
+  const fc = [1, 2, 4].map(q => {
+    const d = forecastDemand(S, q), covered = d <= cap.total;
+    return `<li><span>Q+${q} peak</span><span class="${covered ? "" : "short"}">${d} MW${covered ? "" : " ⚠"}</span></li>`;
+  }).join("");
+  const queue = builds.length
+    ? builds.map(b => {
+        const spec = BUILDABLES[b.tech], slipPct = Math.round((b.slipRisk || 0) * 100);
+        return `<li><span>${spec ? spec.label : b.tech} · +${b.mw} MW</span>
+          <span>${b.quartersLeft}Q left${slipPct ? ` · slip ${slipPct}%` : ""}${b.slips ? ` · slipped ${b.slips}×` : ""}</span></li>`;
+      }).join("")
+    : `<li class="faint">No projects in flight.</li>`;
+  const nextSlip = Math.round(concurrencySlip(builds.length) * 100);
+  const btns = BUILD_ORDER.filter(t => BUILDABLES[t]).map(t => {
+    const spec = BUILDABLES[t], gate = BUILD_GATE[t], locked = gate && !(S.rmods?.[gate]);
+    const can = !locked && S.cash >= spec.cost;
+    const right = locked ? `🔒 research` : `${spec.leadQuarters}Q · ${money(spec.cost)}`;
+    return `<button data-commit-build="${t}" ${can ? "" : "disabled"}>+${spec.mw} ${spec.label}<span class="c">${right}</span></button>`;
+  }).join("");
+  return `<div class="pl-section">
+    <h3>Capacity &amp; construction <small class="faint">— build ahead of the curve</small></h3>
+    <ul class="pl-stats fc-stats">
+      <li><span>Capacity (incl. in-flight)</span><span>${cap.total} MW</span></li>
+      ${fc}
+    </ul>
+    ${short
+      ? `<p class="fc-warn">⚠ Forecast peak outgrows your capacity in Q+${short} — commit capacity now (it won't come online for quarters).</p>`
+      : `<p class="faint">Capacity covers the forecast through the horizon.</p>`}
+    <h4>In flight</h4><ul class="bq-list">${queue}</ul>
+    <h4>Commit a project${nextSlip ? ` <small class="faint">— queue busy: +${nextSlip}% slip risk</small>` : ""}</h4>
+    <div class="build-grid pl-build">${btns}</div>
+  </div>`;
 }
 export function renderPlanning(S, actions){
   const c = S.calendar;
@@ -534,6 +587,8 @@ export function renderPlanning(S, actions){
         <div class="cr-hire-row"><span class="faint">Hire${rosterFull ? " — roster full" : ""}:</span> ${hireBtns}</div>
       </div>
 
+      ${buildSection(S)}
+
       <div class="end-btns">
         <button class="btn-primary" id="beginQ">Begin Y${c.year} · Q${c.quarter} ▸</button>
       </div>
@@ -554,6 +609,7 @@ export function renderPlanning(S, actions){
   $("modal").querySelectorAll("[data-cancel]").forEach(b => b.onclick = () => actions.cancelTask(b.dataset.cancel));
   $("modal").querySelectorAll("[data-promote]").forEach(b => b.onclick = () => actions.promote(b.dataset.promote));
   $("modal").querySelectorAll("[data-hire]").forEach(b => b.onclick = () => actions.hire(b.dataset.hire));
+  $("modal").querySelectorAll("[data-commit-build]").forEach(b => b.onclick = () => actions.commitBuild(b.dataset.commitBuild));
   $("beginQ").onclick = actions.begin;
 }
 
@@ -682,8 +738,7 @@ export function renderManage(S, page, actions){
   const back = $("pgBack"); if (back) back.onclick = () => actions.go("hub");
   $("pgResume").onclick = () => actions.close();
   if (page === "fleet") wireFleet(S, actions);
-  else if (page === "build") $("menu").querySelectorAll("[data-build]").forEach(b => b.onclick = () => actions.build(b.dataset.build));
-  else if (page === "research") wireResearch(S, actions);
+  else if (page === "research") wireResearch(S, actions); // v5 Phase 5: the Build page is read-only (commit at the quarter review)
   else if (page === "desk") wireDesk(S, actions);
   else $("menu").querySelectorAll("[data-go]").forEach(b => b.onclick = () => actions.go(b.dataset.go)); // hub
   $("menuOverlay").classList.add("on");
@@ -818,14 +873,32 @@ function wireFleet(S, actions){
 }
 
 // --- build: the capacity catalogue (research-gated options show a lock) ---
+// v5 Phase 5: building is now a quarter-end capital commitment (Planning Office), so the
+// Manage ▸ Build page is a read-only pipeline + forecast view — it shows what's in flight
+// and when the city will outgrow the fleet, and points commitment to the board review.
 function buildBody(S){
-  const buildBtns = BUILD_ORDER.filter(t => BUILD[t]).map(t => {
-    const b = BUILD[t], gate = BUILD_GATE[t], locked = gate && !(S.rmods?.[gate]);
-    const can = !locked && S.cash >= b.cost;
-    const right = locked ? `<span class="c lock">🔒 research</span>` : `<span class="c">${money(b.cost)}</span>`;
-    return `<button data-build="${t}" ${can ? "" : "disabled"}>+${b.mw} MW ${b.label}${right}</button>`;
+  const cap = capacityPicture(S), short = shortfallHorizon(S);
+  const builds = S.builds || [];
+  const fc = [1, 2, 4].map(q => {
+    const d = forecastDemand(S, q), covered = d <= cap.total;
+    return `<div class="rec-tile"><small>Q+${q} peak</small><b class="${covered ? "" : "short"}">${d} MW</b><span class="faint">cap ${cap.total}</span></div>`;
   }).join("");
-  return `<div class="menu-cash">On hand <b>${money(S.cash)}</b></div><div class="build-grid">${buildBtns}</div>`;
+  const queue = builds.length
+    ? builds.map(b => {
+        const spec = BUILDABLES[b.tech], slipPct = Math.round((b.slipRisk || 0) * 100);
+        return `<div class="rs-row"><span class="rs-nm">${spec ? spec.label : b.tech} · +${b.mw} MW<br><small>${b.quartersLeft}Q left${slipPct ? ` · slip ${slipPct}%` : ""}${b.slips ? ` · slipped ${b.slips}×` : ""}</small></span></div>`;
+      }).join("")
+    : `<p class="faint" style="margin:6px 0">No projects in flight.</p>`;
+  const cat = BUILD_ORDER.filter(t => BUILDABLES[t]).map(t => {
+    const spec = BUILDABLES[t], gate = BUILD_GATE[t], locked = gate && !(S.rmods?.[gate]);
+    return `<div class="rec-tile${locked ? " placeholder" : ""}"><small>+${spec.mw} ${spec.label}</small><b>${spec.leadQuarters}Q</b><span class="faint">${locked ? "🔒 research" : money(spec.cost)}</span></div>`;
+  }).join("");
+  return `<div class="menu-cash">On hand <b>${money(S.cash)}</b> · capacity incl. in-flight <b>${cap.total} MW</b></div>
+    ${short ? `<p class="svc-note">⚠ Forecast peak outgrows your capacity in Q+${short} — commit a project at the quarter-end review.</p>`
+             : `<p class="svc-note faint">⚙ New capacity is committed at the quarter-end board review (multi-quarter lead time).</p>`}
+    <h4 class="bld-h">Demand forecast vs capacity</h4><div class="rec-grid">${fc}</div>
+    <h4 class="bld-h">In flight</h4>${queue}
+    <h4 class="bld-h">Buildable (lead time · cost)</h4><div class="rec-grid">${cat}</div>`;
 }
 
 // --- research: the v3 R&D lab lever + tech tree (unchanged logic) ---

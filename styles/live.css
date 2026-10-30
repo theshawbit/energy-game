@@ -377,6 +377,16 @@ table.fleet tr.dials-row td{border-bottom:1px solid var(--line);padding:4px 8px 
 .cr-hire:hover:not(:disabled){border-color:var(--accent);color:#fff}
 .cr-hire:disabled{opacity:.4;cursor:not-allowed}
 .svc-flag{font-family:var(--mono);font-size:.66rem;color:#7fb8ff;align-self:center;padding:0 4px}
+/* v5 Phase 5: construction — Planning Office build queue + Manage forecast view */
+.fc-stats li .short{color:var(--bad);font-weight:700}
+.fc-warn{font-family:var(--mono);font-size:.76rem;color:var(--warn);margin:8px 0 4px;line-height:1.5}
+.bq-list{list-style:none;margin:0 0 4px;padding:0;display:flex;flex-direction:column;gap:4px}
+.bq-list li{display:flex;justify-content:space-between;gap:10px;font-family:var(--mono);font-size:.76rem;padding:5px 9px;background:#0d1219;border:1px solid var(--line);border-radius:6px;color:var(--muted)}
+.bq-list li.faint{color:var(--faint);background:none;border:none;padding:4px 0}
+.pl-build{margin-top:4px}
+.pl-build button{padding:7px 10px}
+.bld-h{font-family:var(--mono);font-size:.74rem;color:var(--muted);font-weight:600;margin:12px 0 6px}
+.rec-tile b.short{color:var(--bad)}
 
 /* skill tree */
 .meta-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;font-family:var(--mono);font-size:.8rem;margin:6px 0 2px}

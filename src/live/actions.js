@@ -4,7 +4,7 @@
 // live, unpaused play.
 // ============================================================
 import { setTicker } from "./sim.js";
-import { CFG, BUILD, BUILD_GATE, UPGRADE, upgradeCost, salvageValue, makeUnit } from "./config.js";
+import { CFG, UPGRADE, upgradeCost, salvageValue } from "./config.js";
 import { doResearch, researchById } from "./research.js";
 import { dailyBaseline } from "./market.js";
 import { contractPrice, expectedOutput, makeContract, creditRating } from "./finance.js";
@@ -21,23 +21,10 @@ export function toggleUnit(S, id){
   }
 }
 
-// Build a new block of capacity of `tech`, paid in in-run cash. Returns
-// {ok, msg}; on success the fleet gains a unit (caller rebuilds the cards).
-export function buildCapacity(S, tech){
-  if (S.over) return { ok:false, msg:"Run is over." };
-  const b = BUILD[tech];
-  if (!b) return { ok:false, msg:"That can't be built." };
-  const gate = BUILD_GATE[tech];
-  if (gate && !(S.rmods?.[gate])) return { ok:false, msg:`${b.label} needs research before you can build it.` };
-  if (S.cash < b.cost) return { ok:false, msg:"Not enough cash to build that." };
-  S.cash -= b.cost;
-  // monotonic per-tech number so a build after a sell can't reuse a label
-  const n = (S.techCount[tech] = (S.techCount[tech] || 0) + 1);
-  const u = makeUnit(tech, n, S.buildSeq++);
-  S.fleet.push(u);
-  setTicker(S, `✓ Built ${u.name} — +${b.mw} MW online.`);
-  return { ok:true };
-}
+// v5 Phase 5: the v4 instant `buildCapacity` is retired. New plants are multi-quarter
+// lead-time capital projects committed at the quarter-end review (see construct.js:
+// commitBuild / tickBuilds) — a plant produces nothing until it comes online quarters
+// later, so you build ahead of the steepening demand curve or the city browns you out.
 
 // Upgrade one unit to the next Mk tier: +capacity, −trip rate, −standby cost.
 export function upgradeUnit(S, id){
