@@ -590,3 +590,21 @@ table.fleet tr.dials-row td{border-bottom:1px solid var(--line);padding:4px 8px 
 .pd-queue h4{margin:0 0 4px;font-family:var(--disp);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .pd-queue ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
 .pd-queue li{display:flex;justify-content:space-between;font-family:var(--mono);font-size:.72rem}
+
+/* v5.1 Phase 7 fix — the DAILY BRIEF panel. It was inheriting the base centered 460px modal
+   with no max-height, so it overflowed the viewport (the Advance button was unreachable) and
+   its two columns stacked. Now: a wide, left-aligned, SCROLLABLE sheet with a real 2-col grid
+   and a sticky footer so Advance/Step are always in reach. */
+.modal.brief{max-width:820px;text-align:left;max-height:90vh;overflow-y:auto;padding:22px 24px}
+.brief-panel h2{font-size:1.4rem;margin:0 0 4px}
+.brief-panel .pl-lead{margin:6px 0 12px}
+.brief-cols{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin:4px 0 6px}
+@media (max-width:640px){.brief-cols{grid-template-columns:1fr}}
+.brief-col h3,.modal.brief .pl-section h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;color:var(--muted);margin:14px 0 7px;font-weight:600}
+.brief-col h3:first-child{margin-top:2px}
+.modal.brief .pl-section h3 small{font-family:var(--mono);text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400;font-size:.9em}
+.modal.brief .pl-section{margin-top:12px;border-top:1px solid var(--line);padding-top:4px}
+.brief-alerts{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.brief-alerts li{font-family:var(--mono);font-size:.74rem;color:var(--warn);background:#2a2109;border:1px solid #5e4a1c;border-radius:6px;padding:5px 9px}
+/* sticky footer: the continue buttons stay reachable without scrolling to the very bottom */
+.brief-btns{position:sticky;bottom:-22px;margin-top:16px;padding:12px 0 2px;background:linear-gradient(180deg,transparent,var(--panel) 28%)}
