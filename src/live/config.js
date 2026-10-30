@@ -22,12 +22,17 @@ export const CFG = {
                               //   (idle peakers + the battery shouldn't bleed you dry — fixes the
                               //   cold-start insolvency; you only pay the full rate for what you run)
   unservedPenalty: 120,       // $/MWh extra penalty on unserved load (emergency purchases / fines)
-  strainRate: 52,             // strain gained per second at 100% shortfall
-  strainRecover: 45,          // strain shed per second when covered
+  // v5 Phase 6 re-tune: the day grew from 48s → 180s (Phase 1), but strain/recover were
+  // still per-real-second constants sized for the short day, so a brownout pinned strain
+  // almost instantly. Scaled by ≈48/180 so the per-GAME-DAY feel is preserved on the long
+  // day — strain now escalates over a meaningful stretch of a shortfall, never a snap. Strain
+  // is no longer fatal (v5 removed game-over); it is the pain signal the view reacts to.
+  strainRate: 14,             // strain gained per second at 100% shortfall (was 52 @ 48s/day)
+  strainRecover: 12,          // strain shed per second when covered (was 45 @ 48s/day)
   instantBlackout: 0.42,      // only a catastrophic shortfall kills instantly; smaller ones
                               //   fill the strain meter instead, giving a window to react
                               //   (fire the battery, start peakers) — so deaths feel earned
-  satDrain: 40,               // satisfaction lost per second at 100% shortfall (chronic brownouts erode it)
+  satDrain: 11,               // satisfaction lost per second at 100% shortfall (v5 P6: scaled for the 180s day; was 40 @ 48s)
   satRecover: 1.5,            // satisfaction regained per second when fully covered (slow — mistakes linger)
   outageRamp: 0.10,           // trip rate grows this much per day survived
   battRecharge: 70,           // MW recharge rate when idle
@@ -148,8 +153,8 @@ export const CFG = {
   defaultFloor: 40,          // cross-run standing can't be written back above this after a default
   creditRecoverPerDay: 3,    // solvent days rebuild credit toward the (possibly capped) ceiling
   insolvencyFloor: 0,        // cash below this counts as insolvent
-  hardInsolvency: -150000,   // cash this deep in the red = instant wind-up (assets seized)
-  bankruptcyGrace: 6,        // real-seconds insolvent before bankruptcy (mirrors the strain window)
+  hardInsolvency: -150000,   // cash this deep in the red = pain onset (v5: cratered credit, stalled growth — NOT a wind-up)
+  bankruptcyGrace: 22,       // v5 P6: real-seconds insolvent before PAIN ONSET (not death — game-over is gone); scaled for the 180s day (was 6 @ 48s)
   // ---- v4 "The Book": multi-track scoring (Phase D) — each track earns ⚡ on its
   // own curve, so longevity, wealth, clean play and spot-trading can each be "the
   // point". Divisors are $/⚡ or %/⚡; higher = that track rewards more slowly.
@@ -272,6 +277,27 @@ export const CFG = {
       slipPerExtra: 0.18,     // +slip probability per build beyond `comfortable`
       slipMaxProb:  0.6,      // slip probability never exceeds this (even a huge queue finishes)
       overrunRate:  0.12,     // a slipped quarter charges this fraction of the capital cost
+    },
+    // Phase 6: the hybrid economy settles on THREE money-surfaces — a regulated capacity
+    // FLOOR (availability pay on reserve you hold ready, keyed to Reliability), a market
+    // SWING (live spot PnL on the MW you push, sharpened by Efficiency/Output/Flexibility),
+    // and the overlord's quarterly VERDICT (grades your KPIs + serve rate + clean standing,
+    // ratchets next quarter's floor rate, hands a bonus or fine). Failure is stagnation —
+    // a wrecked quarter stalls demand growth and tightens credit, never a game-over.
+    econ: {
+      floorRateStart: 6,      // $/MW/h availability pay on held reserve at game start (verdict ratchets it)
+      floorRateMin:   2,      // the overlord never squeezes the floor rate below this …
+      floorRateMax:   16,     // … nor rewards above this
+      rateRatchet:    0.30,   // how hard a verdict moves next quarter's floor rate (× grade gap)
+      gradeNeutral:   0.60,   // composite grade (0..1) the overlord treats as "par" — above earns, below is squeezed
+      wKpi:   0.40,           // verdict grade weights: fleet KPI average …
+      wServe: 0.40,           // … how much load you actually served …
+      wClean: 0.20,           // … and your clean standing (emissions intensity). Sum = 1.
+      dirtyIntensity: 650,    // kg CO₂/MWh at which clean standing hits 0 (cleaner → better verdict)
+      bonusMax: 45000,        // $ bonus at a perfect grade (scales with the gap above neutral)
+      fineMax:  45000,        // $ fine at a zero grade (scales with the gap below neutral)
+      growthStallThreshold: 0.92, // a quarter serving below this fraction of load stalls next quarter's growth …
+      growthStallMax: 0.6,    // … removing up to this fraction of the demand-growth step (stagnation, not death)
     },
   },
 };
