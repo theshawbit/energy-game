@@ -472,7 +472,9 @@ export const CFG = {
     // once the queues are set it auto-advances through quiet days and only yanks the player
     // back on an exception. These are the exception gates (shouldInterrupt). This is the most
     // FEEL-dependent dial in v5.1 — too twitchy and it's 22 pauses a quarter, too lax and the
-    // player sleeps through a crisis; PLACEHOLDER, to be tuned against a prototype by play.
+    // player sleeps through a crisis. SETTLED v5.3 Phase 5 at these values: the proxy playtest ran a
+    // quarter with the brief auto-advancing the calm days and only surfacing on a real pinch; no
+    // retune needed. (Headless harness runs with S.briefEnabled off, so these never gate the sweep.)
     brief: {
       headroomPct: 0.10,     // interrupt when (capacity − peak)/peak falls below this (getting tight)
       cashFloor:   20000,    // interrupt when cash drops under this
@@ -518,7 +520,8 @@ export const CFG = {
     // without a shorter day flattening the tense moments. Crisis PAUSING stays with autoPause
     // (the strain-onset hook) — auto-pace never forces a pause, so it can't fight the player for
     // the wheel. slowHeadroomPct sits a touch above the brief's nag so the clock slows BEFORE
-    // it's brief-tight. PLACEHOLDER — the balance pass tunes the band.
+    // it's brief-tight. SETTLED v5.3 Phase 5: the proxy playtest confirmed auto-pace fast-forwards
+    // the calm hours and drops to 1× into the evening peak as intended; left at value.
     pace: {
       slowHeadroomPct: 0.15,  // drop to 1× when (capacity − peak)/peak falls below this (buffer over brief.headroomPct 0.10)
     },
@@ -530,18 +533,22 @@ export const CFG = {
   // dominant for ANY voll > 0, so voll is a FAIRNESS knob, not the dominance guarantee: tuned
   // ~10–20× the max clearing price and BOUNDED per quarter so a bad run fails via the stability bar,
   // not a single VOLL spike. SEPARATE from constants.VOLL (the batch reference build still uses that).
-  // PLACEHOLDER — the balance pass (Phase 5) settles these against the real fleet.
+  // SETTLED v5.3 Phase 5 against tools/balance.mjs — see the per-field notes below.
   v5_3: {
     market: {
-      // v5.3 Phase 5 SETTLED: voll = 15× PRICE_CAP (300) — squarely in the spec's 10–20× band. The
-      // continuous price already makes covering strictly dominant for any voll > 0, so this is a
-      // FAIRNESS knob tuned for how much a forced blackout stings, not the dominance guarantee.
-      voll:           4500,       // $/MWh on FORCED unserved (15× the max clearing price)
-      // The per-quarter ceiling keeps VOLL from being the run-ender: a capacity shortfall tops the
-      // stability bar (collapse, ~12.5 game-hours at full fill) long before uncapped VOLL would, and
-      // the run only ENDS via the stability bar. Against the multi-MM/quarter economy this is a
-      // painful-but-survivable cash hit, so a bad run dies on the grid, not on a single VOLL spike.
-      vollQuarterCap: 2_000_000,  // $ ceiling on per-quarter VOLL exposure (can't single-handedly end the run)
+      // v5.3 Phase 5 SETTLED: voll = 10× PRICE_CAP (300) — the LOW end of the spec's 10–20× band,
+      // chosen for survivability (the spec's explicit tuning goal). The continuous price already makes
+      // covering strictly dominant for any voll > 0, so this is a FAIRNESS knob for how much a forced
+      // blackout stings, not the dominance guarantee. The low end keeps a passive opening's cash trough
+      // (it leaves peak load unserved → VOLL) survivable: it recovers to a profit by quarter-end rather
+      // than spiralling, while a forced blackout still clearly costs more than serving.
+      voll:           3000,       // $/MWh on FORCED unserved (10× the max clearing price)
+      // The per-quarter ceiling is what actually GOVERNS a passive run's cash trough: a grid that
+      // leaves peak load unserved accrues VOLL until this cap, bottoms ~−1.3M, then swing income
+      // overtakes it and the quarter still closes in profit (~+2.3M, measured). It also keeps VOLL
+      // from being the run-ender — the run only ENDS via the stability bar, never a VOLL spike — so a
+      // bad run dies on the grid, not the ledger. (Tuned against tools/balance.mjs + the proxy playtest.)
+      vollQuarterCap: 2_000_000,  // $ ceiling on per-quarter VOLL exposure (bounds the trough; never ends the run)
     },
   },
 };
