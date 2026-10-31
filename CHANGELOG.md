@@ -8,6 +8,31 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed — v5.2 Phase 1: peak formula rework (B-split saturating shock) (2026-10-31)
+
+A human playtest of v5.1 (12 days, ~36 min, never reached a quarter review) exposed the real
+playability killer: the **intraday peak**, not demand growth. v5.1's quarterly baseline is flat
+within a quarter — but the **live demand assembly** (`sim.js`) multiplied four surge sources
+(daily noise × event regime × load wobble × demand spike), so a winter evening could stack to
+**+57% over baseline at random** (≈1,222 MW), an unpreventable spike that dropped the player into
+an uncontrollable day-5/6 blackout. First phase of the **v5.2 playability rebalance** (grilled
+2026-10-31, [`docs/plan-v5.2/`](docs/plan-v5.2/README.md)).
+
+- **Split model ("B-split").** Demand is now a **foreseeable lift** (daily noise + event regime —
+  plannable, surfaced in the brief, you build reserve for it) × a **capped random shock**
+  (`1 + Smax·tanh((wSpike·spike + wWobble·wobble)/Smax)`). New pure `peakShock()` in `demand.js`;
+  `tanh` saturates so the random surge can **never** stack into a death-peak — `shockCap` (Smax)
+  is the single explicit "hardest peak the game can ever throw," the true pinch point, set on
+  purpose. The spike is the dominant weighted term; the wobble is seasoning.
+- **Relief preserved.** A *downward* load wobble stays uncapped relief on the foreseeable side
+  (a lull still helps); only the *upward* transient feeds the cap.
+- `stepDemand`, the quarterly baseline, and the event regime are **unchanged** — this reworks only
+  how the intraday transients combine. `CFG.v5_2.peak` holds PLACEHOLDER balance numbers
+  (`shockCap`, `wSpike`, `wWobble`); the tests pin the SHAPE (capped, spike-dominant, saturating,
+  relief-preserving), not the values, which the balance pass settles against the real fleet.
+- New `tests/peak-formula.test.mjs` (33 suites green). Browser-verified: zero demand-ceiling
+  violations across 3,200 live ticks / 12 days; max demand 868 MW vs the old ~1,222. `engine.js` untouched.
+
 ### Planned — v5 "The Persistent Grid" (scoped, not built)
 
 A **genre pivot** from survival roguelike to a persistent management / operations sim: one
