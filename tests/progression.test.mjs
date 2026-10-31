@@ -114,17 +114,16 @@ const thermal = S => S.fleet.find(u => u.tiers);
   const planned = autoMaintenancePlan(A);
   check("autoMaintenancePlan queues the neediest plant", planned.length >= 1 && A.maintQueue.some(j => j.unitId === u.id) && u.maintDown);
 
+  // v5.3 Phase 1: the output band is retired (Option 1 — a committed unit offers full
+  // capacity), so dispatchAssist has nothing to un-throttle. It is now INERT (returns 0,
+  // touches no dials); Phase 3's residue pass reckons with the stranded ⚡ perk.
   const D = createGame(); D.perks.dispatchAssist = true;
   const firm = D.fleet.filter(x => (x.kind === "firm" || x.kind === "gas") && x.dials && x.dials.commit);
-  check("there are committed thermal plants to assist", firm.length >= 1);
-  const a = firm[0], b = firm[1] || firm[0];
-  a.dials.bandMax = 1; a.pin = true;
-  b.dials.bandMax = 1; b.pin = false;
+  check("there are committed thermal plants in the fleet", firm.length >= 1);
+  const before = firm.map(u => ({ ...u.dials }));
   const n = dispatchAssist(D);
-  check("pinned plant's band is untouched", a.dials.bandMax === 1);
-  check("unpinned plant's band opens to effectiveMax", near(b.dials.bandMax, effectiveMax(b)) && n >= 1, `bandMax ${Math.round(b.dials.bandMax)}`);
-  const b2 = b.dials.bandMax; dispatchAssist(D);
-  check("dispatchAssist is deterministic (idempotent on a steady fleet)", b.dials.bandMax === b2);
+  check("dispatchAssist is inert in v5.3 (adjusts nothing)", n === 0);
+  check("dispatchAssist touches no dials", firm.every((u, i) => JSON.stringify(u.dials) === JSON.stringify(before[i])));
 }
 
 console.log(failed === 0 ? "\nAll progression tests passed." : `\n${failed} progression test(s) FAILED.`);

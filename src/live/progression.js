@@ -17,7 +17,6 @@
 // Phase 2 dials — relief, never a cheat (it still pays, reserves a crew, books downtime).
 // ============================================================
 import { CFG } from "./config.js";
-import { effectiveMax } from "./kpi.js";
 import { queueMaint } from "./maint.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -132,19 +131,12 @@ export function autoMaintenancePlan(S){
   return queued;
 }
 
-// Dispatch assist: open each committed, UNPINNED thermal plant's band to its legal max each
-// tick so output isn't accidentally throttled. Never touches a plant the player pinned
-// (u.pin) or a dial value on it. Deterministic (no RNG). Returns the count adjusted.
+// Dispatch assist: once the perk that re-opened each committed plant's output band to its
+// legal max, so nothing sat accidentally throttled. v5.3 Phase 1 (Option 1) retired the
+// output band — a committed unit always offers its full capacity — so there is nothing left
+// to un-throttle and this is now INERT. Left as a no-op (returns 0) for Phase 3's residue
+// pass to reckon with the stranded ⚡ perk (alongside servicemgr), rather than silently
+// redesigning a purchasable perk mid-milestone.
 export function dispatchAssist(S){
-  if (!S.perks?.dispatchAssist) return 0;
-  let n = 0;
-  for (const u of S.fleet){
-    if (!u.dials || !(u.kind === "firm" || u.kind === "gas")) continue;
-    if (u.pin || !u.dials.commit) continue;     // player-pinned or offline → left alone
-    const eMax = effectiveMax(u);
-    u.dials.bandMax = eMax;
-    u.dials.bandMin = clamp(u.dials.bandMin ?? 0, 0, eMax);
-    n++;
-  }
-  return n;
+  return 0;
 }

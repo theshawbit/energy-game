@@ -19,7 +19,6 @@
 // bar, a weak one damages it and accelerates the next quarter's fill).
 // ============================================================
 import { CFG } from "./config.js";
-import { effectiveMax } from "./kpi.js";
 import { canDemandRespond, activeShedMW, loadShedTiers } from "./crisis.js";
 
 // The fresh reservoir, seeded by createGame. fillMult (≥1) is the verdict accelerator:
@@ -39,11 +38,11 @@ export function hasDispatchLever(S){
     if (u.maintDown || u.status === "maint") continue;              // in the shop — not a live move
     if (u.kind === "firm" || u.kind === "gas"){
       if (!u.dials) continue;
-      // an uncommitted, idle dispatchable could be brought online (tripped/service can't)
-      if (!u.dials.commit){ if (u.status === "off") return true; continue; }
-      // a committed unit still holding reserve back, or not dialled to its full band
-      if ((u.dials.reserveHold ?? 0) > eps) return true;
-      if ((u.dials.bandMax ?? 0) < effectiveMax(u) - eps) return true;
+      // an uncommitted, idle dispatchable could be brought online (tripped/service can't).
+      // v5.3: a COMMITTED unit already offers its full capacity (Option 1 price-taking), so
+      // commit is the only firm/gas lever left — the old reserveHold/bandMax "offer more"
+      // levers are gone with the throttle dials.
+      if (!u.dials.commit){ if (u.status === "off") return true; }
     } else if (u.kind === "battery"){
       // a charged battery sitting idle could be set to discharge
       if (u.status !== "discharge" && (u.energy ?? 0) > eps) return true;

@@ -67,10 +67,8 @@ const menu = {
   decommission(id){ decommissionUnit(S, id); buildUnits(S, act, openPlant); refreshPage(); render(S); },
   // v5 Phase 7: pin a plant against Dispatch Assist (fleet page toggle).
   pin(id){ pinUnit(S, id); refreshPage(); render(S); },
-  // v5 Phase 2 dials: commit re-renders the page (band/push enable with it); the
-  // sliders write u.dials live without a page rebuild so the drag stays smooth.
+  // v5.3 Phase 1: commit is the only dispatch dial left; toggling it re-renders the page.
   commit(id){ const u = S.fleet.find(x => x.id === id); if (u && u.dials){ u.dials.commit = !u.dials.commit; } refreshPage(); render(S); },
-  setDial(id, key, val){ const u = S.fleet.find(x => x.id === id); if (u && u.dials){ u.dials[key] = val; } render(S); },
   research(id){ researchNode(S, id); refreshPage(); render(S); },
   setFunding(v){ setRdFunding(S, v); }, // readout updates in-place; no re-render (keeps slider drag)
   setHedge(v){ setHedge(S, v); },       // hedge dial drag; readout in-place, no re-render

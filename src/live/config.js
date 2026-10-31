@@ -215,12 +215,13 @@ export const CFG = {
     // takes the hit. Rates are %/game-hour at full stress; the hits are %/event.
     decay: {
       idleFloor:   0.12,      // a spinning-idle plant still carries this load share
-      loadRefHigh: 0.70,      // loadFrac above this counts as "high load" (push bites here)
+      loadRefHigh: 0.70,      // loadFrac above this counts as "high load" (wear bites here)
       partLoadRef: 0.50,      // loadFrac below this is "part-load" (efficiency drifts)
-      reliability: 0.55,      // %/gh when push×high-load = 1
-      output:      0.40,      // %/gh when push×high-load = 1
+      loadStress:  0.3,       // v5.3: intrinsic high-load wear coefficient (was the retired push dial's default); Phase 5 re-tunes
+      reliability: 0.55,      // %/gh when loadStress×high-load = 1
+      output:      0.40,      // %/gh when loadStress×high-load = 1
       efficiency:  0.45,      // %/gh at full part-load (loadFrac → idleFloor)
-      rampHit:     1.0,       // flexibility % lost per ramp (band move)
+      rampHit:     1.0,       // v5.3: UNUSED — the band-ramp wear event is gone with the output band (Phase 3 deletes this knob)
       startHit:    2.5,       // flexibility % lost per start (cold → committed)
       startRelHit: 0.4,       // reliability % nicked per start
     },
@@ -728,8 +729,9 @@ export function makeFleet() {
   return fleet;
 }
 
-// A minimal dials snapshot the sim diffs each tick to spot ramps/starts (cycleCost).
-export function dialSnapshot(d){ return { commit: d.commit, bandMin: d.bandMin, bandMax: d.bandMax }; }
+// A minimal dials snapshot the sim diffs each tick to spot STARTS (cycleCost). v5.3: the
+// output band is gone, so commit is the only state left to diff.
+export function dialSnapshot(d){ return { commit: d.commit }; }
 
 // Phase 7 / v5.1 Phase 3: a fresh plant's per-axis attainable-max — the ceiling maintenance
 // restores toward. Every axis starts at base (= tier 0). The caps are now DERIVED from

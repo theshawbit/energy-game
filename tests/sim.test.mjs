@@ -141,19 +141,21 @@ check("online plant wears down", nucW.condition < 100, nucW.condition.toFixed(1)
   check("generating plants accrue age (persists)", nuc.ageHours > 0, nuc.ageHours.toFixed(2) + "gh");
 }
 // Age (v5 Phase 3): age is still TRACKED (Phase 4 reads it) but no longer wears
-// directly — degradation is earned by operating STYLE, not by ambient ageing. Two
-// identically-run plants wear the same regardless of age; push is what separates them.
+// directly — degradation is earned by operating LOAD, not by ambient ageing. v5.3: the
+// push dial is retired, so it no longer separates two plants — wear rides load intrinsically
+// (the load→wear curve is pinned in tests/kpi.test.mjs). Age is still irrelevant to wear.
 {
   const dropFor = (age, push) => {
     const g = createGame();
     g.fleet.filter(u => u.kind === "renew").forEach(u => u.status = "off");
-    const n = g.fleet.find(u => u.id === "nuc"); n.fail = 0; n.ageHours = age; n.dials.push = push;
+    const n = g.fleet.find(u => u.id === "nuc"); n.fail = 0; n.ageHours = age; if (n.dials) n.dials.push = push;
     const before = n.condition; step(g, 1.0); return before - n.condition;
   };
   check("age alone no longer wears a plant (Phase 4 reads ageHours instead)",
     near(dropFor(360, 0.3), dropFor(0, 0.3), 1e-6),
     `−${dropFor(360, 0.3).toFixed(3)} (aged) vs −${dropFor(0, 0.3).toFixed(3)} (fresh)`);
-  check("pushing a plant harder wears it faster (style, not age)", dropFor(0, 1) > dropFor(0, 0.3) * 1.5,
+  check("the retired push dial no longer changes wear (style rides load, not a dial)",
+    near(dropFor(0, 1), dropFor(0, 0.3), 1e-6),
     `−${dropFor(0, 1).toFixed(3)} (push 1.0) vs −${dropFor(0, 0.3).toFixed(3)} (push 0.3)`);
 }
 // (v5 Phase 7 / v5.1 Phase 3) The Mk upgrade's age-relief is retired along with the Mk ladder —

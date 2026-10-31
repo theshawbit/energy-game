@@ -17,7 +17,7 @@ import { autoMaintenancePlan, dispatchAssist } from "./progression.js";
 import { tickBuilds } from "./construct.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
 import { freshClock, tickClock, autoPause } from "./clock.js";
-import { applyDials, cycleCost } from "./dispatch.js";
+import { cycleCost } from "./dispatch.js";
 import { degradeKPIs, freshKPIs, heatRateMult, effectiveMax } from "./kpi.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { stepDemand, rollQuarterPeak, peakShock } from "./demand.js"; // v5.1 Phase 1: hybrid demand curve; v5.2 Phase 1: capped shock
@@ -81,7 +81,6 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     fleet, techCount, weather:freshWeather(), buildSeq:1,
     demandJit:0, spikeMag:0, spikeT:0, // v4.2.2 net-load volatility state
     demand:0, capacity:0, price:0, brownout:false,
-    reserveOffered:0, // v5 Phase 2: MW held back from the swing via reserveHold (earns the floor in Phase 6)
     // v5.1 Phase 2: the fail-state returns. The grid-stability reservoir fills on a shortfall
     // and drains on served hours; topping out sets S.over and freezes the run for a roguelite
     // restart. runStartDay tags this run for the records the profile banks across deaths.
@@ -186,13 +185,11 @@ export function unitOutput(S, u){
     return u.cap * interp(u.cf, S.t) * wx * mut;
   }
   if (u.kind === "battery") return (u.status === "discharge" && u.energy > 0) ? u.cap * (S.rmods?.battCapMult ?? 1) : 0;
-  // firm / gas (v5 Phase 2): the Core+ dials shape the MW offered to the merit order.
-  // Only a physically-running unit contributes (a strained plant still generates
-  // until it trips); starting/service/tripped offer nothing. applyDials handles the
-  // band clamp + reserve-hold shave; dialled to its full band this equals u.cap (v4).
-  // v5.3: dispatch sees FULL available capacity (effectiveMax), not the dial-shaved offer — so the
-  // player can't withhold to move their own clearing price (price-taking). The retired throttle
-  // dials (reserveHold/bandMax) no longer shrink supply; commit still gates via status (sim ~345).
+  // firm / gas: only a physically-running unit contributes (a strained plant still generates
+  // until it trips); starting/service/tripped offer nothing. v5.3 Option 1: dispatch sees FULL
+  // available capacity (effectiveMax), so the sole supplier can't withhold to move their own
+  // clearing price (price-taking). commit gates online/off via the status reconciliation (sim ~345);
+  // the retired throttle dials no longer shrink supply.
   if (u.status === "online" || u.status === "strained") return effectiveMax(u);
   return 0;
 }
@@ -405,10 +402,6 @@ export function step(S, dt){
   // Aggregate every unit's available MW (0 when off/tripped) into per-tech supply.
   const avail = {};
   for (const u of S.fleet) avail[u.tech] = (avail[u.tech] || 0) + unitOutput(S, u);
-  // v5 Phase 2: sum the headroom held back from the swing via reserveHold (only on
-  // committed, physically-running dial-able thermal). Phase 6 pays the capacity floor on it.
-  S.reserveOffered = S.fleet.reduce((a, u) =>
-    a + (((u.kind === "firm" || u.kind === "gas") && (u.status === "online" || u.status === "strained")) ? applyDials(u).held : 0), 0);
   const hr = dispatchHour(avail, S.demand, S.carbon, S.mmods?.fuelMult ?? 1); // carbon + mutator fuel spike re-sort the merit order
   S.price = hr.priceServed;                                   // v5.3: the honest price served load earns (continuous; was hr.price, the cap-spiked signal)
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
@@ -429,10 +422,11 @@ export function step(S, dt){
     const share = techAvail > 0 ? (hr.stack?.[u.tech] || 0) / techAvail : 0; // 0..1 dispatched fraction
     u.loadFrac = share;                                                      // expose for UI/tests
     u.ageHours = (u.ageHours || 0) + dtH;                     // still tracked (Phase 4 reads it); no longer wears directly
-    // ramp/start events since this unit last generated (dispatch.cycleCost)
+    // start events since this unit last generated (dispatch.cycleCost) — v5.3: the band-ramp
+    // event is gone with the output band, so only a commit (start) still wears Flexibility.
     const prev = u.prevDials || dialSnapshot(u.dials);
     const cyc = cycleCost(u, prev, u.dials);
-    degradeKPIs(u, { loadFrac: share, push: u.dials?.push ?? 0, ramped: cyc.ramped, started: cyc.started }, dtH * wearMods);
+    degradeKPIs(u, { loadFrac: share, started: cyc.started }, dtH * wearMods);
     u.prevDials = dialSnapshot(u.dials);
     // efficiency re-prices: extra fuel ∝ (heatRateMult − 1) × this unit's dispatched MW
     effSurcharge += unitOutput(S, u) * share * (u.mc || 0) * (heatRateMult(u.kpis.efficiency) - 1);
@@ -488,11 +482,12 @@ export function step(S, dt){
   //  • SWING: contracts settle first at their locked price, the residual served load
   //    clears at spot, scaled by the fleet's swing quality (generation-weighted
   //    Efficiency/Output/Flexibility — a fresh fleet = 1.0, no change from v4).
-  //  • FLOOR: availability pay on the MW each committed thermal unit HOLDS back via
-  //    reserveHold, at the ratcheted floor rate, keyed to that unit's Reliability.
-  // Held reserve isn't offered to the merit order (applyDials shaves it), so it earns
-  // the floor, never the swing — the two never double-count. Both read only served
-  // load, so a shortfall is still never a windfall (the v4 invariant holds).
+  //  • FLOOR: availability pay on firm RESERVE — firm/gas capacity kept available but
+  //    NOT dispatched this tick (computed below off the engine's stack), at the ratcheted
+  //    floor rate, keyed to the fleet's Reliability. v5.3: re-based off the available-but-
+  //    undispatched reserve, not the retired reserveHold dial, so no dial can farm it.
+  // The floor pays undispatched reserve and the swing pays served residual, so the two never
+  // double-count; both read only served load, so a shortfall is never a windfall.
   let swW = 0, swSum = 0, availFirm = 0, relW = 0, relSum = 0;
   for (const u of S.fleet){
     const mw = unitOutput(S, u);
