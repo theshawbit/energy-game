@@ -76,7 +76,15 @@ export function tickStability(S, suppliedMW, demandMW, dtH){
     st.hp = Math.max(0, st.hp - cfg.drainRate * dtH);
   } else {
     const cls = hasDispatchLever(S) ? "dispatch" : "capacity";
-    const rate = (cls === "capacity" ? cfg.fillCapacity : cfg.fillDispatch) * (st.fillMult ?? 1);
+    const base = (cls === "capacity" ? cfg.fillCapacity : cfg.fillDispatch) * (st.fillMult ?? 1);
+    // v5.3 Phase 5 (H1): fill scales with shortfall MAGNITUDE — the fraction of the city left
+    // dark — so a shallow brownout barely dings the bar while a deep blackout fills fast. It
+    // saturates at sevRef: a shortfall of sevRef×demand (or worse) fills at the full nominal
+    // rate above. This is why a passive opening can scrape to the first board review (its
+    // shortfalls are brief and mostly shallow) while a grid that is genuinely half-dark is in
+    // real trouble. sevRef ≤ 0.5, so the deep-shortfall fixtures still fill at the full rate.
+    const sevFrac = Math.min(1, short / Math.max(1, demandMW) / (cfg.sevRef || 1));
+    const rate = base * sevFrac;
     st.lastShortfall = cls;
     st.fillPaused = false;
     st.hp = Math.min(st.max, st.hp + rate * dtH);

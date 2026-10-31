@@ -35,12 +35,13 @@ function freshS(over = {}) {
 
 // 1) Capacity shortfall fills full-rate. Every lever exhausted: no dispatchable fleet, DR
 //    ungated (no rmods.demandShave), load-shed already active (so no tier remains) — still short.
+//    A DEEP shortfall (≥ sevRef of the city dark) fills at the full nominal rate (v5.3 H1).
 {
-  const S = freshS({ demand: 100, capacity: 50, shed: { tLeft: 4, mw: 20 } });
+  const S = freshS({ demand: 100, capacity: 40, shed: { tLeft: 4, mw: 20 } }); // 60% short ≥ sevRef → saturated
   check("classifyShortfall → capacity when every lever is exhausted", classifyShortfall(S) === "capacity");
   const before = S.stability.hp;
   tickStability(S, S.capacity, S.demand, 1); // 1 game-hour
-  check("capacity shortfall fills at fillCapacity", Math.abs((S.stability.hp - before) - S_cfg.fillCapacity) < 1e-9,
+  check("a deep capacity shortfall fills at the full fillCapacity rate", Math.abs((S.stability.hp - before) - S_cfg.fillCapacity) < 1e-9,
     `+${(S.stability.hp - before).toFixed(2)} vs fillCapacity ${S_cfg.fillCapacity}`);
   check("fill records the cause", S.stability.lastShortfall === "capacity");
 }
@@ -48,14 +49,29 @@ function freshS(over = {}) {
 // 2) Dispatch shortfall fills half-rate. Short, but a lever remains (load-shed NOT active → a
 //    tier is still available to cut). Classifies "dispatch" and fills slower than capacity.
 {
-  const S = freshS({ demand: 100, capacity: 50 }); // shed null → a tier remains
+  const S = freshS({ demand: 100, capacity: 40 }); // 60% short, shed null → a tier remains
   check("classifyShortfall → dispatch when a lever remains", classifyShortfall(S) === "dispatch");
   const before = S.stability.hp;
   tickStability(S, S.capacity, S.demand, 1);
   const got = S.stability.hp - before;
-  check("dispatch shortfall fills at fillDispatch", Math.abs(got - S_cfg.fillDispatch) < 1e-9,
+  check("a deep dispatch shortfall fills at the full fillDispatch rate", Math.abs(got - S_cfg.fillDispatch) < 1e-9,
     `+${got.toFixed(2)} vs fillDispatch ${S_cfg.fillDispatch}`);
   check("dispatch fill < capacity fill (never killed while a move exists)", S_cfg.fillDispatch < S_cfg.fillCapacity);
+}
+
+// 2b) v5.3 H1 — fill scales with shortfall MAGNITUDE. A shallow brownout fills far less than a
+//     deep blackout of the SAME cause, so a passive opening can scrape to the first board review
+//     while a half-dark grid is in real trouble. Saturates at sevRef (deep shortfalls = full rate).
+{
+  const shallow = freshS({ demand: 100, capacity: 90 }); // 10% short (a brownout)
+  const deep = freshS({ demand: 100, capacity: 40 });    // 60% short (saturated)
+  const fill = S => { const b = S.stability.hp; tickStability(S, S.capacity, S.demand, 1); return S.stability.hp - b; };
+  const fShallow = fill(shallow), fDeep = fill(deep);
+  check("a shallow shortfall fills less than a deep one (magnitude-scaled)", fShallow < fDeep,
+    `shallow +${fShallow.toFixed(2)} < deep +${fDeep.toFixed(2)}`);
+  check("the shallow fill scales ~linearly with magnitude below sevRef",
+    Math.abs(fShallow - S_cfg.fillDispatch * (0.10 / S_cfg.sevRef)) < 1e-9, `+${fShallow.toFixed(3)}`);
+  check("sevRef ≤ 0.5 (deep-shortfall fixtures stay at the full rate)", S_cfg.sevRef <= 0.5);
 }
 
 // 3) Clean hours drain, slower than fill. Served (supply ≥ demand) decreases hp by drainRate,

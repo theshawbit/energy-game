@@ -147,6 +147,12 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
 
 export function setTicker(S, msg){ S.ticker = msg; S.tickerT = 3.5; }
 
+// v5.3 Phase 5 (H7): the aging multiplier that lifts trip risk as the run climbs, HARD-CAPPED at
+// CFG.outageRampCap so a long persistent run can't degenerate into certain trips. Pure (day → mult);
+// 1 on day 1, rises by outageRamp/day, then plateaus (~day 31 at the default 0.10/4.0). KPI health
+// still gates trips on top of this — a plant at ≥85% reliability is immune at any age.
+export function agingDiff(day){ return Math.min(CFG.outageRampCap, 1 + (day - 1) * CFG.outageRamp); }
+
 // Daily strain probability for a condition, linearly interpolated from the
 // CFG.tripOdds lookup ([cond%, pDay], descending). Clamps above the top point and
 // plateaus below the bottom one — so the curve passes exactly through the tuned
@@ -325,7 +331,7 @@ export function step(S, dt){
     else if (renv() < V.spikeChance * dtH){ S.spikeMag = rand(V.spikeMin, V.spikeMax, renv); S.spikeT = rand(V.spikeDurMin, V.spikeDurMax, renv); }
   }
 
-  const diff = 1 + (S.day - 1) * CFG.outageRamp; // outages get worse as days climb
+  const diff = agingDiff(S.day); // outages get worse as days climb — H7-capped (see agingDiff)
 
   // unit state machines
   for (const u of S.fleet){

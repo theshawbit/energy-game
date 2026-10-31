@@ -11,6 +11,49 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### v5.3 "Integrity" — economy-correctness milestone (2026-10-31)
+
+A feature-freeze milestone born from an external audit that found 34 green test suites coexisting
+with critical economy bugs — *engineering-mature, design-immature*. Five phases, no new features;
+the point was to make the code honest and then prove it. See [`docs/plan-v5.3/`](plan-v5.3/README.md)
+and [`docs/PLAYTEST-v5.3.md`](PLAYTEST-v5.3.md).
+
+- **The real market (Phase 1).** Served load now earns the engine's **continuous clearing price**
+  (`priceServed`, additive) instead of the cap-spiked signal, and dispatch is **price-taking** (full
+  available capacity, so no withholding). This killed the "go dark by a sliver and bank the cap"
+  exploit the audit found: covering the city is now strictly the profit-maximising play. Forced
+  unserved load costs **VOLL** (a fairness knob). PnL is reconciled to cash to the dollar; minting ⚡
+  is gated on a profitable, well-served quarter. *(The throttle dials were deleted here — `commit` is
+  the only dispatch lever.)*
+- **Tests are CI-gated (Phase 2).** A GitHub Action runs the full `npm test` suite on every push/PR,
+  and `tools/balance.mjs` was rebuilt into a **9-assert incentive harness** (continuity, an incentive
+  U-sweep, price-taking, conservation, reach-a-quarter, a dominant-strategy + hill-climbing adaptive
+  probe, mint, no-dead-content). The environment RNG is seeded so the harness measures the real,
+  volatile game. *(Revised principle: "no CI" now means no CI **for deploy**; deploy stays manual.)*
+- **One trouble-meter; residue deleted (Phase 3).** The four overlapping "grid in trouble" signals
+  collapsed onto the single grid-stability reservoir; inert/lying mechanics were **deleted** (the
+  service-manager path, dead aging fields, a stranded auto-dispatch perk, the second wear model). The
+  pause state was single-sourced (one resume click). A broken payoff was fixed: completing a KPI
+  upgrade tier now raises the **live** KPI, not just the cap — buying a tier is never a 0-MW purchase.
+- **Docs reconciliation + version stamp (Phase 4, early half).** The README module map was regenerated
+  from `src/live/` (16 listed → 34 real), the revised principles recorded, and a single-sourced
+  **version stamp** added to the page (quotable in a bug report). *(Revised principle: the **clearing
+  logic** is sacred, not the `engine.js` file — additive outputs like `priceServed` are allowed.)*
+- **Balance pass + playtest gate (Phase 5).** Every placeholder number settled against the asserting
+  harness, with the passive-reach-a-quarter gate going **21/24 → 48/48**. Two deferred levers folded
+  in: **H1** — stability fill now scales with shortfall **magnitude** (a shallow brownout barely dings
+  the bar, a deep blackout fills fast); **H7** — the aging trip multiplier is **hard-capped** so a long
+  run can't degenerate into certain trips (new day-400 non-degeneracy test). VOLL settled at 10× the
+  price cap for survivability. A proxy playtest confirmed the game is coherent and its P&L legible at
+  the board review; the human playtest and two live-screen legibility findings are recorded in
+  [`PLAYTEST-v5.3.md`](PLAYTEST-v5.3.md).
+
+**Known / deferred:** the human playtest; a UI legibility pass (surface the live VOLL/unserved
+penalty; the overdrawn-cash readout; the audit's "content density outruns the data" note); the
+fail-state "is roguelite game-over the right model?" decision (now *answerable*, deferred to v5.4);
+and the Phase-4-late in-game/home copy rewrite (the home screen still sells the older "survive it to
+win" run model — now unblocked).
+
 ### Changed — v5.2 Phase 2: pacing & fail-state legibility (2026-10-31)
 
 Clears the two secondary blockers to reaching a quarter review and makes the survival read
