@@ -20,7 +20,7 @@ import { freshClock, tickClock, autoPause } from "./clock.js";
 import { applyDials, cycleCost } from "./dispatch.js";
 import { degradeKPIs, freshKPIs, heatRateMult } from "./kpi.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
-import { stepDemand, rollQuarterPeak } from "./demand.js"; // v5.1 Phase 1: hybrid demand curve
+import { stepDemand, rollQuarterPeak, peakShock } from "./demand.js"; // v5.1 Phase 1: hybrid demand curve; v5.2 Phase 1: capped shock
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
 import { rollRegime, regimeMods } from "./events.js";
@@ -378,10 +378,19 @@ export function step(S, dt){
   }
   // (wear is applied after dispatch, below — it needs each unit's actual load.)
 
-  // demand: daily shape × peak, lifted by mutators (heat wave / cold snap), then
-  // shaved by demand-response research (the demand-SIDE lever).
-  S.demand = S.peak * interp(DEMAND_SHAPE, S.t) * (S.mmods?.demandMult ?? 1) * (1 - (S.rmods?.demandShave ?? 0))
-    * (1 + S.demandJit) * (S.spikeT > 0 ? 1 + S.spikeMag : 1); // v4.2.2 jitter + spikes
+  // demand (v5.2 Phase 1 — B-split): a FORESEEABLE lift × a CAPPED random shock.
+  //  • Foreseeable = daily shape × peak, lifted by the event regime (heat wave / cold snap),
+  //    shaved by demand-response research (the demand-SIDE lever). Plannable — you see the
+  //    season + active event, so building reserve for it is a fair skill test. A DOWNWARD
+  //    load wobble stays here as uncapped relief (a lull should still help you).
+  //  • Shock = the two in-the-moment transients (load wobble + demand spike), weighted and
+  //    SATURATED by peakShock so the random surge can never stack into a death-peak the way
+  //    the old raw multiply could (noise×event×wobble×spike → +57%).
+  const foreseeable = S.peak * interp(DEMAND_SHAPE, S.t) * (S.mmods?.demandMult ?? 1) * (1 - (S.rmods?.demandShave ?? 0))
+    * (1 + Math.min(0, S.demandJit));                       // downward wobble = relief, uncapped
+  const spikeSurge  = S.spikeT > 0 ? S.spikeMag : 0;
+  const wobbleSurge = Math.max(0, S.demandJit);             // only the UPWARD transient feeds the cap
+  S.demand = foreseeable * (1 + peakShock(spikeSurge, wobbleSurge));
   // v5 Phase 8: the crisis tools shave the live load. Active DEMAND RESPONSE takes a
   // fraction off the peak (foresight — gated on the DR research branch); an active
   // LOAD-SHED cuts a prioritised tier's MW (a controlled brownout the player chose).

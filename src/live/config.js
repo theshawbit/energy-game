@@ -527,6 +527,22 @@ export const CFG = {
       // cleanliness reuses CFG.v5.econ.dirtyIntensity (the intensity at which clean standing hits 0).
     },
   },
+
+  // v5.2 Phase 1 — PEAK FORMULA REWORK. Retires the multiplicative intraday surge (noise ×
+  // event × wobble × spike → a random +57% death-peak, the uncontrollable day-5/6 blackout)
+  // for a SPLIT model: a foreseeable lift (daily noise + event regime — plannable, in the
+  // brief) × a weighted, saturating, HARD-CAPPED random shock. shockCap (Smax) is the single
+  // explicit "hardest peak the game can ever throw" — the true pinch point, set on purpose.
+  // peakShock() in demand.js reads this; tanh saturates so it can NEVER explode. PLACEHOLDER
+  // balance data — the tests pin SHAPE (capped, spike-dominant, saturating), not these
+  // numbers; tools/balance.mjs settles them against the real fleet.
+  v5_2: {
+    peak: {
+      shockCap: 0.18,   // Smax — the hard ceiling on the random intraday surge fraction (the pinch point)
+      wSpike:   1.0,    // weight on the demand spike (the dominant term)
+      wWobble:  0.4,    // weight on the load wobble (seasoning, never the crisis)
+    },
+  },
 };
 
 // Cost to service a unit back to 100% condition: scales with how worn it is and

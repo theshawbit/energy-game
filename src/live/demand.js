@@ -52,6 +52,19 @@ export function rollQuarterPeak(S){
   return S.quarterPeak;
 }
 
+// v5.2 Phase 1 — the capped random-shock term. The two in-the-moment transients (load
+// wobble, demand spike) used to MULTIPLY raw onto the baseline alongside the foreseeable
+// lift, so a winter evening could stack to +57% at random — unpreventable. Now they are
+// weighted (spike dominant, wobble seasoning) and passed through a SATURATING tanh with a
+// hard ceiling `shockCap` (Smax): small stacks stay near-linear (everyday chop survives),
+// big stacks asymptote to shockCap and can NEVER explode. Returns the surge FRACTION added
+// on top of the foreseeable lift (∈ [0, shockCap)). Pure: no state, no RNG, no DOM. Only
+// the UPWARD surge is passed here — downward wobble stays relief on the foreseeable side.
+export function peakShock(spikeSurge, wobbleSurge, cfg = CFG.v5_2.peak){
+  const weighted = cfg.wSpike * spikeSurge + cfg.wWobble * wobbleSurge;
+  return cfg.shockCap * Math.tanh(weighted / cfg.shockCap);
+}
+
 // The honest forward baseline `quartersAhead` quarters out — what the brief / board
 // review / build panel plan against. Pure read; uses the full (un-stalled) step, since
 // you can't bank on your own future stagnation. forecastPeak(S, 0) === S.quarterPeak.
