@@ -202,10 +202,9 @@ export function assertMint(seeds){
 //    fixture: toggle the mechanic and prove it MOVES game state. This is the structural guard against
 //    the failure the whole milestone was born from — a green suite coexisting with inert mechanics. It
 //    is a registry of what must be live, NOT an exceptions file for what is allowed dead: a mechanic
-//    that silently goes inert (a regression) drops its delta to zero and this fails. (Intentionally
-//    inert items pending a later phase — dispatchAssist, the service manager — are simply absent from
-//    the registry until Phase 3 makes them live or deletes them; they are tracked in the plan, not
-//    whitelisted here.) Each probe returns a measured delta that must be non-zero.
+//    that silently goes inert (a regression) drops its delta to zero and this fails. (The inert items
+//    this once stepped around — the Dispatch Assist perk and the service manager — were DELETED in
+//    Phase 3, so there is nothing to whitelist.) Each probe returns a measured delta that must be non-zero.
 export function assertNoDeadContent(seed = 2026){
   const reg = [
     // commit dial: committing gas delivers load a gas-off grid can't — serve rate must move.

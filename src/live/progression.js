@@ -130,13 +130,3 @@ export function autoMaintenancePlan(S){
   }
   return queued;
 }
-
-// Dispatch assist: once the perk that re-opened each committed plant's output band to its
-// legal max, so nothing sat accidentally throttled. v5.3 Phase 1 (Option 1) retired the
-// output band — a committed unit always offers its full capacity — so there is nothing left
-// to un-throttle and this is now INERT. Left as a no-op (returns 0) for Phase 3's residue
-// pass to reckon with the stranded ⚡ perk (alongside servicemgr), rather than silently
-// redesigning a purchasable perk mid-milestone.
-export function dispatchAssist(S){
-  return 0;
-}

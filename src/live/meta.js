@@ -26,14 +26,11 @@ export function newMilestones(S){
 // ---- skill tree (permanent, bought between runs with meta-currency) ----
 export const SKILLS = [
   { id:"reserves",    name:"Grid Reserves",    max:3, baseCost:5, desc:"+$40k starting cash / level" },
-  { id:"maintenance", name:"Maintenance Crew", max:3, baseCost:6, desc:"−15% wear & repair cost / level" },
+  { id:"maintenance", name:"Maintenance Crew", max:3, baseCost:6, desc:"−15% wear / level" },
   { id:"faststart",   name:"Fast Start",       max:3, baseCost:5, desc:"−20% peaker spin-up / level" },
   { id:"efficiency",  name:"Efficiency Drive", max:3, baseCost:7, desc:"−10% demand growth / level" },
   { id:"battery",     name:"Battery Science",  max:3, baseCost:6, desc:"+20% battery capacity / level" },
-  { id:"servicemgr",  name:"Service Manager",  max:3, baseCost:8, desc:"auto-services worn plants (higher = sooner)" },
 ];
-// Condition threshold the Service Manager auto-services below, by owned level.
-const AUTO_SERVICE_AT = [0, 40, 55, 70];
 // Cost to buy the next level given how many are already owned.
 export function skillCost(skill, owned){ return skill.baseCost * (owned + 1); }
 
@@ -55,9 +52,6 @@ export const RESEARCH_UNLOCKS = [
 export const ECONOMY_UNLOCKS = [
   { id:"capacity-market", name:"Capacity Market", cost:8, desc:"Get paid for available reserve MW — and fined if you can't deliver when called" },
   { id:"special-offers",  name:"Rolodex",         cost:4, desc:"Named buyers bring occasional standout contracts to the Desk" },
-  { id:"runlen-1", name:"Longer Shifts I",   cost:4, desc:"+2 max run days (longer contracts to operate)" },
-  { id:"runlen-2", name:"Longer Shifts II",  cost:6, desc:"+2 more max run days", prereq:"runlen-1" },
-  { id:"runlen-3", name:"Longer Shifts III", cost:8, desc:"+3 more max run days", prereq:"runlen-2" },
 ];
 
 // Buy an economy unlock into `profile` (mutates it). Spends currency only; respects
@@ -70,13 +64,6 @@ export function buyEconomyUnlock(profile, id){
   profile.currency -= u.cost;
   (profile.economyUnlocked ||= {})[id] = true;
   return true;
-}
-
-// Max run length (game-days) for a profile: base plus each owned "Longer Shifts"
-// tier. 5 → 7 → 9 → 12.
-export function runLengthFor(profile){
-  const o = profile.economyUnlocked || {};
-  return CFG.run.baseDays + (o["runlen-1"] ? CFG.run.tier1 : 0) + (o["runlen-2"] ? CFG.run.tier2 : 0) + (o["runlen-3"] ? CFG.run.tier3 : 0);
 }
 
 // Buy a research-branch unlock into `profile` (mutates it). Returns true on
@@ -109,11 +96,9 @@ export function computeMods(skills = {}){
   return {
     startCashBonus: 40000 * lv("reserves"),
     wearMult:       Math.pow(0.85, lv("maintenance")),
-    repairMult:     Math.pow(0.85, lv("maintenance")),
     startTimeMult:  Math.pow(0.80, lv("faststart")),
     peakGrowthMult: Math.pow(0.90, lv("efficiency")), // scales the growth *above* 1.0
     battMult:       1 + 0.20 * lv("battery"),
-    autoServiceAt:  AUTO_SERVICE_AT[lv("servicemgr")] || 0, // 0 = Service Manager not owned
   };
 }
 
@@ -172,17 +157,3 @@ export function awardCurrency(profile, n){
   return profile.currency;
 }
 
-// Raise per-track bests in profile.records; returns the ids that set a new best.
-export function updateRecords(profile, tracks, at = null){
-  const rec = (profile.records ||= {});
-  const beaten = [];
-  for (const tr of SCORE_TRACKS){
-    const v = tracks[tr.id] || 0;
-    const cur = rec[tr.id] || (rec[tr.id] = { value:0, at:null });
-    if (v > cur.value){ cur.value = v; cur.at = at; beaten.push(tr.id); }
-  }
-  return beaten;
-}
-
-// Effective per-day demand growth after the Efficiency Drive skill.
-export function effPeakGrowth(mods){ return 1 + (CFG.peakGrowth - 1) * mods.peakGrowthMult; }

@@ -13,13 +13,13 @@ import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, dialSnapshot } from "./config.js";
 import { makeCrew, wageBill, TRADES } from "./crews.js";
 import { tickMaint } from "./maint.js";
-import { autoMaintenancePlan, dispatchAssist } from "./progression.js";
+import { autoMaintenancePlan } from "./progression.js";
 import { tickBuilds } from "./construct.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
 import { freshClock, tickClock, autoPause } from "./clock.js";
 import { cycleCost } from "./dispatch.js";
 import { degradeKPIs, freshKPIs, heatRateMult, effectiveMax } from "./kpi.js";
-import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
+import { computeMods, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { stepDemand, rollQuarterPeak, peakShock } from "./demand.js"; // v5.1 Phase 1: hybrid demand curve; v5.2 Phase 1: capped shock
 import { computeResearchMods } from "./research.js";
 import { computeMutatorMods } from "./mutators.js";
@@ -49,14 +49,13 @@ export function interp(arr, t){
 
 // `mutators` is the rolled per-run mutator id list — supplied by the caller
 // (main.js rolls it at run start) so createGame itself stays deterministic.
-export function createGame(skills = {}, researchUnlocked = {}, mutators = [], creditStanding = CFG.creditStart, economyUnlocked = {}, maxRunDays = CFG.run.baseDays){
+export function createGame(skills = {}, researchUnlocked = {}, mutators = [], creditStanding = CFG.creditStart, economyUnlocked = {}){
   const mods = computeMods(skills);
   const fleet = makeFleet();
   // monotonic per-tech counter for naming built units, so numbers are never
   // reused after a decommission (which would duplicate a card label).
   const techCount = {};
   for (const u of fleet) techCount[u.tech] = (techCount[u.tech] || 0) + 1;
-  for (const u of fleet) if (u.condition != null) u.ageHours = 0; // v4.2.1: fresh iron
 
   const bat = fleet.find(u => u.id === "bat");
   if (bat && mods.battMult !== 1){
@@ -80,7 +79,7 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
     rp:0, rdFunding:0, research:{}, rmods:computeResearchMods({}), // in-run research (v3)
     researchUnlocked: { ...researchUnlocked },                     // meta-unlocked branches (read-only this run)
-    mutators: [...mutators], mmods:computeMutatorMods(mutators),   // per-run mutators (v3)
+    mmods:computeMutatorMods(mutators),   // per-run event mods (seed from the caller; the seasonal regime overwrites mmods at each quarter roll)
     fleet, techCount, weather:freshWeather(), buildSeq:1,
     demandJit:0, spikeMag:0, spikeT:0, // v4.2.2 net-load volatility state
     demand:0, capacity:0, price:0, brownout:false,
@@ -306,9 +305,6 @@ export function step(S, dt){
   // is persistent, so it always returns false.
   const dtH = tickClock(S, dt);
   if (dtH <= 0) return false;
-  // v5 Phase 7: Dispatch Assist perk — open each unpinned committed thermal plant's band to
-  // its legal max each live tick, so output isn't left throttled. Pinned plants are untouched.
-  if (S.perks?.dispatchAssist) dispatchAssist(S);
   S.t += dtH;
   if (S.t >= 24){ S.t -= 24; surviveDay(S); }
 
@@ -354,7 +350,6 @@ export function step(S, dt){
       }
     }
     if (u.status === "starting"){ u.startTimer -= dtH; if (u.startTimer <= 0) u.status = "online"; }
-    else if (u.status === "service"){ u.serviceTimer -= dtH; if (u.serviceTimer <= 0){ u.condition = 100; if (u.kpis) u.kpis = freshKPIs(); u.ageHours = (u.ageHours || 0) * CFG.serviceAgeRelief; u.status = u.ctrl ? "off" : "online"; setTicker(S, `✓ ${u.name} back from service at 100%.`); } }
     else if (u.status === "tripped"){ u.tripTimer -= dtH; if (u.tripTimer <= 0) u.status = u.ctrl ? "off" : "online"; }
     // v4.1 telegraphed trip: a strained plant is still generating but on borrowed
     // time — it drops when the warning window runs out. The window is your cue to
@@ -425,7 +420,6 @@ export function step(S, dt){
     const techAvail = avail[u.tech] || 0;                     // MW this tech offered the merit order
     const share = techAvail > 0 ? (hr.stack?.[u.tech] || 0) / techAvail : 0; // 0..1 dispatched fraction
     u.loadFrac = share;                                                      // expose for UI/tests
-    u.ageHours = (u.ageHours || 0) + dtH;                     // still tracked (Phase 4 reads it); no longer wears directly
     // start events since this unit last generated (dispatch.cycleCost) — v5.3: the band-ramp
     // event is gone with the output band, so only a commit (start) still wears Flexibility.
     const prev = u.prevDials || dialSnapshot(u.dials);
@@ -565,7 +559,7 @@ export function step(S, dt){
       S.capHour = capHourNow;
       if (S.rng && !S.capacityObligation.calledToday && rollCapacityCall(S, S.rng)){
         S.capacityObligation.calledToday = true;
-        const deliverable = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "gas") && u.status !== "tripped" && u.status !== "service") ? u.cap : 0), 0);
+        const deliverable = S.fleet.reduce((a, u) => a + (((u.kind === "firm" || u.kind === "gas") && u.status !== "tripped") ? u.cap : 0), 0);
         const fine = capacityPenalty(S.capacityObligation, deliverable);
         if (fine > 0){ S.cash -= fine; S.quarterLog.breaches += 1; S.quarterLog.breachFines += fine; setTicker(S, `⚠ Capacity call — short ${Math.round(S.capacityObligation.reserveMW - deliverable)} MW, fined $${Math.round(fine).toLocaleString()}.`); }
         else setTicker(S, `✓ Capacity call met — reserve delivered.`);
@@ -593,7 +587,7 @@ export function step(S, dt){
   const depthMult = S.rmods?.battEnergyMult ?? 1, rechargeMult = S.rmods?.battRechargeMult ?? 1;
   for (const u of batteries){
     const emax = u.maxEnergy * depthMult; // storage-depth research deepens every battery
-    if (u.status === "discharge" || u.status === "service" || u.energy >= emax) continue;
+    if (u.status === "discharge" || u.energy >= emax) continue;
     const add = Math.min(CFG.battRecharge * rechargeMult * dtH, surplusBudget, emax - u.energy);
     if (add > 0){ u.energy += add; const rc = add * hr.priceServed; S.cash -= rc; S.quarterLog.opCost += rc; surplusBudget -= add; } // v5.3: recharge at the clearing price, logged for the cash↔PnL reconciliation
   }

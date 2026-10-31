@@ -40,12 +40,7 @@ export function effectiveMax(u){
 export function heatRateMult(efficiency){
   return 1 + CFG.v5.kpiCurve.heatRateMax * (1 - axisClamp(efficiency) / 100);
 }
-// Flexibility KPI → ramp speed (× faster with more flex) …
-export function rampFactor(flexibility){
-  const c = CFG.v5.kpiCurve;
-  return c.rampMin + (1 - c.rampMin) * (axisClamp(flexibility) / 100);
-}
-// … and the min stable load (a low-flex plant can't turn down as far → narrower band). Never
+// Flexibility KPI → the min stable load (a low-flex plant can't turn down as far → narrower band). Never
 // below 0 (a highly-specialized plant can turn down to nothing).
 export function minStableLoad(flexibility){
   return Math.max(0, CFG.v5.kpiCurve.minLoadMax * (1 - axisClamp(flexibility) / 100));

@@ -138,30 +138,12 @@ check("online plant wears down", nucW.condition < 100, nucW.condition.toFixed(1)
     `nuc ${(nuc.loadFrac*100).toFixed(0)}% vs coal ${(colA.loadFrac*100).toFixed(0)}%`);
   check("the harder-loaded plant wears faster", (nuc0 - nuc.condition) > (colA0 - colA.condition),
     `nuc −${(nuc0-nuc.condition).toFixed(2)} vs coal −${(colA0-colA.condition).toFixed(2)}`);
-  check("generating plants accrue age (persists)", nuc.ageHours > 0, nuc.ageHours.toFixed(2) + "gh");
 }
-// Age (v5 Phase 3): age is still TRACKED (Phase 4 reads it) but no longer wears
-// directly — degradation is earned by operating LOAD, not by ambient ageing. v5.3: the
-// push dial is retired, so it no longer separates two plants — wear rides load intrinsically
-// (the load→wear curve is pinned in tests/kpi.test.mjs). Age is still irrelevant to wear.
-{
-  const dropFor = (age, push) => {
-    const g = createGame();
-    g.fleet.filter(u => u.kind === "renew").forEach(u => u.status = "off");
-    const n = g.fleet.find(u => u.id === "nuc"); n.fail = 0; n.ageHours = age; if (n.dials) n.dials.push = push;
-    const before = n.condition; step(g, 1.0); return before - n.condition;
-  };
-  check("age alone no longer wears a plant (Phase 4 reads ageHours instead)",
-    near(dropFor(360, 0.3), dropFor(0, 0.3), 1e-6),
-    `−${dropFor(360, 0.3).toFixed(3)} (aged) vs −${dropFor(0, 0.3).toFixed(3)} (fresh)`);
-  check("the retired push dial no longer changes wear (style rides load, not a dial)",
-    near(dropFor(0, 1), dropFor(0, 0.3), 1e-6),
-    `−${dropFor(0, 1).toFixed(3)} (push 1.0) vs −${dropFor(0, 0.3).toFixed(3)} (push 0.3)`);
-}
-// (v5 Phase 7 / v5.1 Phase 3) The Mk upgrade's age-relief is retired along with the Mk ladder —
-// upgrades raise per-axis caps via the rolling contractor queue and don't touch ageHours. Age
-// wear is covered by the degradation tests above; see tests/progression.test.mjs (ladder/perks)
-// and tests/contractor.test.mjs (the queue mechanics).
+// (v5.3 Phase 3) The second wear model — the ambient age clock (u.ageHours / CFG.wearRate) and
+// the retired push dial — is DELETED; degradation is earned purely by operating LOAD, with the
+// load→wear curve pinned in tests/kpi.test.mjs. There is nothing left to assert here. Upgrades
+// raise per-axis caps via the rolling contractor queue; see tests/progression.test.mjs and
+// tests/contractor.test.mjs.
 
 // (v5 Phase 4) The v4 mid-quarter service action is retired — maintenance is scheduled
 // at the quarter-end board review and worked by the crew pool. See tests/maint.test.mjs
@@ -333,14 +315,17 @@ check("fast-ramp cuts gas spin-up 20%", near(t2, t1 * 0.80, 1e-2) && t2 < t1, `$
   check("createGame copies researchUnlocked onto state", g.researchUnlocked.storage === true && g.researchUnlocked !== unlocks);
 }
 
-// ---- D1: per-run mutators folded into the sim ----
+// ---- D1: event mods folded into the sim ----
+// v5.3 Phase 3: the per-run mutator LIST (S.mutators) + its banner are deleted — the seasonal
+// event regime drives mmods now (events.js, overwritten each quarter roll). createGame still
+// derives the opening mmods from the caller's param, so the derivation is what's pinned here.
 
-// 38) createGame is deterministic: no mutators by default; stores & derives what's passed
+// 38) createGame is deterministic: neutral mmods by default; derives mmods from what's passed
 {
   const plain = createGame();
-  check("createGame defaults to no mutators (deterministic)", plain.mutators.length === 0 && plain.mmods.demandMult === 1);
+  check("createGame defaults to neutral event mods (deterministic)", plain.mmods.demandMult === 1 && plain.mutators === undefined);
   const g = createGame({}, {}, ["heatwave"]);
-  check("createGame stores passed mutators and derives mmods", g.mutators.join() === "heatwave" && g.mmods.demandMult === CFG.mut.heatwave && g.mutators !== undefined);
+  check("createGame derives mmods from the passed events", g.mmods.demandMult === CFG.mut.heatwave);
 }
 
 // 39) A heat-wave mutator lifts live demand
@@ -609,7 +594,7 @@ function insolvent(debt){
 {
   S = controlled(400); S.economyUnlocked = { "capacity-market": true };
   // pledge more firm reserve than exists so a call is always short
-  const firm = S.fleet.reduce((a, u) => a + ((u.kind === "firm" || u.kind === "gas") && u.status !== "tripped" && u.status !== "service" ? u.cap : 0), 0);
+  const firm = S.fleet.reduce((a, u) => a + ((u.kind === "firm" || u.kind === "gas") && u.status !== "tripped" ? u.cap : 0), 0);
   S.capacityObligation = { reserveMW: firm + 300, pricePerMW: CFG.capacity.pricePerMW, termDays: 4, daysLeft: 4, calledToday: false };
   S.capHour = -1; S.rng = () => 0.0; // force a call this new hour
   const pay = 0; // isolate: compare against a no-call baseline is complex; instead assert the fine magnitude via net move sign + not-over

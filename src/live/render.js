@@ -307,12 +307,11 @@ let _onDetail = null;              // captured plant-detail opener (the ⚙ on f
 function buildUnitRow(S, u, onToggle){
   const tr = document.createElement("tr");
   tr.className = "fu" + (u.ctrl ? " ctrl" : "");
-  const pin = u.pin ? ` <span class="pin-badge" title="pinned — Dispatch Assist leaves it alone">📌</span>` : "";
   const key = u.ctrl && u.key ? `<span class="fkey" title="shortcut">${u.key}</span>` : "";
   const gear = u.tiers ? `<button class="fu-gear" data-detail="${u.id}" title="Upgrade ladders" aria-label="Open ${u.name} upgrades">⚙</button>` : "";
   const condCell = u.kpis ? kpiClusterLive() : `<span class="faint">—</span>`;
   tr.innerHTML = `
-    <td class="fu-nm"><span class="nm">${u.name}${pin}</span>${key}${gear}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
+    <td class="fu-nm"><span class="nm">${u.name}</span>${key}${gear}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
     <td><span class="st" data-st>—</span></td>
     <td class="num"><b data-out>0</b><span class="faint">/${Math.round(u.cap)}</span></td>
     <td class="num fu-cond">${condCell}</td>
@@ -1246,7 +1245,6 @@ function recordsStrip(S){
 
 // --- fleet: the dense, sortable table that replaces the old card list ---
 function fleetRow(S, u){
-  const pin = u.pin ? ` <span class="pin-badge" title="pinned">📌</span>` : "";
   let stClass, stText;
   if (u.status === "maint"){ stClass = "st-service"; stText = "⚙ MAINT"; }
   else if (u.status === "strained"){ stClass = "st-strained"; stText = "⚠ STRAINING"; }
@@ -1259,21 +1257,18 @@ function fleetRow(S, u){
     ? kpiClusterStatic(u.kpis)
     : `<span class="faint">—</span>`;
   // v5 Phase 7: the Mk upgrade button is retired — plant specialization (per-axis caps)
-  // lives in the quarter-end Development Office. Here a dial-able plant gets a PIN toggle
-  // (shields its band from the Dispatch Assist perk); the badge shows when it's pinned.
-  const dialable = u.kind === "firm" || u.kind === "gas";
-  const pinBtn = dialable ? `<button class="pin-btn${u.pin ? " on" : ""}" data-pin="${u.id}">${u.pin ? "📌 Pinned" : "Pin"}</button>` : "";
+  // lives in the quarter-end Development Office.
   // v5 Phase 4: maintenance is scheduled in the quarter-end Planning Office, not here;
   // a plant booked for the shop shows a MAINT flag instead of a mid-quarter service button.
   const maintFlag = u.maintDown ? `<span class="svc-flag">⚙ booked</span>` : "";
   const lastBattery = u.kind === "battery" && S.fleet.filter(x => x.kind === "battery").length <= 1;
   const decBtn = `<button class="dec" data-dec="${u.id}" ${lastBattery ? "disabled" : ""}>Sell · ${money(salvageValue(u))}</button>`;
   const main = `<tr>
-    <td class="fl-nm">${u.name}${pin}<br><small class="faint">${Math.round(u.cap)} MW · ${u.kind}</small></td>
+    <td class="fl-nm">${u.name}<br><small class="faint">${Math.round(u.cap)} MW · ${u.kind}</small></td>
     <td><span class="st ${stClass}">${stText}</span></td>
     <td class="num">${out}/${u.cap}</td>
     <td class="num">${cond}</td>
-    <td><div class="fleet-acts">${pinBtn}${maintFlag}${decBtn}</div></td></tr>`;
+    <td><div class="fleet-acts">${maintFlag}${decBtn}</div></td></tr>`;
   return main + dialsRow(S, u);
 }
 
@@ -1307,7 +1302,6 @@ function fleetBody(S){
 }
 function wireFleet(S, actions){
   const m = $("menu");
-  m.querySelectorAll("[data-pin]").forEach(b => b.onclick = () => actions.pin(b.dataset.pin));
   m.querySelectorAll("[data-dec]").forEach(b => b.onclick = () => actions.decommission(b.dataset.dec));
   // v5.3 Phase 1: commit is the only dispatch lever; toggling it re-renders the row.
   m.querySelectorAll("[data-commit]").forEach(b => b.onclick = () => actions.commit(b.dataset.commit));
@@ -1509,15 +1503,3 @@ function contractsBody(S){
     ${rows}`;
 }
 
-// ---- mutator banner: the per-run conditions, painted once at run start (they
-// don't change mid-run). Hidden when a run has no mutators. ----
-export function renderMutatorBanner(S){
-  const host = $("mutBanner"); if (!host) return;
-  const ids = S.mutators || [];
-  if (!ids.length){ host.style.display = "none"; host.innerHTML = ""; return; }
-  host.style.display = "";
-  host.innerHTML = `<span class="mut-lead">⚠ This run</span>` + ids.map(id => {
-    const m = mutatorById(id); if (!m) return "";
-    return `<span class="mut-chip"><b>${m.label}</b> — ${m.blurb}</span>`;
-  }).join("");
-}

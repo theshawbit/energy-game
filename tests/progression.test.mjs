@@ -9,7 +9,7 @@ import { CFG } from "../src/live/config.js";
 import {
   upgradeCost, canUpgrade, axisTierValue, upgradeTierMax,
   PERKS, unlockPerk, canUnlockPerk, automationTier, isAutomationUnlocked,
-  autoMaintenancePlan, dispatchAssist,
+  autoMaintenancePlan,
 } from "../src/live/progression.js";
 import { queueUpgrade } from "../src/live/contractor.js";
 import { outputFactor, heatRateMult, effectiveMax, degradeKPIs } from "../src/live/kpi.js";
@@ -113,17 +113,6 @@ const thermal = S => S.fleet.find(u => u.tiers);
   const u = thermal(A); u.kpis.output = 55;
   const planned = autoMaintenancePlan(A);
   check("autoMaintenancePlan queues the neediest plant", planned.length >= 1 && A.maintQueue.some(j => j.unitId === u.id) && u.maintDown);
-
-  // v5.3 Phase 1: the output band is retired (Option 1 — a committed unit offers full
-  // capacity), so dispatchAssist has nothing to un-throttle. It is now INERT (returns 0,
-  // touches no dials); Phase 3's residue pass reckons with the stranded ⚡ perk.
-  const D = createGame(); D.perks.dispatchAssist = true;
-  const firm = D.fleet.filter(x => (x.kind === "firm" || x.kind === "gas") && x.dials && x.dials.commit);
-  check("there are committed thermal plants in the fleet", firm.length >= 1);
-  const before = firm.map(u => ({ ...u.dials }));
-  const n = dispatchAssist(D);
-  check("dispatchAssist is inert in v5.3 (adjusts nothing)", n === 0);
-  check("dispatchAssist touches no dials", firm.every((u, i) => JSON.stringify(u.dials) === JSON.stringify(before[i])));
 }
 
 console.log(failed === 0 ? "\nAll progression tests passed." : `\n${failed} progression test(s) FAILED.`);

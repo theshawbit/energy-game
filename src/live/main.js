@@ -6,7 +6,7 @@
 // phase) and resumes into the next quarter.
 // ============================================================
 import { createGame, step, setTicker, beginNextQuarter } from "./sim.js";
-import { toggleUnit, specializeUnit, buyPerk, pinUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
+import { toggleUnit, specializeUnit, buyPerk, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
 import { queueMaint, cancelTask } from "./maint.js";
 import { rollRegime, regimeMods } from "./events.js";
 import { triggerLoadShed, triggerDemandResponse } from "./crisis.js";
@@ -17,7 +17,7 @@ import { closeBrief } from "./brief.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
 import { rollSpecialOffer } from "./offers.js";
-import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief, renderPlantDetail, hidePlantDetail } from "./render.js";
+import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief, renderPlantDetail, hidePlantDetail } from "./render.js";
 import { buySkill, buyUnlock, buyEconomyUnlock, awardCurrency } from "./meta.js";
 import { loadProfile, saveProfile, restartRun } from "./persist.js";
 
@@ -65,8 +65,6 @@ function rollDailyOffer(){
 // manage mode (opens paused): hub-and-spoke navigation + per-page actions
 const menu = {
   decommission(id){ decommissionUnit(S, id); buildUnits(S, act, openPlant); refreshPage(); render(S); },
-  // v5 Phase 7: pin a plant against Dispatch Assist (fleet page toggle).
-  pin(id){ pinUnit(S, id); refreshPage(); render(S); },
   // v5.3 Phase 1: commit is the only dispatch dial left; toggling it re-renders the page.
   commit(id){ const u = S.fleet.find(x => x.id === id); if (u && u.dials){ u.dials.commit = !u.dials.commit; } refreshPage(); render(S); },
   research(id){ researchNode(S, id); refreshPage(); render(S); },
@@ -119,7 +117,6 @@ function startGame(){
   seedRun();
   S.paused = false; applySpeed();
   buildUnits(S, act, openPlant);
-  renderMutatorBanner(S);
   last = 0;
   S.running = true;
   render(S);
@@ -134,7 +131,6 @@ function restartGame(){
   hideCollapse(); hideBrief(); hidePlantDetail(); plantOpen = null; planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false; paceHeld = false;
   S.paused = false; applySpeed();
   buildUnits(S, act, openPlant);
-  renderMutatorBanner(S);
   last = 0;
   S.running = true;
   render(S);
@@ -216,7 +212,7 @@ function frame(now){
 }
 
 // ---- wiring ----
-S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act, openPlant); render(S); renderMutatorBanner(S); // a game to paint behind the home screen
+S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act, openPlant); render(S); // a game to paint behind the home screen
 showHome();
 $("manageBtn").onclick = () => openManage();
 $("pauseBtn").onclick = togglePause;
