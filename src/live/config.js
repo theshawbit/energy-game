@@ -11,7 +11,7 @@ export const CFG = {
   // v5: a ~3-minute engaged day (was 48s). At 180s a game-hour ≈ 7.5 real-sec, so a
   // trip warning (strainWarn 1.6 gh ≈ 12s) and a peaker spin-up breathe — read-decide-act
   // with intent, not twitch. All code + tests read this constant, so the pacing is central.
-  secondsPerDay: 100,         // v5.2 Phase 2: real seconds for a 24h cycle (~1.7-min day; 1 game-hour ≈ 4.2s). Was 180 (~3-min) — too long to reach a quarter; auto-pace fast-forwards the calm on top. PLACEHOLDER (balance pass).
+  secondsPerDay: 100,         // v5.2 Phase 2: real seconds for a 24h cycle (~1.7-min day; 1 game-hour ≈ 4.2s). Was 180 (~3-min) — too long to reach a quarter; auto-pace fast-forwards the calm on top. SETTLED v5.3 Phase 5: a 22-day quarter is ~12 fast-mode min, under the ≤15 engaged-min playtest target (M9); bankruptcyGrace rides this ratio.
   startHour: 6,               // shift begins at 06:00
   startPeak: 780,             // MW peak demand, day 1
   startCash: 120000,          // $ on hand day 1, so the manage panel has an opening move
@@ -27,6 +27,9 @@ export const CFG = {
   // and the unused instantBlackout threshold go with them. A shortfall now feeds ONLY the grid-
   // stability reservoir (CFG.v5_1.stability / stability.js) — the single fail-state meter.
   outageRamp: 0.10,           // trip rate grows this much per day survived
+  outageRampCap: 4.0,         // v5.3 H7: hard ceiling on the aging `diff` multiplier — trip risk stops
+                              //   climbing past ~day 31, so a long persistent run doesn't degenerate into
+                              //   guaranteed trips (a well-maintained plant stays at ≥85% KPI = immune anyway).
   battRecharge: 70,           // MW recharge rate when idle
   carbonStartDay: 3,          // carbon pricing kicks in after the opening days
   carbonPerDay: 3.5,          // $/t added each day thereafter (~day 13 flips coal→gas)
@@ -418,17 +421,20 @@ export const CFG = {
     },
     // Phase 2 — the grid-stability HP bar and the fail-state. A reservoir that fills on a
     // shortfall (asymmetric by cause) and drains on served hours; topping out ends the run
-    // into a roguelite restart. Numbers are PLACEHOLDER balance data — the tests pin the
-    // RELATIONSHIPS (fillCapacity > fillDispatch > drainRate; verdict heals and damages),
-    // not these values; the real curve is settled by tools/balance.mjs + a UI prototype.
-    // (Re-seating strainRate/strainRecover/bankruptcyGrace against this model is likewise
-    // deferred to that balance pass, per the v5.1 "exact tuning numbers" decision.)
+    // into a roguelite restart. SETTLED v5.3 Phase 5 against tools/balance.mjs: at these values a
+    // PASSIVE opening (do-nothing bot) reaches the first board review on all seeds (reach-a-quarter
+    // gate) because H1 (sevRef) makes its brief, shallow shortfalls fill slowly, while a true capacity
+    // shortfall (every lever exhausted, deep) still tops the bar in ~12.5 game-hours — the fail-state
+    // stays real. The tests pin the RELATIONSHIPS (fillCapacity > fillDispatch > drainRate; H1 scaling;
+    // verdict heals/damages), not these figures. (strainRate/strainRecover were DELETED in Phase 3.)
     stability: {
       max: 100,            // reservoir ceiling; hp ≥ max ends the run
       epsilon: 0.5,        // a shortfall under this MW counts as "served" (float slack)
-      fillCapacity: 8,     // hp/game-hour on a TRUE capacity shortfall (every lever exhausted)
+      fillCapacity: 8,     // hp/game-hour on a TRUE capacity shortfall (every lever exhausted), at full severity
       fillDispatch: 3,     // hp/game-hour on a dispatch shortfall (a move remained) — < fillCapacity
       drainRate: 1.5,      // hp/game-hour recovered on a served hour — < fillCapacity (flicker nets up)
+      sevRef: 0.5,         // v5.3 H1: shortfall fraction (short/demand) at which fill hits the full rate;
+                           //          shallower shortfalls fill proportionally less. Must be ≤ 0.5.
       verdictPar: 0.5,     // the 0..1 verdict grade that neither heals nor harms (par)
       verdictHeal: 25,     // max hp healed by a perfect quarter (scaled by grade above par)
       verdictDamage: 15,   // max hp damage from a zero-grade quarter (scaled by grade below par)
@@ -497,9 +503,10 @@ export const CFG = {
   // for a SPLIT model: a foreseeable lift (daily noise + event regime — plannable, in the
   // brief) × a weighted, saturating, HARD-CAPPED random shock. shockCap (Smax) is the single
   // explicit "hardest peak the game can ever throw" — the true pinch point, set on purpose.
-  // peakShock() in demand.js reads this; tanh saturates so it can NEVER explode. PLACEHOLDER
-  // balance data — the tests pin SHAPE (capped, spike-dominant, saturating), not these
-  // numbers; tools/balance.mjs settles them against the real fleet.
+  // peakShock() in demand.js reads this; tanh saturates so it can NEVER explode. SETTLED v5.3
+  // Phase 5: at +18% max surge a COMMITTED fleet covers the Q1 peak (dominant/probe serve 100%)
+  // while a PASSIVE grid is genuinely short (30–60%), so the pinch bites the unprepared, not the
+  // competent — and it sharpens as demand steps up each quarter. Tests pin SHAPE, not the number.
   v5_2: {
     peak: {
       shockCap: 0.18,   // Smax — the hard ceiling on the random intraday surge fraction (the pinch point)
@@ -526,8 +533,15 @@ export const CFG = {
   // PLACEHOLDER — the balance pass (Phase 5) settles these against the real fleet.
   v5_3: {
     market: {
-      voll:           1500,       // $/MWh on FORCED unserved (fairness; the continuous price does the dominance work)
-      vollQuarterCap: 2_000_000,  // $ ceiling on per-quarter VOLL exposure (can't single-handedly bankrupt)
+      // v5.3 Phase 5 SETTLED: voll = 15× PRICE_CAP (300) — squarely in the spec's 10–20× band. The
+      // continuous price already makes covering strictly dominant for any voll > 0, so this is a
+      // FAIRNESS knob tuned for how much a forced blackout stings, not the dominance guarantee.
+      voll:           4500,       // $/MWh on FORCED unserved (15× the max clearing price)
+      // The per-quarter ceiling keeps VOLL from being the run-ender: a capacity shortfall tops the
+      // stability bar (collapse, ~12.5 game-hours at full fill) long before uncapped VOLL would, and
+      // the run only ENDS via the stability bar. Against the multi-MM/quarter economy this is a
+      // painful-but-survivable cash hit, so a bad run dies on the grid, not on a single VOLL spike.
+      vollQuarterCap: 2_000_000,  // $ ceiling on per-quarter VOLL exposure (can't single-handedly end the run)
     },
   },
 };
