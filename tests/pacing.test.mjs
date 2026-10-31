@@ -23,17 +23,12 @@ function calmS(over = {}) {
   };
 }
 
-// 1) Re-seated constants preserve per-GAME-DAY severity/grace (the coherence guard).
-//    strainRate/strainRecover scale INVERSELY with secondsPerDay (rate × seconds ≈ const);
-//    bankruptcyGrace scales DIRECTLY (grace / seconds ≈ const). The 180s era is the reference.
+// 1) Re-seated constants preserve per-GAME-DAY grace (the coherence guard). bankruptcyGrace
+//    scales DIRECTLY with secondsPerDay (grace / seconds ≈ const); the 180s era is the reference.
+//    (v5.3 Phase 3: the strainRate/strainRecover knobs are deleted with the S.strain scalar —
+//    the stability reservoir's own CFG.v5_1 fill rates are pinned in tests/stability.test.mjs.)
 {
-  const strainBudget = CFG.strainRate * CFG.secondsPerDay;       // was 14 × 180 = 2520
-  const recoverBudget = CFG.strainRecover * CFG.secondsPerDay;   // was 12 × 180 = 2160
   const graceRatio = CFG.bankruptcyGrace / CFG.secondsPerDay;    // was 22 / 180 ≈ 0.122
-  check("strainRate re-seated (per-game-day strain budget preserved)", Math.abs(strainBudget - 2520) <= 100,
-    `${CFG.strainRate} × ${CFG.secondsPerDay} = ${strainBudget} (ref 2520)`);
-  check("strainRecover re-seated (per-game-day recovery preserved)", Math.abs(recoverBudget - 2160) <= 100,
-    `${CFG.strainRecover} × ${CFG.secondsPerDay} = ${recoverBudget} (ref 2160)`);
   check("bankruptcyGrace re-seated (game-time grace window preserved)", Math.abs(graceRatio - 22 / 180) <= 0.02,
     `${CFG.bankruptcyGrace} / ${CFG.secondsPerDay} = ${graceRatio.toFixed(3)} (ref ${(22 / 180).toFixed(3)})`);
   check("day is shorter than the old 180s", CFG.secondsPerDay < 180, `${CFG.secondsPerDay}s`);

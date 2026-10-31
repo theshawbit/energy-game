@@ -27,17 +27,17 @@ function shortGrid(overCap = 1.15){
   return { S, cap };
 }
 
-// 1) Load-shed dodges the shortfall (and applies the standing hit)
+// 1) Load-shed dodges the shortfall (and carries its fine)
 {
   const { S } = shortGrid(1.15);
   step(S, 0.02);
   const brownBefore = S.brownout;
-  const sat0 = S.satisfaction;
+  const cash0 = S.cash;
   const r = triggerLoadShed(S, "residential");
   S.t = 18; step(S, 0.02);
   check("without a shed the grid browns out", brownBefore === true);
   check("load-shed cuts the tier and clears the shortfall", r.ok && S.brownout === false, `shed ${r.mw} MW`);
-  check("load-shed takes the satisfaction hit now", S.satisfaction < sat0, `${sat0.toFixed(1)} → ${S.satisfaction.toFixed(1)}`);
+  check("load-shed charges its fine to cash now", S.cash < cash0, `−$${Math.round(cash0 - S.cash)}`);
   check("the fine is booked into the quarter log (settles at the review)", S.quarterLog.shedFines > 0, `$${S.quarterLog.shedFines}`);
 }
 
@@ -50,20 +50,18 @@ function shortGrid(overCap = 1.15){
   const runArm = shed => {
     const { S } = shortGrid(1.15);
     S.t = 18; step(S, 0.02);                             // land the shortfall
-    const sat0 = S.satisfaction;
     const log0 = S.quarterLog.shortfallMWh;
     if (shed) triggerLoadShed(S, "residential");
     for (let i = 0; i < steps; i++){ S.t = 18; step(S, dt); }
-    return { unservedMWh: S.quarterLog.shortfallMWh - log0, satDrop: sat0 - S.satisfaction, fine: S.quarterLog.shedFines };
+    return { unservedMWh: S.quarterLog.shortfallMWh - log0, fine: S.quarterLog.shedFines };
   };
   const A = runArm(false), B = runArm(true);
   const avertedCost = (A.unservedMWh - B.unservedMWh) * CFG.v5_3.market.voll; // v5.3: forced unserved now costs VOLL, not the retired unservedPenalty
   check("shedding averts unserved load", A.unservedMWh > B.unservedMWh, `${A.unservedMWh.toFixed(0)} → ${B.unservedMWh.toFixed(0)} MWh`);
   check("the averted blackout cost exceeds the shed's fine (a genuine lesser evil)",
     avertedCost > B.fine, `$${Math.round(avertedCost)} averted vs $${B.fine} fine`);
-  check("the blackout costs more satisfaction than the controlled shed", A.satDrop > B.satDrop, `${A.satDrop.toFixed(1)} vs ${B.satDrop.toFixed(1)}`);
-  check("a bigger tier carries a bigger penalty (scales with the tier)",
-    CFG.v5.crisis.shedTiers[2].satHit > CFG.v5.crisis.shedTiers[0].satHit && CFG.v5.crisis.shedTiers[2].fine > CFG.v5.crisis.shedTiers[0].fine);
+  check("a bigger tier carries a bigger fine (scales with the tier)",
+    CFG.v5.crisis.shedTiers[2].fine > CFG.v5.crisis.shedTiers[0].fine);
 }
 
 // 3) Demand response gates on prep, fires once, then cools down

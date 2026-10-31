@@ -22,18 +22,10 @@ export const CFG = {
                               //   (idle peakers + the battery shouldn't bleed you dry — fixes the
                               //   cold-start insolvency; you only pay the full rate for what you run)
   // v5.3: unservedPenalty ($120/MWh) RETIRED — replaced by CFG.v5_3.market.voll on forced unserved.
-  // v5 Phase 6 re-tune: the day grew from 48s → 180s (Phase 1), but strain/recover were
-  // still per-real-second constants sized for the short day, so a brownout pinned strain
-  // almost instantly. Scaled by ≈48/180 so the per-GAME-DAY feel is preserved on the long
-  // day — strain now escalates over a meaningful stretch of a shortfall, never a snap. Strain
-  // is no longer fatal (v5 removed game-over); it is the pain signal the view reacts to.
-  strainRate: 25,             // strain gained per second at 100% shortfall (was 52 @ 48s, 14 @ 180s; re-seated for the 100s day — INVERSE: rate × secondsPerDay ≈ const, so per-game-day severity holds)
-  strainRecover: 22,          // strain shed per second when covered (was 45 @ 48s, 12 @ 180s; re-seated INVERSE for the 100s day)
-  instantBlackout: 0.42,      // only a catastrophic shortfall kills instantly; smaller ones
-                              //   fill the strain meter instead, giving a window to react
-                              //   (fire the battery, start peakers) — so deaths feel earned
-  satDrain: 11,               // satisfaction lost per second at 100% shortfall (v5 P6: scaled for the 180s day; was 40 @ 48s)
-  satRecover: 1.5,            // satisfaction regained per second when fully covered (slow — mistakes linger)
+  // v5.3 Phase 3 (one trouble-meter): the redundant S.strain vignette scalar and the gate-nothing
+  // S.satisfaction are deleted, so their rate knobs (strainRate/strainRecover/satDrain/satRecover)
+  // and the unused instantBlackout threshold go with them. A shortfall now feeds ONLY the grid-
+  // stability reservoir (CFG.v5_1.stability / stability.js) — the single fail-state meter.
   outageRamp: 0.10,           // trip rate grows this much per day survived
   battRecharge: 70,           // MW recharge rate when idle
   carbonStartDay: 3,          // carbon pricing kicks in after the opening days
@@ -321,17 +313,17 @@ export const CFG = {
     // Phase 8: the mid-quarter CRISIS toolkit. Because maintenance is quarter-end only,
     // the live day needs an EARNED, PENALISED escape hatch when a plant fails. Two tools:
     //  • LOAD-SHED — cut a pre-prioritised non-critical load tier (a controlled brownout:
-    //    you choose the cut instead of the grid cascading). A real satisfaction hit + a fine
-    //    that settles into the quarter PnL (quarterLog.shedFines) — cheaper than the blackout
-    //    it averts, never free. `frac` = share of current load the tier sheds.
+    //    you choose the cut instead of the grid cascading). Carries a fine that settles into the
+    //    quarter PnL (quarterLog.shedFines) — cheaper than the blackout it averts, never free.
+    //    `frac` = share of current load the tier sheds.
     //  • DEMAND RESPONSE — an active peak shave, gated STRICTLY on the demand-response
     //    research branch (rmods.demandShave > 0): foresight, never a panic button. One shot
     //    per window, then a cooldown.
     crisis: {
       shedTiers: [
-        { id: "industrial",  label: "Industrial Park",      frac: 0.08, satHit: 3,  fine: 4000 },
-        { id: "commercial",  label: "Commercial Districts",  frac: 0.14, satHit: 7,  fine: 9000 },
-        { id: "residential", label: "Outer Residential",     frac: 0.22, satHit: 14, fine: 18000 },
+        { id: "industrial",  label: "Industrial Park",      frac: 0.08, fine: 4000 },
+        { id: "commercial",  label: "Commercial Districts",  frac: 0.14, fine: 9000 },
+        { id: "residential", label: "Outer Residential",     frac: 0.22, fine: 18000 },
       ],
       shedWindow: 2,          // game-hours a load-shed holds before the tier is restored
       drShave:    0.15,       // active demand response shaves this fraction of load …

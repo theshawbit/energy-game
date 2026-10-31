@@ -120,8 +120,6 @@ export function render(S){
   $("s-rdsub").textContent = funding ? `+${((S.rdFunding || 0) * CFG.rpPerDollar).toFixed(1)}/h` : "";
   $("s-rp").style.color = funding ? css("--accent") : css("--fg");
   $("s-price").textContent = "$" + Math.round(S.price);
-  $("s-sat").textContent = Math.round(S.satisfaction) + "%";
-  $("s-sat").style.color = S.satisfaction > 70 ? css("--good") : S.satisfaction > 40 ? css("--warn") : css("--bad");
   $("s-co2").textContent = Math.round(S.co2);
   $("s-co2").style.color = S.co2 < 100 ? css("--good") : S.co2 < 450 ? css("--warn") : css("--bad");
   $("s-carbon").textContent = "$" + Math.round(S.carbon);
@@ -206,9 +204,12 @@ export function render(S){
 
   // ---- always live, every frame ----
   // reserve-margin urgency: the vignette + shake must react instantly, not on the
-  // readout cadence — a brownout can't wait 200ms to show.
-  $("vignette").style.opacity = S.over ? "1" : (S.brownout ? clamp(0.25 + S.strain / 100 * 0.7, 0, 0.95).toFixed(2) : "0");
-  $("shakeTarget").classList.toggle("shake", S.brownout && !S.over && S.strain > 35);
+  // readout cadence — a brownout can't wait 200ms to show. v5.3 Phase 3: intensity now
+  // folds onto the ONE trouble-meter (the grid-stability reservoir fraction) — the deleted
+  // S.strain scalar used to drive it; a fuller reservoir = a darker vignette.
+  const stab = S.stability, stabFrac = stab && stab.max > 0 ? stab.hp / stab.max : 0;
+  $("vignette").style.opacity = S.over ? "1" : (S.brownout ? clamp(0.25 + stabFrac * 0.7, 0, 0.95).toFixed(2) : "0");
+  $("shakeTarget").classList.toggle("shake", S.brownout && !S.over && stabFrac > 0.35);
 
   // v4.2 CR-4: annunciator log. Capture each new ticker message once (with the
   // game clock + severity), newest on top, and flash the freshest row briefly.
@@ -1224,7 +1225,7 @@ function hubBody(S){
     ["Day", S.day, false], ["Peak", S.peak + " MW", false], ["Cash", money(S.cash), false],
     ["Net worth", money(netWorth), false], ["Debt", (S.debt || 0) > 0 ? money(S.debt) : "—", false],
     ["Credit", `${grade} · ${Math.round(S.credit ?? 70)}`, false],
-    ["Satisfaction", Math.round(S.satisfaction) + "%", false], ["RP banked", Math.floor(S.rp || 0), false],
+    ["RP banked", Math.floor(S.rp || 0), false],
   ].map(([k, v, ph]) => `<div class="hub-tile${ph ? " placeholder" : ""}"><b>${v}</b><small>${k}</small></div>`).join("");
   return `<div class="hub-nav">${nav}</div><div class="hub-stats">${tiles}</div>${recordsStrip(S)}`;
 }

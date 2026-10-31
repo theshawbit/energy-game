@@ -75,7 +75,7 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     t:CFG.startHour, day:1, peak:CFG.startPeak, quarterPeak:CFG.startPeak,
     nextQuarterPeak:Math.round(CFG.startPeak * (1 + CFG.v5_1.demand.stepFrac * (mods.peakGrowthMult ?? 1))),
     peakGrowthMult:mods.peakGrowthMult,
-    cash:CFG.startCash + mods.startCashBonus, satisfaction:100, strain:0,
+    cash:CFG.startCash + mods.startCashBonus,
     carbon:0, co2:0, co2Total:0, mods, milestonesHit:[],
     rp:0, rdFunding:0, research:{}, rmods:computeResearchMods({}), // in-run research (v3)
     researchUnlocked: { ...researchUnlocked },                     // meta-unlocked branches (read-only this run)
@@ -207,7 +207,6 @@ export function surviveDay(S){
   // that baseline × a bounded seasonal daily noise. Within a quarter the baseline holds, so
   // the day only refreshes the weather + the wobble — the quarterly step is the real growth.
   S.weather = freshWeather(S.rngEnv || Math.random);
-  S.strain = Math.max(0, S.strain - 30);
   expireContracts(S); // v4: age term contracts one day, drop the expired ones
   creditTick(S);      // v4 (C): a solvent day rebuilds credit toward the cap
   // roll the day's accrued interest into a single ledger entry (not per-tick)
@@ -606,12 +605,11 @@ export function step(S, dt){
   const shortfall = hr.unserved;
   const sev = S.demand > 0 ? shortfall / S.demand : 0;
   if (shortfall > 1e-9){
-    // v5: a shortfall hurts — strain, lost confidence, VOLL. v5.1 Phase 2 adds the TEETH: the
-    // stability bar (tickStability below) fills on this shortfall, asymmetric by cause, and
-    // topping it out ends the run. Strain/satisfaction pin at their extremes while the day runs.
+    // v5: a shortfall hurts. v5.1 Phase 2 gives it TEETH via the stability reservoir (tickStability
+    // below) — it fills on this shortfall, asymmetric by cause, and topping it out ends the run. v5.3
+    // Phase 3: that reservoir is now the SINGLE trouble-meter (the redundant S.strain vignette scalar
+    // and the gate-nothing S.satisfaction are deleted); the shortfall feeds the reservoir only.
     S.brownout = true; S.downAcc += dt;
-    S.strain = Math.min(100, S.strain + sev * CFG.strainRate * dt);
-    S.satisfaction = Math.max(0, S.satisfaction - sev * CFG.satDrain * dt);
     // VOLL on forced unserved — a FAIRNESS cost (the continuous price already makes covering dominant
     // for any voll > 0), bounded per quarter so a bad run fails via the stability bar, not a single
     // VOLL spike. Logged for the cash↔PnL reconciliation.
@@ -622,8 +620,6 @@ export function step(S, dt){
     S.quarterLog.shortfallMWh += shortfall * dtH;    // v5 P6: the board's serve-rate reads this vs servedMWh
   } else {
     S.brownout = false; S.upAcc += dt;
-    S.strain = Math.max(0, S.strain - CFG.strainRecover * dt);
-    if (S.satisfaction < 100) S.satisfaction = Math.min(100, S.satisfaction + CFG.satRecover * dt);
   }
   // v5.1 Phase 2: drive the stability reservoir from this tick's served vs demanded MW
   // (post crisis-shaves — S.demand/S.capacity are final here). Fills asymmetric by cause,
