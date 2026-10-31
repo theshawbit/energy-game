@@ -20,6 +20,7 @@ import { rollSpecialOffer } from "./offers.js";
 import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief, renderPlantDetail, hidePlantDetail } from "./render.js";
 import { buySkill, buyUnlock, buyEconomyUnlock, awardCurrency } from "./meta.js";
 import { loadProfile, saveProfile, restartRun } from "./persist.js";
+import { VERSION } from "./version.js";
 
 const $ = id => document.getElementById(id);
 const profile = loadProfile();
@@ -214,6 +215,7 @@ function frame(now){
 
 // ---- wiring ----
 S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act, openPlant); render(S); // a game to paint behind the home screen
+{ const v = $("s-version"); if (v) v.textContent = VERSION; } // v5.3 Phase 4: stamp the build from the single source
 showHome();
 $("manageBtn").onclick = () => openManage();
 $("pauseBtn").onclick = togglePause;
