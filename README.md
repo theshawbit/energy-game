@@ -18,9 +18,25 @@ python3 -m http.server 8000   # or any static file server; then open http://loca
 
 The live build is served by **GitHub Pages** straight from `main` at the repo root
 (https://theshawbit.github.io/energy-game/) — every merge to `main` redeploys
-automatically, no build step and no CI. A `.nojekyll` marker keeps Pages from running
+automatically, with no build step. A `.nojekyll` marker keeps Pages from running
 the content through Jekyll. All asset and module paths are **relative**, so the game
 runs correctly from the `/energy-game/` subpath (or any other host).
+
+### Engineering principles
+
+Two rules were revised during the **v5.3 "Integrity"** milestone; they explain why the
+Action exists, why deploy is still manual, and why `engine.js` grew a field:
+
+- **"No CI" now means no CI *for deploy*, not for tests.** A GitHub Action runs the full
+  `npm test` suite on every push and PR (`.github/workflows/test.yml`); economy incentives
+  are asserted there too (`tools/balance.mjs`), so a regression fails the build. **Deploy
+  stays manual** — Pages serves `main` directly with no build step, so there is nothing for
+  a deploy pipeline to gate. Bumping the version stamp is part of that manual release ritual.
+- **The *clearing logic* is sacred — not the `engine.js` file.** The merit-order dispatch math
+  is never altered, but **additive** engine outputs are allowed: v5.3 added `priceServed` (the
+  pre-cap marginal cost of the last served unit) so revenue is a continuous function of coverage.
+  This retired the blanket "`engine.js` is untouchable" rule without weakening the invariant it
+  was protecting.
 
 ## How to play (Live)
 
@@ -72,59 +88,87 @@ styles/live.css         Live game styling + design tokens
 styles/main.css         Batch game styling + tech color tokens
 src/
   constants.js          Shared static config & data tables (tech economics, load shapes)
-  engine.js             Verified merit-order dispatch — dispatchHour() (pure) + simulateDay()
-  live/
-    config.js           Live tuning (CFG), build catalogue, upgrade tiers & the starting fleet
-    sim.js              Live state machine & per-tick step() — no DOM
-    actions.js          Player actions (dispatch, build, upgrade, service, R&D, research) — no DOM
-    research.js         In-run research tree: nodes, gating, and the per-run modifiers (rmods)
-    mutators.js         Per-run mutator deck, weighted roll, and the per-run modifiers (mmods)
-    meta.js             Roguelike meta: milestones, scoring, skills & research-branch unlocks
-    persist.js          Cross-run profile in localStorage (currency, skills, unlocks, best) + migration
-    rng.js              Seeded, dependency-free RNG — replayable economic randomness (pure)
-    market.js           Spot market: residual served-load price driven by reserve margin (pure)
+  engine.js             Verified merit-order dispatch — dispatchHour() (pure, + additive priceServed) + simulateDay()
+  live/                 The live game (persistent ops sim). Pure modules hold no state and touch no DOM.
+    — core state, loop & view —
+    sim.js              Live state machine & per-tick step() / surviveDay() — no DOM
+    main.js             Live glue: owns state, runs the RAF loop, wires input, drives screen nav
+    render.js           Live view — paints DOM/canvas from state; never mutates
+    config.js           Live tuning (CFG.v5* namespaces), build catalogue, upgrade ladders & the starting-fleet factory
+    actions.js          Player actions (commit dial, specialize, decommission, R&D, research, contracts) — no DOM
+    version.js          Single-source build-version constant for the UI stamp (bumped on the release checklist)
+    — time & calendar —
+    calendar.js         Year ▸ Quarter ▸ Day arithmetic (pure)
+    clock.js            Variable-speed time scaling + auto-pace / auto-pause (pure)
+    — economy, market & the quarterly verdict —
+    demand.js           Hybrid demand curve: quarterly step + daily noise (pure)
+    dispatch.js         The one surviving dispatch dial — commit (v5.3 Phase 1 gutted the throttle dials)
+    market.js           Spot wholesale price driven by reserve margin (pure)
     finance.js          Term contracts, credit/debt, bankruptcy — "The Book" (pure)
     forecast.js         Spot-forecast accuracy/fog model: earned, sharpened, blurred by volatility (pure)
     capacity.js         Capacity market: firm-capacity obligation, availability pay, breach fines (pure)
     offers.js           Special offers ("Rolodex"): named buyers bring standout contracts (pure)
-    fleetsort.js        Pure comparators for the Manage → Fleet table (urgency, output, etc.)
+    verdict.js          The overlord's quarterly board review — settleQuarter grades floor + swing (pure)
+    scorecard.js        Quarterly KPI → ⚡ faucet: 7 metrics / 2 channels minted to the profile (pure)
+    — fleet health & growth —
+    kpi.js              The four axis-aligned health metrics + style-driven degradation (pure)
+    maint.js            Rolling, cash-funded KPI-repair queue worked by the crew pool
+    crews.js            The levelling maintenance crew pool (hire / promote / assign)
+    contractor.js       Rolling UPGRADE queue — the fast capacity channel, on its own labor
+    construct.js        New plants as multi-quarter lead-time capital projects
+    progression.js      Growth lanes: per-axis specialization caps + ⚡ perks (pure)
+    stability.js        The grid-stability reservoir and the fail-state it drives (pure)
+    — crisis, events & the daily beat —
+    crisis.js           Mid-quarter escape hatch: load-shed tiers + demand response
+    events.js           The seasonal event regime (weighted deck → mmods), grown from mutators.js
+    brief.js            The blocking-but-skippable daily planning beat feeding the rolling queues
+    — research, meta, persistence & flavour —
+    research.js         In-run tech tree: nodes, gating, the per-run modifiers (rmods) (pure)
+    mutators.js         The mutator-modifier machinery (mmods) now driven by events.js regimes (pure)
+    meta.js             Roguelike meta: milestones, scoring, skills & research-branch unlocks (pure)
+    persist.js          Cross-run profile in localStorage (currency, skills, unlocks, records) + migration
+    rng.js              Seeded, dependency-free RNG — replayable economic randomness (pure)
+    world.js            Identity arc, C.A.S.S. dispatch-AI barks & the overlord's voice — pure copy from CFG (pure)
+    fleetsort.js        Pure comparators for the fleet lanes (urgency, output, etc.)
     readouts.js         Derived operator readouts for the Control Room status cluster (pure)
-    render.js           Live view — paints DOM/canvas from state
-    main.js             Live glue: owns state, runs the loop, wires input
   game.js               Batch game state & rules (build, sell, advance, events, scoring)
   render.js             Batch view layer
   main.js               Batch glue
 batch/index.html        Turn-based reference build (loads the shared engine + src/*.js)
-tests/                  Node test suites (no dependencies) — one per pure module:
-  engine, sim, research, mutators, persist, fleetsort, market, finance,
-  meta, forecast, capacity, offers, guards, readouts (.test.mjs)
+tests/                  Node test suites (no dependencies), auto-discovered by the runner — one per
+                        module + the economy-integrity & harness suites. Run with `npm test`;
+                        a GitHub Action runs the same suites on every push & PR (see DEPLOY.md).
 tools/
-  balance.mjs           Headless balance harness — plays many runs; reports survival,
-                        the research economy, and per-mutator fairness
+  run-tests.mjs         Test runner — spawns each tests/*.test.mjs in its own process
+  balance.mjs           Headless balance harness — plays canned + hill-climbed strategies and
+                        ASSERTS the economic incentives (serve-to-win, conservation, scarce mint)
 docs/
   README.md             Documentation map — every doc with its shipped/planned/superseded status
-  ROADMAP-v2…v5.md      Design roadmaps per version (v5 = the scoped, unbuilt pivot)
-  PLAN-*.md             Per-version build plans (v3, v4, v4.2, v4.2.1, v5.1)
+  ROADMAP-v2…v5.md      Design roadmaps per version
+  PLAN-*.md / plan-v5*/ Per-version build plans (v3, v4, v4.2, v4.2.1, and the v5 / v5.1 / v5.2 / v5.3 phase specs)
   STORYLINE-v5-*.md     New Veridia / C.A.S.S. narrative bibles (later flavour layer)
-  DEPLOY.md             GitHub Pages hosting notes
-CHANGELOG.md            Running version history (v2 → v4.2.6 shipped; v5 planned)
+  DEPLOY.md             GitHub Pages hosting notes + the release checklist
+CHANGELOG.md            Running version history
 archive/                The original single-file MVP, preserved
 ```
 
 Both games share one tested dispatch primitive: `dispatchHour()` in `src/engine.js` clears a single hour of the merit-order market. The live loop calls it each tick; the batch `simulateDay()` sums it over a representative day. The layers don't import circularly — `render.js` never mutates state, `sim.js`/`game.js` never touch the DOM, and `main.js` is the only module that knows about both. The pure modules (`research.js`, `mutators.js`, `meta.js`) hold no state and touch no DOM — they turn owned research / rolled mutators / meta progress into the modifier objects the sim reads.
 
 ```bash
-npm test     # runs all suites: engine, live-sim, research, mutators, persist (Node, no dependencies)
+npm test     # runs every tests/*.test.mjs suite (engine, sim, economy-integrity, harness, … — Node, no dependencies)
 ```
 
 ## Roadmap
 
-The live game has shipped through **v4.2.6**. In version order:
+In version order (all shipped):
 
 - **v2** — the real-time roguelike core (live dispatch loop, wear/trips, meta-currency).
 - **v3** — the research tech tree, mutator deck, and meta-gating. *(Deferred: a "juice" pass — screen-shake, breakthrough feedback, sound.)*
 - **v4 "The Book"** — contracts + a reserve-margin-driven spot market, financing & bankruptcy, an earned forecast, multi-track scoring, capacity market & buyer offers.
 - **v4.1 / v4.2** — gameplay-feel and economy tuning; the **"Control Room"** UI redesign; a reworked reliability/volatility model; the fleet table; and proper plant names.
-- **v5 "The Persistent Grid"** — a **scoped-but-unbuilt genre pivot** from survival roguelike to a persistent management / ops sim. See [docs/ROADMAP-v5.md](docs/ROADMAP-v5.md).
+- **v5 "The Persistent Grid"** — the genre pivot from survival roguelike to a persistent management / ops sim: a Year ▸ Quarter ▸ Day calendar, dial-able dispatch, four KPI axes, rolling maintenance, lead-time construction, a hybrid floor+swing economy graded by a quarterly board verdict, and the New Veridia / C.A.S.S. narrative layer. See [docs/ROADMAP-v5.md](docs/ROADMAP-v5.md).
+- **v5.1** — rebalance & rework: the grid-stability fail-state returns, a hybrid demand curve, 4×9 per-plant upgrade ladders via a rolling contractor queue, the daily brief, and the quarterly KPI → ⚡ scorecard.
+- **v5.2** — playability: the intraday-peak fix, a shorter day with auto-pacing, and the strain-bar relabel.
+- **v5.3 "Integrity"** — an economy-correctness milestone under a feature freeze: a continuous `priceServed` clearing price (killing the go-dark exploit), honest PnL reconciliation, a CI-gated test + balance-assert suite, deletion of inert/lying mechanics down to one trouble-meter, and this version stamp. *(Deferred: the balance-number lock and the in-game copy pass — the final tuning gate.)*
 
 Full version history is in [CHANGELOG.md](CHANGELOG.md); a status-tagged map of every design/plan/narrative doc is in [docs/README.md](docs/README.md).

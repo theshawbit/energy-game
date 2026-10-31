@@ -26,6 +26,9 @@ header.cmdbar{display:flex;align-items:center;gap:14px 20px;flex-wrap:wrap;flex:
   padding:10px 16px;margin-bottom:14px}
 .cb-id{display:flex;align-items:center;margin-right:auto;min-width:0}
 .cb-mark{font-family:var(--disp);text-transform:uppercase;letter-spacing:.14em;font-size:.82rem;color:var(--muted);white-space:nowrap}
+/* v5.3 Phase 4: version stamp — a quiet quotable badge beside the wordmark */
+.cb-ver{font-family:var(--mono);font-size:.64rem;font-weight:500;letter-spacing:.04em;color:var(--muted);margin-left:8px;padding:1px 5px;border:1px solid var(--line);border-radius:5px;white-space:nowrap}
+.cb-ver:empty{display:none}
 .cb-clock{display:flex;align-items:baseline;gap:10px;margin-left:16px;padding-left:16px;border-left:1px solid var(--line)}
 .cb-cal{font-family:var(--disp);text-transform:uppercase;letter-spacing:.1em;font-size:.72rem;color:var(--fg);white-space:nowrap}
 .cb-time{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:1.5rem;letter-spacing:.02em}
