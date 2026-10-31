@@ -34,9 +34,12 @@ import { forecastFog, forecastInputs } from "./forecast.js";
 import { capacityPayment, capacityPenalty, rollCapacityCall, floorEarn } from "./capacity.js";
 import { freshQuarterLog, freshEconomy, settleQuarter, applyVerdict } from "./verdict.js";
 
-export const rand = (a, b) => a + Math.random() * (b - a);
+// v5.3 Phase 2 (M10): env stochastics draw from an injectable rng so a seeded S.rngEnv
+// replays the real volatile game. Defaults to global Math.random for callers that don't
+// pass one (createGame's construction-time weather — the harness pins the global first).
+export const rand = (a, b, rng = Math.random) => a + rng() * (b - a);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-export function freshWeather(){ return { sun: rand(0.7, 1.05), wind: rand(0.6, 1.25) }; }
+export function freshWeather(rng = Math.random){ return { sun: rand(0.7, 1.05, rng), wind: rand(0.6, 1.25, rng) }; }
 
 // linear interpolation around the 24h shape arrays
 export function interp(arr, t){
@@ -204,7 +207,7 @@ export function surviveDay(S){
   // steps once per quarter in rollQuarterPeak (below); each day the live S.peak is set from
   // that baseline × a bounded seasonal daily noise. Within a quarter the baseline holds, so
   // the day only refreshes the weather + the wobble — the quarterly step is the real growth.
-  S.weather = freshWeather();
+  S.weather = freshWeather(S.rngEnv || Math.random);
   S.strain = Math.max(0, S.strain - 30);
   expireContracts(S); // v4: age term contracts one day, drop the expired ones
   creditTick(S);      // v4 (C): a solvent day rebuilds credit toward the cap
@@ -314,16 +317,17 @@ export function step(S, dt){
   // move the net-load curve you're managing. Cloud banks, gusts and lulls, not a
   // gentle drift. Magnitudes live in CFG.vol so balance stays central.
   const V = CFG.vol, sq = Math.sqrt(dt); // √dt → frame-rate-independent volatility
-  S.weather.sun  = clamp(S.weather.sun  + (1 - S.weather.sun)  * V.sunRevert  * dt + rand(-1, 1) * V.sunVol  * sq, V.sunLo,  V.sunHi);
-  S.weather.wind = clamp(S.weather.wind + (1 - S.weather.wind) * V.windRevert * dt + rand(-1, 1) * V.windVol * sq, V.windLo, V.windHi);
+  const renv = S.rngEnv || Math.random; // v5.3 Phase 2 (M10): seeded env stream (weather/jitter/spike/trip)
+  S.weather.sun  = clamp(S.weather.sun  + (1 - S.weather.sun)  * V.sunRevert  * dt + rand(-1, 1, renv) * V.sunVol  * sq, V.sunLo,  V.sunHi);
+  S.weather.wind = clamp(S.weather.wind + (1 - S.weather.wind) * V.windRevert * dt + rand(-1, 1, renv) * V.windVol * sq, V.windLo, V.windHi);
   // demand jitter + spikes (S.calm suppresses them for the deterministic test harness):
   if (!S.calm){
     // a continuous mean-reverting wobble on load…
-    S.demandJit = clamp(S.demandJit + (0 - S.demandJit) * V.demandRevert * dt + rand(-1, 1) * V.demandVol * sq, -V.demandJitMax, V.demandJitMax);
+    S.demandJit = clamp(S.demandJit + (0 - S.demandJit) * V.demandRevert * dt + rand(-1, 1, renv) * V.demandVol * sq, -V.demandJitMax, V.demandJitMax);
     // …plus occasional short SPIKES (a cold front, an industrial swing) that bump load
     // for a game-hour or two — telegraphed only by the chart, so watch your margin.
     if (S.spikeT > 0) S.spikeT -= dtH;
-    else if (Math.random() < V.spikeChance * dtH){ S.spikeMag = rand(V.spikeMin, V.spikeMax); S.spikeT = rand(V.spikeDurMin, V.spikeDurMax); }
+    else if (renv() < V.spikeChance * dtH){ S.spikeMag = rand(V.spikeMin, V.spikeMax, renv); S.spikeT = rand(V.spikeDurMin, V.spikeDurMax, renv); }
   }
 
   const diff = 1 + (S.day - 1) * CFG.outageRamp; // outages get worse as days climb
@@ -358,7 +362,7 @@ export function step(S, dt){
     else if (u.status === "strained"){
       u.strainTimer -= dtH;
       if (u.strainTimer <= 0){
-        u.status = "tripped"; u.tripTimer = rand(u.recover[0], u.recover[1]); u.strainTimer = 0;
+        u.status = "tripped"; u.tripTimer = rand(u.recover[0], u.recover[1], renv); u.strainTimer = 0;
         setTicker(S, `⚠ ${u.name} tripped offline — ${Math.round(u.cap)} MW lost!`);
       }
     }
@@ -367,7 +371,7 @@ export function step(S, dt){
       // (1 - e^{-rate·dt}): frame-rate independent and never exceeds 1 on slow frames.
       // v4.1: base rates are low and WEAR dominates (tripHazard), so a maintained
       // plant rarely strains; when it does, it enters a telegraphed warning first.
-      if (Math.random() < 1 - Math.exp(-tripHazard(u, diff) * dt)){
+      if (renv() < 1 - Math.exp(-tripHazard(u, diff) * dt)){
         u.status = "strained"; u.strainTimer = CFG.strainWarn;
         // v5 Phase 8: a telegraphed trip is the beat to reach for the crisis toolkit —
         // auto-pause the clock so load-shed / demand response are reachable before it falls.

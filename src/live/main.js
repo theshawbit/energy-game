@@ -103,6 +103,7 @@ function seedRun(){
   const seed = Date.now() >>> 0; S.seed = seed; S.rng = makeRng(seed); // v4: seeded economic RNG
   S.rngForecast = makeRng((seed ^ 0xF0) >>> 0); // separate stream so forecast sharpening never desyncs realized spot
   S.rngDemand = makeRng((seed ^ 0xD3) >>> 0);   // v5.1 Phase 1: daily demand-noise stream, isolated from the economy
+  S.rngEnv = makeRng((seed ^ 0xE4) >>> 0);       // v5.3 Phase 2 (M10): env stream (weather/jitter/spike/trip), isolated from the economy — a logged seed replays the real volatile game
   rollRegime(S, S.rng); S.mmods = regimeMods(S); // deal the opening quarter's regime
   S.bestRecords = profile.records;               // read-only mirror for the hub scorecard
   S.briefEnabled = true;                         // v5.1 Phase 5: arm the daily brief for this session (headless stays off)
