@@ -35,6 +35,28 @@ export function setSpeed(S, speed){
   return true;
 }
 
+// v5.2 Phase 2 — AUTO-PACE decision. Pure read of live S: picks the DEFAULT speed so calm
+// game-hours fast-forward and the clock drops to 1× the instant something needs watching —
+// an active demand spike, a unit starting/strained/tripped, thin capacity headroom, or the
+// strain reservoir in its danger band. It NEVER forces a pause: crisis pausing stays with
+// autoPause (the strain-onset hook), so auto-pace can't fight the player for the wheel.
+// main.js applies this each operating frame unless the player has taken manual control.
+export function pacePlan(S){
+  const b = CFG.v5_1.brief, P = CFG.v5_2.pace;
+  const peak = S.peak || 0;
+  const headroom = peak > 0 ? ((S.capacity ?? 0) - peak) / peak : Infinity;
+  const st = S.stability, stabFrac = st && st.max > 0 ? st.hp / st.max : 0;
+  const spiking = (S.spikeT || 0) > 0;
+  const unitEvent = Array.isArray(S.fleet) && S.fleet.some(u =>
+    u.status === "strained" || u.status === "starting" || u.status === "tripped");
+  const watch = spiking || unitEvent
+    || headroom < (P?.slowHeadroomPct ?? b.headroomPct)
+    || stabFrac >= b.stabilityDanger;
+  return watch
+    ? { speed: 1, reason: "watch the grid" }
+    : { speed: CFG.v5.fastSpeed, reason: "calm" };
+}
+
 // Stop the clock because a crisis needs the player's attention. Records the reason
 // for the view to surface. The crisis hooks in later phases call this; Phase 1
 // uses it at the quarter-end planning beat.

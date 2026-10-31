@@ -12,7 +12,7 @@ import { rollRegime, regimeMods } from "./events.js";
 import { triggerLoadShed, triggerDemandResponse } from "./crisis.js";
 import { promote, hireCrew } from "./crews.js";
 import { commitBuild } from "./construct.js";
-import { setSpeed } from "./clock.js";
+import { setSpeed, pacePlan } from "./clock.js";
 import { closeBrief } from "./brief.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
@@ -90,9 +90,13 @@ function openManage(){ if (S.calendar.mode !== "operating") return; S.menuOpen =
 // ---- speed control (v5): pause is a read-only hold (clock speed 0); fast-forward
 // skips calm hours. Both only act during the live day (not the planning beat). ----
 let fastMode = false;
+// v5.2 Phase 2: while auto-pace is armed (S.autoPace) it drives the live speed each frame
+// (fast-forward calm, 1× when something's happening). Any MANUAL speed change sets paceHeld,
+// which stands auto-pace down until the next day boundary — the player keeps the wheel.
+let paceHeld = false;
 function applySpeed(){ setSpeed(S, S.paused ? 0 : (fastMode ? CFG.v5.fastSpeed : 1)); }
-function togglePause(){ if (S.calendar.mode !== "operating") return; S.paused = !S.paused; applySpeed(); render(S); }
-function toggleFast(){ if (S.calendar.mode !== "operating" || S.paused) return; fastMode = !fastMode; applySpeed(); render(S); }
+function togglePause(){ if (S.calendar.mode !== "operating") return; S.paused = !S.paused; paceHeld = true; applySpeed(); render(S); }
+function toggleFast(){ if (S.calendar.mode !== "operating" || S.paused) return; fastMode = !fastMode; paceHeld = true; applySpeed(); render(S); }
 
 // Seed a fresh grid's live RNG streams + opening seasonal regime (shared by a new game and
 // the roguelite restart). v5 Phase 8: the per-run mutator roll is retired — the seasonal
@@ -105,12 +109,13 @@ function seedRun(){
   S.bestRecords = profile.records;               // read-only mirror for the hub scorecard
   S.briefEnabled = true;                         // v5.1 Phase 5: arm the daily brief for this session (headless stays off)
   S.autoAdvance = true;
+  S.autoPace = true;                             // v5.2 Phase 2: arm auto-pace (fast-forward calm / 1× on events)
   S.zap = profile.currency || 0;                 // v5.1 Phase 6: ⚡ is ONE pool — the run spends the profile's banked currency
 }
 
 // ---- the persistent grid ----
 function startGame(){
-  hideAll(); hideCollapse(); hideBrief(); hidePlantDetail(); plantOpen = null; planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false;
+  hideAll(); hideCollapse(); hideBrief(); hidePlantDetail(); plantOpen = null; planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false; paceHeld = false;
   S = createGame(profile.skills, profile.researchUnlocked, [], profile.credit?.standing, profile.economyUnlocked); // carry skills + unlocks + credit
   seedRun();
   S.paused = false; applySpeed();
@@ -127,7 +132,7 @@ function startGame(){
 function restartGame(){
   S = restartRun(S, profile);
   seedRun();
-  hideCollapse(); hideBrief(); hidePlantDetail(); plantOpen = null; planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false;
+  hideCollapse(); hideBrief(); hidePlantDetail(); plantOpen = null; planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false; paceHeld = false;
   S.paused = false; applySpeed();
   buildUnits(S, act, openPlant);
   renderMutatorBanner(S);
@@ -164,14 +169,14 @@ const planningActions = {
   // line), or ⚡ to unlock a perk. Both repaint the office in place.
   specialize(unitId, axis){ specializeUnit(S, unitId, axis); renderPlanning(S, planningActions); },
   perk(perkId){ buyPerk(S, perkId); syncZap(); renderPlanning(S, planningActions); },
-  begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; last = 0; buildUnits(S, act, openPlant); render(S); },
+  begin(){ beginNextQuarter(S); hidePlanning(); planningOpen = false; S.paused = false; fastMode = false; paceHeld = false; last = 0; buildUnits(S, act, openPlant); render(S); },
 };
 
 // v5.1 Phase 5: the daily brief — the blocking-but-skippable daily beat. Quick-add buttons
 // route to the SAME rolling-queue functions as the Planning Office (maintenance → queueMaint,
 // upgrades → specializeUnit/queueUpgrade); builds are surfaced but committed only at the review.
 // "Advance" re-arms auto-skip; "Step a day" leaves it off so the next boundary reopens the brief.
-function leaveBrief(){ hideBrief(); briefOpen = false; S.paused = false; fastMode = false; applySpeed(); last = 0; render(S); }
+function leaveBrief(){ hideBrief(); briefOpen = false; S.paused = false; fastMode = false; paceHeld = false; applySpeed(); last = 0; render(S); }
 const briefActions = {
   schedule(unitId, axis, crewId){ queueMaint(S, unitId, axis, crewId); renderBrief(S, briefActions); },
   cancelTask(taskId){ cancelTask(S, taskId); renderBrief(S, briefActions); },
@@ -198,8 +203,13 @@ function frame(now){
       if (!briefOpen){ briefOpen = true; renderBrief(S, briefActions); }
     } else {
       const dayBefore = S.day;
+      // v5.2 Phase 2: auto-pace drives the default speed — fast-forward calm hours, drop to
+      // 1× the moment something needs watching. It stands down while the player holds manual
+      // control (paceHeld), has manually paused, or a crisis autoPause is active (the player
+      // resolves that). A manual speed set earlier this day is cleared at the boundary below.
+      if (S.autoPace && !paceHeld && !S.paused && !S.clock.autoPaused) setSpeed(S, pacePlan(S).speed);
       step(S, dt); // no-ops while paused (clock speed 0); never ends
-      if (S.day !== dayBefore && S.calendar.mode === "operating") rollDailyOffer();
+      if (S.day !== dayBefore && S.calendar.mode === "operating"){ paceHeld = false; rollDailyOffer(); }
       render(S);
     }
   }

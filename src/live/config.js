@@ -11,7 +11,7 @@ export const CFG = {
   // v5: a ~3-minute engaged day (was 48s). At 180s a game-hour ≈ 7.5 real-sec, so a
   // trip warning (strainWarn 1.6 gh ≈ 12s) and a peaker spin-up breathe — read-decide-act
   // with intent, not twitch. All code + tests read this constant, so the pacing is central.
-  secondsPerDay: 180,         // real seconds for a 24h cycle (~3-min day; 1 game-hour ≈ 7.5s)
+  secondsPerDay: 100,         // v5.2 Phase 2: real seconds for a 24h cycle (~1.7-min day; 1 game-hour ≈ 4.2s). Was 180 (~3-min) — too long to reach a quarter; auto-pace fast-forwards the calm on top. PLACEHOLDER (balance pass).
   startHour: 6,               // shift begins at 06:00
   startPeak: 780,             // MW peak demand, day 1
   startCash: 120000,          // $ on hand day 1, so the manage panel has an opening move
@@ -27,8 +27,8 @@ export const CFG = {
   // almost instantly. Scaled by ≈48/180 so the per-GAME-DAY feel is preserved on the long
   // day — strain now escalates over a meaningful stretch of a shortfall, never a snap. Strain
   // is no longer fatal (v5 removed game-over); it is the pain signal the view reacts to.
-  strainRate: 14,             // strain gained per second at 100% shortfall (was 52 @ 48s/day)
-  strainRecover: 12,          // strain shed per second when covered (was 45 @ 48s/day)
+  strainRate: 25,             // strain gained per second at 100% shortfall (was 52 @ 48s, 14 @ 180s; re-seated for the 100s day — INVERSE: rate × secondsPerDay ≈ const, so per-game-day severity holds)
+  strainRecover: 22,          // strain shed per second when covered (was 45 @ 48s, 12 @ 180s; re-seated INVERSE for the 100s day)
   instantBlackout: 0.42,      // only a catastrophic shortfall kills instantly; smaller ones
                               //   fill the strain meter instead, giving a window to react
                               //   (fire the battery, start peakers) — so deaths feel earned
@@ -154,7 +154,7 @@ export const CFG = {
   creditRecoverPerDay: 3,    // solvent days rebuild credit toward the (possibly capped) ceiling
   insolvencyFloor: 0,        // cash below this counts as insolvent
   hardInsolvency: -150000,   // cash this deep in the red = pain onset (v5: cratered credit, stalled growth — NOT a wind-up)
-  bankruptcyGrace: 22,       // v5 P6: real-seconds insolvent before PAIN ONSET (not death — game-over is gone); scaled for the 180s day (was 6 @ 48s)
+  bankruptcyGrace: 12,       // v5 P6: real-seconds insolvent before PAIN ONSET (not death — game-over is gone); re-seated for the 100s day (was 6 @ 48s, 22 @ 180s) — DIRECT: grace/secondsPerDay ≈ const, so the game-TIME grace window holds
   // ---- v4 "The Book": multi-track scoring (Phase D) — each track earns ⚡ on its
   // own curve, so longevity, wealth, clean play and spot-trading can each be "the
   // point". Divisors are $/⚡ or %/⚡; higher = that track rewards more slowly.
@@ -541,6 +541,15 @@ export const CFG = {
       shockCap: 0.18,   // Smax — the hard ceiling on the random intraday surge fraction (the pinch point)
       wSpike:   1.0,    // weight on the demand spike (the dominant term)
       wWobble:  0.4,    // weight on the load wobble (seasoning, never the crisis)
+    },
+    // v5.2 Phase 2 — AUTO-PACE. The live clock fast-forwards (CFG.v5.fastSpeed) through calm
+    // game-hours and drops to 1× the moment something needs watching, so engaged time shrinks
+    // without a shorter day flattening the tense moments. Crisis PAUSING stays with autoPause
+    // (the strain-onset hook) — auto-pace never forces a pause, so it can't fight the player for
+    // the wheel. slowHeadroomPct sits a touch above the brief's nag so the clock slows BEFORE
+    // it's brief-tight. PLACEHOLDER — the balance pass tunes the band.
+    pace: {
+      slowHeadroomPct: 0.15,  // drop to 1× when (capacity − peak)/peak falls below this (buffer over brief.headroomPct 0.10)
     },
   },
 };

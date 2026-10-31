@@ -8,6 +8,30 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed — v5.2 Phase 2: pacing & fail-state legibility (2026-10-31)
+
+Clears the two secondary blockers to reaching a quarter review and makes the survival read
+honest. Second phase of the **v5.2 playability rebalance** ([`docs/plan-v5.2/`](docs/plan-v5.2/README.md)).
+
+- **Shorter day + auto-pace.** `CFG.secondsPerDay` 180 → **100** (the old ~3-min day was why a
+  quarter never arrived). On top, new **auto-pace**: the live clock fast-forwards
+  (`CFG.v5.fastSpeed`) through calm game-hours and drops to **1×** the moment something needs
+  watching — an active spike, a unit starting/strained/tripped, thin capacity headroom, or the
+  strain reservoir in its danger band. New pure `pacePlan(S)` in `clock.js`; it **never forces a
+  pause** (crisis pausing stays with the existing `autoPause` strain hook, so it can't fight the
+  player for the wheel). Any manual speed change holds until the next day boundary (`paceHeld`).
+- **Re-seated the real-seconds constants** for the shorter day: `strainRate` 14 → **25**,
+  `strainRecover` 12 → **22** (INVERSE — `rate × secondsPerDay` ≈ const, per-game-day severity
+  preserved), `bankruptcyGrace` 22 → **12** (DIRECT — `grace / secondsPerDay` ≈ const, the
+  game-time grace window preserved). Stability fill/drain are per-game-hour and left for the
+  balance pass to retune against the tamed curve.
+- **Strain bar relabel** — `Grid Stability` → **`Grid Strain`** in the top strip (`index.html`).
+  Cosmetic only: the reservoir, its fill direction (0% = good, rises to collapse), and
+  `renderStabilityBar` are **unchanged** — no inversion to a health bar, per the grill decision.
+- New `tests/pacing.test.mjs` (34 suites green): re-seat coherence (per-game-day severity/grace),
+  the pure `pacePlan` classifier, and a relabel-is-cosmetic guard. Headless 15-day run clean;
+  live-verified the relabel + no console errors. `engine.js` untouched.
+
 ### Changed — v5.2 Phase 1: peak formula rework (B-split saturating shock) (2026-10-31)
 
 A human playtest of v5.1 (12 days, ~36 min, never reached a quarter review) exposed the real
