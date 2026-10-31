@@ -1134,10 +1134,12 @@ export function renderHome(profile, actions){
         and run the utility as a business: hedge your output on a live market, borrow to grow,
         and live or die by both the grid <em>and</em> the ledger.</p>
     </div>
-    <button class="btn-primary home-start" id="homeStart">${firstRun ? "Start your first shift ▸" : "Start run ▸"}</button>
+    <button class="btn-primary home-start" id="homeStart">${firstRun ? "Start your first shift ▸" : "Start your shift ▸"}</button>
     <div class="home-stats">${stats}</div>
-    <p class="home-foot">Each run is a finite contract. Survive it to win; earn ⚡ across four tracks —
-      longevity, net worth, clean share, spot trading — to grow permanently stronger.</p>
+    <p class="home-foot">Your posting runs quarter to quarter — the board grades every quarter and mints
+      ⚡ from your profit and the city's satisfaction, banked to permanent skills. Let a sustained
+      shortfall drain the grid's stability reserve and the lights go out; you take a new posting and
+      keep what you banked.</p>
     <div class="home-btns">
       <button id="homeSkills">Skills &amp; unlocks ⚡</button>
       <button id="homeHowto">How to play</button>

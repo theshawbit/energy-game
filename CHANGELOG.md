@@ -47,12 +47,20 @@ and [`docs/PLAYTEST-v5.3.md`](PLAYTEST-v5.3.md).
   price cap for survivability. A proxy playtest confirmed the game is coherent and its P&L legible at
   the board review; the human playtest and two live-screen legibility findings are recorded in
   [`PLAYTEST-v5.3.md`](PLAYTEST-v5.3.md).
+- **Copy reconciliation (Phase 4, late half).** The player-facing copy was rewritten to describe the
+  game *as it now is*, retiring stale v4.2.6 language the audit flagged. The **home footer** drops
+  "survive it to win / earn ⚡ across four tracks" for the persistent-posting loop (quarterly board
+  review mints ⚡ from profit + satisfaction; a drained stability reserve ends the posting). The
+  **How-to/FAQ** (`index.html`) loses the Mk-tier / service / Overhaul vocabulary and the
+  brownout·blackout·lost-confidence·satisfaction-licence failure model, replaced by rolling
+  maintenance + the four-axis contractor ladders, the single grid-strain meter, and the board
+  review. The **README** "How to play" + "The economics" sections were brought onto the same model
+  (commit-only dispatch, `priceServed`, the VOLL penalty). *No model changes* — copy only; the
+  fail-state **design** decision stays deferred.
 
 **Known / deferred:** the human playtest; a UI legibility pass (surface the live VOLL/unserved
-penalty; the overdrawn-cash readout; the audit's "content density outruns the data" note); the
-fail-state "is roguelite game-over the right model?" decision (now *answerable*, deferred to v5.4);
-and the Phase-4-late in-game/home copy rewrite (the home screen still sells the older "survive it to
-win" run model — now unblocked).
+penalty; the overdrawn-cash readout; the audit's "content density outruns the data" note); and the
+fail-state "is roguelite game-over the right model?" decision (now *answerable*, deferred to v5.4).
 
 ### Changed — v5.2 Phase 2: pacing & fail-state legibility (2026-10-31)
 
