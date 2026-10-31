@@ -26,11 +26,12 @@ const kpiUnit = (over = {}) => ({ cap: 100, kind: "firm", mc: 35, kpis: { ...fre
   check("renewables carry no kpis (exempt, like v4 condition==null)", S.fleet.filter(u => u.kind === "renew").every(u => u.kpis == null));
 }
 
-// 2) Push + high load wears Reliability & Output, not Efficiency/Flexibility.
+// 2) High load wears Reliability & Output (v5.3: at the intrinsic loadStress, no push dial),
+//    not Efficiency/Flexibility.
 {
   const u = kpiUnit();
-  degradeKPIs(u, { loadFrac: 0.95, push: 1 }, 24);
-  check("push + high load drops Reliability & Output", u.kpis.reliability < 92 && u.kpis.output < 95,
+  degradeKPIs(u, { loadFrac: 0.95 }, 24);
+  check("sustained high load drops Reliability & Output", u.kpis.reliability < 98 && u.kpis.output < 99,
     `rel ${u.kpis.reliability.toFixed(1)} out ${u.kpis.output.toFixed(1)}`);
   check("…but leaves Efficiency & Flexibility ~untouched", u.kpis.efficiency > 99.9 && u.kpis.flexibility === 100);
 }
@@ -38,19 +39,19 @@ const kpiUnit = (over = {}) => ({ cap: 100, kind: "firm", mc: 35, kpis: { ...fre
 // 3) Part-load erodes Efficiency; reliability/output barely move.
 {
   const u = kpiUnit();
-  degradeKPIs(u, { loadFrac: 0.2, push: 0 }, 24);
+  degradeKPIs(u, { loadFrac: 0.2 }, 24);
   check("part-load erodes Efficiency", u.kpis.efficiency < 97, `eff ${u.kpis.efficiency.toFixed(1)}`);
   check("…reliability/output barely move at part-load", u.kpis.reliability > 99.9 && u.kpis.output > 99.9);
 }
 
-// 4) Cycling beats up Flexibility & nicks Reliability; efficiency/output steady.
+// 4) A START beats up Flexibility & nicks Reliability; efficiency/output steady. v5.3: the
+//    band-ramp wear event is retired, so a start is the only cycling hit left.
 {
   const u = kpiUnit();
-  for (let i = 0; i < 3; i++) degradeKPIs(u, { loadFrac: 0.5, push: 0, ramped: true }, 0.01);
-  degradeKPIs(u, { loadFrac: 0.5, push: 0, started: true }, 0.01);
-  check("cycling drops Flexibility and nicks Reliability", u.kpis.flexibility < 97 && u.kpis.reliability < 100,
+  degradeKPIs(u, { loadFrac: 0.5, started: true }, 0.01);
+  check("a start drops Flexibility and nicks Reliability", u.kpis.flexibility < 98 && u.kpis.reliability < 100,
     `flex ${u.kpis.flexibility.toFixed(1)} rel ${u.kpis.reliability.toFixed(1)}`);
-  check("…efficiency/output steady under cycling", u.kpis.efficiency > 99.9 && u.kpis.output > 99.9);
+  check("…efficiency/output steady under a start", u.kpis.efficiency > 99.9 && u.kpis.output > 99.9);
 }
 
 // 5) Output KPI derates capacity, and applyDials offers the derated max.
@@ -58,8 +59,8 @@ const kpiUnit = (over = {}) => ({ cap: 100, kind: "firm", mc: 35, kpis: { ...fre
   const u = kpiUnit({ output: 50 });
   const em = effectiveMax(u);
   check("effectiveMax at output 50 is below cap by the configured factor", em < u.cap && near(em, 100 * (CFG.v5.kpiCurve.outputMin + (1 - CFG.v5.kpiCurve.outputMin) * 0.5)), `${em} MW`);
-  u.dials = { commit: true, bandMin: 0, bandMax: 100, reserveHold: 0 };
-  check("applyDials offers only the derated max", near(applyDials(u).max, em), `offered ${applyDials(u).max}`);
+  u.dials = { commit: true };
+  check("applyDials offers the Output-derated max (full available capacity)", near(applyDials(u).max, em), `offered ${applyDials(u).max}`);
 }
 
 // 6) Efficiency KPI re-prices — heatRateMult rises as efficiency falls, and step
@@ -81,14 +82,15 @@ const kpiUnit = (over = {}) => ({ cap: 100, kind: "firm", mc: 35, kpis: { ...fre
   check("mid-band reliability is punishing and matches the v4 curve", mid > 0 && near(mid, expectMid, 1e-9), `${mid.toExponential(2)}`);
 }
 
-// 8) Flexibility sets agility — ramp speed + min stable load; low flex narrows the band.
+// 8) Flexibility sets agility — ramp speed + min stable load stay pure functions. v5.3: the
+//    output band is retired, so applyDials no longer applies a min-stable-load floor.
 {
   check("rampFactor improves with flexibility", rampFactor(100) > rampFactor(0));
   check("min stable load falls to 0 at full flexibility", minStableLoad(100) === 0 && minStableLoad(0) > 0);
-  const stiff = { cap: 100, kind: "firm", kpis: { ...freshKPIs(), flexibility: 0 }, dials: { commit: true, bandMin: 0, bandMax: 100, reserveHold: 0 } };
-  const supple = { cap: 100, kind: "firm", kpis: freshKPIs(), dials: { commit: true, bandMin: 0, bandMax: 100, reserveHold: 0 } };
-  check("a low-flexibility plant has a raised band floor (narrower usable band)",
-    applyDials(stiff).min > applyDials(supple).min && applyDials(supple).min === 0, `stiff min ${applyDials(stiff).min}`);
+  const stiff = { cap: 100, kind: "firm", kpis: { ...freshKPIs(), flexibility: 0 }, dials: { commit: true } };
+  const supple = { cap: 100, kind: "firm", kpis: freshKPIs(), dials: { commit: true } };
+  check("no band floor — a committed unit offers from min 0 whatever its flexibility",
+    applyDials(stiff).min === 0 && applyDials(supple).min === 0, `stiff min ${applyDials(stiff).min}`);
 }
 
 // 9) revenueCoeffs is the clean 1:1 mapping Phase 6 bets on.
@@ -101,7 +103,7 @@ const kpiUnit = (over = {}) => ({ cap: 100, kind: "firm", mc: 35, kpis: { ...fre
 
 // 10) A neutral run preserves KPIs — wear is earned by style, never ambient.
 {
-  const S = freshGame(); // defaults: baseload committed, easy push (0.3), mid band, no cycling
+  const S = freshGame(); // defaults: baseload committed at full capacity, no starts (v5.3: no push/band dials)
   for (let i = 0; i < 120; i++) step(S, 0.5); // ~a day of calm running
   const nuc = S.fleet.find(u => u.id === "nuc");
   check("a calm neutral day barely moves the KPIs",

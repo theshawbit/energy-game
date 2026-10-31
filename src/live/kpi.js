@@ -63,10 +63,15 @@ export function revenueCoeffs(kpis){
   };
 }
 
-// THE KEYSTONE. `style` = { loadFrac, push, ramped, started } — realised load share
-// (from step), the push dial, and whether this tick ramped/started (dispatch.cycleCost).
-// Push + sustained HIGH load wears Reliability & Output; PART-load wears Efficiency;
-// ramps/starts beat up Flexibility (and a start nicks Reliability). Mutates u.kpis.
+// THE KEYSTONE. `style` = { loadFrac, started } — realised load share (from step) and
+// whether this tick STARTED a unit (dispatch.cycleCost). Sustained HIGH load wears
+// Reliability & Output; PART-load wears Efficiency; a start beats up Flexibility and
+// nicks Reliability. Mutates u.kpis.
+//
+// v5.3 Phase 1: the `push` dial is retired (a dial that only hurt, no upside). The
+// high-load wear it scaled is now INTRINSIC at CFG.v5.decay.loadStress (push's de-facto
+// universal default, 0.3 — unchanged for the player who never touched the dial; Phase 5
+// re-tunes). The band-`ramped` event is gone with the output band.
 export function degradeKPIs(u, style, dtH){
   const k = u.kpis; if (!k) return;
   const D = CFG.v5.decay;
@@ -74,14 +79,12 @@ export function degradeKPIs(u, style, dtH){
   // own cap (not a flat 100) — otherwise the first wear tick would snap a specialized axis down.
   const cap = axis => u.caps?.[axis] ?? 100;
   const load = Math.max(D.idleFloor, Math.min(1, style.loadFrac ?? 0));
-  const push = clamp(style.push ?? 0, 0, 1);
   const hi = Math.max(0, (load - D.loadRefHigh) / (1 - D.loadRefHigh)); // 0..1 above the high-load ref
   const lo = Math.max(0, (D.partLoadRef - load) / D.partLoadRef);       // 0..1 below the part-load ref
-  const stress = push * hi;                                             // ONLY a hard-pushed, high-load plant
+  const stress = D.loadStress * hi;                                     // intrinsic high-load wear (was push × hi)
   k.reliability = clamp(k.reliability - D.reliability * stress * dtH, 0, cap("reliability"));
   k.output      = clamp(k.output      - D.output      * stress * dtH, 0, cap("output"));
   k.efficiency  = clamp(k.efficiency  - D.efficiency  * lo     * dtH, 0, cap("efficiency"));
-  if (style.ramped)  k.flexibility = clamp(k.flexibility - D.rampHit,  0, cap("flexibility"));
   if (style.started){ k.flexibility = clamp(k.flexibility - D.startHit, 0, cap("flexibility"));
                       k.reliability = clamp(k.reliability - D.startRelHit, 0, cap("reliability")); }
 }

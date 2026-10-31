@@ -59,7 +59,7 @@ check("spot clamps to the floor on a huge crash + low baseline", near(spotPrice(
 
 // 10) baselines: dailyBaseline rises with day; exogenousBaseline wiggles around it by hour
 check("dailyBaseline = spotBase on day 1", near(dailyBaseline(1), CFG.spotBase));
-check("dailyBaseline drifts up with days", dailyBaseline(5) > dailyBaseline(1));
+check("dailyBaseline is flat across days (v5.3 C4: per-day drift retired)", near(dailyBaseline(5), dailyBaseline(1)));
 check("exogenousBaseline is hour-sensitive (peak hour > trough hour)", exogenousBaseline(1, 18) > exogenousBaseline(1, 3));
 check("meanShape is a sane fraction", meanShape > 0.5 && meanShape < 0.9, meanShape.toFixed(3));
 

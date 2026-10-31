@@ -12,6 +12,7 @@
 // ============================================================
 import { CFG } from "./config.js";
 import { meanShape } from "./market.js";
+import { PRICE_CAP } from "../constants.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -19,7 +20,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // discount to baseline (hedgeBaseFactor) that improves with term, capped so a
 // long lock can't beat baseline by more than hedgePriceCap.
 export function contractPrice(baseline, termDays){
-  return Math.round(baseline * clamp(CFG.hedgeBaseFactor + CFG.hedgeTermBonus * termDays, 0.5, CFG.hedgePriceCap));
+  // v5.3 (C4): clamp the locked price to the live band [spotFloor, PRICE_CAP] so a contract can never
+  // price above the ceiling the spot itself respects (the old unbounded drift could push it past).
+  const p = Math.round(baseline * clamp(CFG.hedgeBaseFactor + CFG.hedgeTermBonus * termDays, 0.5, CFG.hedgePriceCap));
+  return clamp(p, CFG.spotFloor, PRICE_CAP);
 }
 
 // Expected average output for a peak — sizes the hedge dial so hedging "half"

@@ -8,7 +8,7 @@
 // game-over). A shortfall or insolvency inflicts pain (strain, fines, cratered
 // credit) but the loop keeps running; the view layer reacts to that state.
 // ============================================================
-import { DEMAND_SHAPE } from "../constants.js";
+import { DEMAND_SHAPE, THERMAL } from "../constants.js";
 import { dispatchHour } from "../engine.js";
 import { CFG, makeFleet, dialSnapshot } from "./config.js";
 import { makeCrew, wageBill, TRADES } from "./crews.js";
@@ -17,8 +17,8 @@ import { autoMaintenancePlan, dispatchAssist } from "./progression.js";
 import { tickBuilds } from "./construct.js";
 import { freshCalendar, advanceCalendar } from "./calendar.js";
 import { freshClock, tickClock, autoPause } from "./clock.js";
-import { applyDials, cycleCost } from "./dispatch.js";
-import { degradeKPIs, freshKPIs, heatRateMult } from "./kpi.js";
+import { cycleCost } from "./dispatch.js";
+import { degradeKPIs, freshKPIs, heatRateMult, effectiveMax } from "./kpi.js";
 import { computeMods, effPeakGrowth, newMilestones, CLEAN_TECHS } from "./meta.js";
 import { stepDemand, rollQuarterPeak, peakShock } from "./demand.js"; // v5.1 Phase 1: hybrid demand curve; v5.2 Phase 1: capped shock
 import { computeResearchMods } from "./research.js";
@@ -28,7 +28,7 @@ import { tickCrisis, activeShedMW, activeDrShave } from "./crisis.js";
 import { freshStability, tickStability, applyVerdictToStability } from "./stability.js"; // v5.1 Phase 2: fail-state HP bar
 import { tickContractor } from "./contractor.js"; // v5.1 Phase 3: rolling upgrade queue
 import { shouldInterrupt, openBrief } from "./brief.js"; // v5.1 Phase 5: the daily brief gate
-import { exogenousBaseline, reserveMargin, spotPrice, swingCoeff, swingEarn } from "./market.js";
+import { exogenousBaseline, reserveMargin, swingCoeff, swingEarn } from "./market.js";
 import { settleContracts, expireContracts, creditRating, interestFor, creditTick, isInsolvent, triggerDefault } from "./finance.js";
 import { forecastFog, forecastInputs } from "./forecast.js";
 import { capacityPayment, capacityPenalty, rollCapacityCall, floorEarn } from "./capacity.js";
@@ -81,7 +81,6 @@ export function createGame(skills = {}, researchUnlocked = {}, mutators = [], cr
     fleet, techCount, weather:freshWeather(), buildSeq:1,
     demandJit:0, spikeMag:0, spikeT:0, // v4.2.2 net-load volatility state
     demand:0, capacity:0, price:0, brownout:false,
-    reserveOffered:0, // v5 Phase 2: MW held back from the swing via reserveHold (earns the floor in Phase 6)
     // v5.1 Phase 2: the fail-state returns. The grid-stability reservoir fills on a shortfall
     // and drains on served hours; topping out sets S.over and freezes the run for a roguelite
     // restart. runStartDay tags this run for the records the profile banks across deaths.
@@ -186,11 +185,12 @@ export function unitOutput(S, u){
     return u.cap * interp(u.cf, S.t) * wx * mut;
   }
   if (u.kind === "battery") return (u.status === "discharge" && u.energy > 0) ? u.cap * (S.rmods?.battCapMult ?? 1) : 0;
-  // firm / gas (v5 Phase 2): the Core+ dials shape the MW offered to the merit order.
-  // Only a physically-running unit contributes (a strained plant still generates
-  // until it trips); starting/service/tripped offer nothing. applyDials handles the
-  // band clamp + reserve-hold shave; dialled to its full band this equals u.cap (v4).
-  if (u.status === "online" || u.status === "strained") return applyDials(u).max;
+  // firm / gas: only a physically-running unit contributes (a strained plant still generates
+  // until it trips); starting/service/tripped offer nothing. v5.3 Option 1: dispatch sees FULL
+  // available capacity (effectiveMax), so the sole supplier can't withhold to move their own
+  // clearing price (price-taking). commit gates online/off via the status reconciliation (sim ~345);
+  // the retired throttle dials no longer shrink supply.
+  if (u.status === "online" || u.status === "strained") return effectiveMax(u);
   return 0;
 }
 export function totalCapacity(S){ return S.fleet.reduce((a, u) => a + unitOutput(S, u), 0); }
@@ -402,12 +402,8 @@ export function step(S, dt){
   // Aggregate every unit's available MW (0 when off/tripped) into per-tech supply.
   const avail = {};
   for (const u of S.fleet) avail[u.tech] = (avail[u.tech] || 0) + unitOutput(S, u);
-  // v5 Phase 2: sum the headroom held back from the swing via reserveHold (only on
-  // committed, physically-running dial-able thermal). Phase 6 pays the capacity floor on it.
-  S.reserveOffered = S.fleet.reduce((a, u) =>
-    a + (((u.kind === "firm" || u.kind === "gas") && (u.status === "online" || u.status === "strained")) ? applyDials(u).held : 0), 0);
   const hr = dispatchHour(avail, S.demand, S.carbon, S.mmods?.fuelMult ?? 1); // carbon + mutator fuel spike re-sort the merit order
-  S.price = hr.price;
+  S.price = hr.priceServed;                                   // v5.3: the honest price served load earns (continuous; was hr.price, the cap-spiked signal)
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
   S.co2Total += hr.emissions * dtH;                           // run total, tCO₂ (emissions is tCO₂/h)
 
@@ -426,10 +422,11 @@ export function step(S, dt){
     const share = techAvail > 0 ? (hr.stack?.[u.tech] || 0) / techAvail : 0; // 0..1 dispatched fraction
     u.loadFrac = share;                                                      // expose for UI/tests
     u.ageHours = (u.ageHours || 0) + dtH;                     // still tracked (Phase 4 reads it); no longer wears directly
-    // ramp/start events since this unit last generated (dispatch.cycleCost)
+    // start events since this unit last generated (dispatch.cycleCost) — v5.3: the band-ramp
+    // event is gone with the output band, so only a commit (start) still wears Flexibility.
     const prev = u.prevDials || dialSnapshot(u.dials);
     const cyc = cycleCost(u, prev, u.dials);
-    degradeKPIs(u, { loadFrac: share, push: u.dials?.push ?? 0, ramped: cyc.ramped, started: cyc.started }, dtH * wearMods);
+    degradeKPIs(u, { loadFrac: share, started: cyc.started }, dtH * wearMods);
     u.prevDials = dialSnapshot(u.dials);
     // efficiency re-prices: extra fuel ∝ (heatRateMult − 1) × this unit's dispatched MW
     effSurcharge += unitOutput(S, u) * share * (u.mc || 0) * (heatRateMult(u.kpis.efficiency) - 1);
@@ -457,7 +454,12 @@ export function step(S, dt){
   // merit-order clearing price) and carbon still drive the COST side (varCost).
   const baseline = exogenousBaseline(S.day, S.t);
   const rm = reserveMargin(S.capacity, S.demand);
-  const spot = spotPrice({ baseline, reserveMargin: rm, scarcityMult: S.mmods?.scarcityMult ?? 1, noise: S.spotNoise });
+  // v5.3: served load earns the engine's CONTINUOUS clearing price (price-taking — the player can't
+  // move it, since dispatch uses full available capacity). This replaces the old reserve-margin spot
+  // heuristic (gameable: it read OFFERED capacity and plateaued the premium on any shortfall). Scarcity
+  // now EMERGES from the real stack — priceServed rises as demand climbs into costlier units. baseline
+  // + rm are kept for the forecast and the headroom scorecard.
+  const spot = hr.priceServed;
   S.spotBaseline = baseline; S.spot = spot;
 
   // v4 earned forecast (Phase E): once per game-hour, publish a next-hour spot
@@ -480,24 +482,35 @@ export function step(S, dt){
   //  • SWING: contracts settle first at their locked price, the residual served load
   //    clears at spot, scaled by the fleet's swing quality (generation-weighted
   //    Efficiency/Output/Flexibility — a fresh fleet = 1.0, no change from v4).
-  //  • FLOOR: availability pay on the MW each committed thermal unit HOLDS back via
-  //    reserveHold, at the ratcheted floor rate, keyed to that unit's Reliability.
-  // Held reserve isn't offered to the merit order (applyDials shaves it), so it earns
-  // the floor, never the swing — the two never double-count. Both read only served
-  // load, so a shortfall is still never a windfall (the v4 invariant holds).
-  let swW = 0, swSum = 0, floorPerH = 0;
+  //  • FLOOR: availability pay on firm RESERVE — firm/gas capacity kept available but
+  //    NOT dispatched this tick (computed below off the engine's stack), at the ratcheted
+  //    floor rate, keyed to the fleet's Reliability. v5.3: re-based off the available-but-
+  //    undispatched reserve, not the retired reserveHold dial, so no dial can farm it.
+  // The floor pays undispatched reserve and the swing pays served residual, so the two never
+  // double-count; both read only served load, so a shortfall is never a windfall.
+  let swW = 0, swSum = 0, availFirm = 0, relW = 0, relSum = 0;
   for (const u of S.fleet){
     const mw = unitOutput(S, u);
     if (mw > 0){ swW += mw; swSum += mw * swingCoeff(u.kpis); }
-    if ((u.kind === "firm" || u.kind === "gas") && (u.status === "online" || u.status === "strained"))
-      floorPerH += floorEarn(applyDials(u).held, u.kpis ? u.kpis.reliability : 100, S.economy.floorRate);
+    // v5.3: firm availability basis for the capacity floor — FULL available firm/gas capacity
+    // (reserveHold is retired; the floor is no longer keyed to a held-back dial amount). Reliability-weighted.
+    if ((u.kind === "firm" || u.kind === "gas") && (u.status === "online" || u.status === "strained")){
+      const cap = effectiveMax(u); availFirm += cap; relW += cap;
+      relSum += cap * (u.kpis ? u.kpis.reliability : 100);
+    }
   }
   const fleetSwing = swW > 0 ? swSum / swW : 1;
   const { contractedMW, contractRevenue } = settleContracts(S.contracts, hr.served);
   S.contractedMW = contractedMW;                            // exposed for D's spot-kill track
   const residualMW = Math.max(0, hr.served - contractedMW); // never negative, never unserved
   const swingPerH = contractRevenue + swingEarn(residualMW, spot, fleetSwing); // $/h market swing
-  const revenue = swingPerH + floorPerH;                    // $/h top-line (swing + regulated floor)
+  // v5.3: the capacity floor pays for firm iron kept AVAILABLE but not dispatched this tick (a genuine
+  // availability payment) — firm/gas dispatched MW come off the engine's hr.stack, so the floor never
+  // double-pays sold MW and no dial can farm it. Reliability-weighted, as before.
+  let firmDispatched = 0; for (const t of THERMAL) firmDispatched += hr.stack[t] || 0;
+  const firmReserve = Math.max(0, availFirm - firmDispatched);
+  const floorPerH = floorEarn(firmReserve, relW > 0 ? relSum / relW : 100, S.economy.floorRate);
+  const revenue = swingPerH + floorPerH;                    // $/h top-line (swing + capacity floor)
   S.cash += (revenue - hr.varCost - effSurcharge - spin - fixedOM) * dtH;  // unserved load earns nothing; effSurcharge = Phase 3 efficiency-KPI fuel penalty
 
   // accrue the quarter's board-review log (the overlord grades these at the rollover).
@@ -529,6 +542,7 @@ export function step(S, dt){
   if (S.debt > 0){
     const interest = interestFor(S.debt, creditRating(S.credit).rate, dtH);
     S.cash -= interest; S.interestPaid += interest;
+    S.quarterLog.interest = (S.quarterLog.interest || 0) + interest; // v5.3: → the honest board PnL
     flowPerH -= dtH > 0 ? interest / dtH : 0;                // interest drags the flow rate
   }
 
@@ -577,7 +591,7 @@ export function step(S, dt){
     const emax = u.maxEnergy * depthMult; // storage-depth research deepens every battery
     if (u.status === "discharge" || u.status === "service" || u.energy >= emax) continue;
     const add = Math.min(CFG.battRecharge * rechargeMult * dtH, surplusBudget, emax - u.energy);
-    if (add > 0){ u.energy += add; S.cash -= add * hr.price; surplusBudget -= add; }
+    if (add > 0){ u.energy += add; const rc = add * hr.priceServed; S.cash -= rc; S.quarterLog.opCost += rc; surplusBudget -= add; } // v5.3: recharge at the clearing price, logged for the cash↔PnL reconciliation
   }
 
   // R&D lab (v3): divert funded cash into Research Points. Can't fund more than
@@ -588,18 +602,25 @@ export function step(S, dt){
     S.rp += spend * CFG.rpPerDollar;
   }
 
-  // reserve margin, brownout, strain
-  const shortfall = S.demand - S.capacity;
+  // reserve margin, brownout, strain. v5.3: the shortfall is the engine's FORCED unserved load
+  // (chosen shed/DR are netted out of S.demand above, so hr.unserved is purely what you COULDN'T
+  // cover). No deadband — the old `shortfall > 0.5` hid sub-MW gaps that still paid the cap.
+  const shortfall = hr.unserved;
   const sev = S.demand > 0 ? shortfall / S.demand : 0;
-  if (shortfall > 0.5){
-    // v5: a shortfall hurts — strain, lost confidence, unserved-load penalty. v5.1 Phase 2
-    // adds the TEETH back: the stability bar (tickStability below) fills on this shortfall,
-    // asymmetric by cause, and topping it out ends the run. Strain/satisfaction still pin at
-    // their extremes (chronic pain) while the day runs.
+  if (shortfall > 1e-9){
+    // v5: a shortfall hurts — strain, lost confidence, VOLL. v5.1 Phase 2 adds the TEETH: the
+    // stability bar (tickStability below) fills on this shortfall, asymmetric by cause, and
+    // topping it out ends the run. Strain/satisfaction pin at their extremes while the day runs.
     S.brownout = true; S.downAcc += dt;
     S.strain = Math.min(100, S.strain + sev * CFG.strainRate * dt);
     S.satisfaction = Math.max(0, S.satisfaction - sev * CFG.satDrain * dt);
-    S.cash -= shortfall * CFG.unservedPenalty * dtH; // lost sales already sting; this adds fines / emergency buys
+    // VOLL on forced unserved — a FAIRNESS cost (the continuous price already makes covering dominant
+    // for any voll > 0), bounded per quarter so a bad run fails via the stability bar, not a single
+    // VOLL spike. Logged for the cash↔PnL reconciliation.
+    const m = CFG.v5_3.market;
+    const vollCost = Math.min(shortfall * m.voll * dtH, Math.max(0, m.vollQuarterCap - (S.quarterLog.unservedCost || 0)));
+    S.cash -= vollCost;
+    S.quarterLog.unservedCost = (S.quarterLog.unservedCost || 0) + vollCost;
     S.quarterLog.shortfallMWh += shortfall * dtH;    // v5 P6: the board's serve-rate reads this vs servedMWh
   } else {
     S.brownout = false; S.upAcc += dt;

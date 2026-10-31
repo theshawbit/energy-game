@@ -41,21 +41,17 @@ const approx = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
     swingCoeff({ reliability: 0, efficiency: 100, output: 100, flexibility: 100 }) === 1);
 }
 
-// 3) Reserve-hold trades swing for floor — the Phase 2 dial's economic meaning.
+// 3) v5.3: the floor pays on firm RESERVE (available-but-undispatched firm capacity), the
+//    swing on served residual — a complementary split of firm capacity, no longer a
+//    reserveHold dial. Both primitives stay pure. More dispatched → less reserve for the floor.
 {
-  const u = makeUnit("peaker", 1, 1); // gas, kpis fresh, dials present
-  u.dials.commit = true; u.dials.bandMin = 0; u.dials.bandMax = u.cap;
-  u.dials.reserveHold = 0;
-  const lo = applyDials(u);
-  u.dials.reserveHold = 0.5;
-  const hi = applyDials(u);
-  check("raising reserveHold raises held MW (floor-eligible) and lowers offered max (swing-eligible)",
-    hi.held > lo.held && hi.max < lo.max, `held ${lo.held}→${hi.held}, max ${lo.max}→${hi.max}`);
-  const rel = u.kpis.reliability, rate = CFG.v5.econ.floorRateStart, spot = 50;
-  const floorLo = floorEarn(lo.held, rel, rate), floorHi = floorEarn(hi.held, rel, rate);
-  const swingLo = swingEarn(lo.max, spot, swingCoeff(u.kpis)), swingHi = swingEarn(hi.max, spot, swingCoeff(u.kpis));
-  check("so earnings shift from swing toward floor as the dial rises",
-    floorHi > floorLo && swingHi < swingLo);
+  const rel = 90, rate = CFG.v5.econ.floorRateStart, spot = 50;
+  check("floorEarn scales with the reserve MW kept available", floorEarn(80, rel, rate) > floorEarn(30, rel, rate));
+  check("swingEarn scales with the served residual MW", swingEarn(120, spot, 1) > swingEarn(40, spot, 1));
+  const avail = 100;
+  const reserveBusy = avail - 70, reserveIdle = avail - 20; // reserve = available − firm dispatched
+  check("dispatching more firm leaves less reserve, so the floor earns less (complementary)",
+    floorEarn(reserveBusy, rel, rate) < floorEarn(reserveIdle, rel, rate));
 }
 
 // 4) A shortfall is never a windfall.
@@ -76,10 +72,10 @@ const approx = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
   try {
     const S = createGame(); S.calm = true;
     const gas = S.fleet.find(u => u.kind === "gas");
-    gas.status = "online"; gas.dials.commit = true; gas.dials.bandMin = 0; gas.dials.bandMax = gas.cap; gas.dials.reserveHold = 0.5;
+    gas.status = "online"; gas.dials.commit = true; // v5.3: committed firm/gas held available but undispatched earns the floor
     const cash0 = S.cash;
     step(S, 0.1);
-    check("holding reserve pays the floor (cash + quarterLog.floorPay both rise)",
+    check("firm reserve kept available pays the floor (cash + quarterLog.floorPay both rise)",
       S.quarterLog.floorPay > 0 && S.floorPay > 0, `floorPay/h ${S.floorPay.toFixed(1)}`);
     check("the quarter log accrues served energy + a KPI weight",
       S.quarterLog.servedMWh > 0 && S.quarterLog.kpiWeight > 0);

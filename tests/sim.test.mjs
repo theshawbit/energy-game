@@ -141,19 +141,21 @@ check("online plant wears down", nucW.condition < 100, nucW.condition.toFixed(1)
   check("generating plants accrue age (persists)", nuc.ageHours > 0, nuc.ageHours.toFixed(2) + "gh");
 }
 // Age (v5 Phase 3): age is still TRACKED (Phase 4 reads it) but no longer wears
-// directly — degradation is earned by operating STYLE, not by ambient ageing. Two
-// identically-run plants wear the same regardless of age; push is what separates them.
+// directly — degradation is earned by operating LOAD, not by ambient ageing. v5.3: the
+// push dial is retired, so it no longer separates two plants — wear rides load intrinsically
+// (the load→wear curve is pinned in tests/kpi.test.mjs). Age is still irrelevant to wear.
 {
   const dropFor = (age, push) => {
     const g = createGame();
     g.fleet.filter(u => u.kind === "renew").forEach(u => u.status = "off");
-    const n = g.fleet.find(u => u.id === "nuc"); n.fail = 0; n.ageHours = age; n.dials.push = push;
+    const n = g.fleet.find(u => u.id === "nuc"); n.fail = 0; n.ageHours = age; if (n.dials) n.dials.push = push;
     const before = n.condition; step(g, 1.0); return before - n.condition;
   };
   check("age alone no longer wears a plant (Phase 4 reads ageHours instead)",
     near(dropFor(360, 0.3), dropFor(0, 0.3), 1e-6),
     `−${dropFor(360, 0.3).toFixed(3)} (aged) vs −${dropFor(0, 0.3).toFixed(3)} (fresh)`);
-  check("pushing a plant harder wears it faster (style, not age)", dropFor(0, 1) > dropFor(0, 0.3) * 1.5,
+  check("the retired push dial no longer changes wear (style rides load, not a dial)",
+    near(dropFor(0, 1), dropFor(0, 0.3), 1e-6),
     `−${dropFor(0, 1).toFixed(3)} (push 1.0) vs −${dropFor(0, 0.3).toFixed(3)} (push 0.3)`);
 }
 // (v5 Phase 7 / v5.1 Phase 3) The Mk upgrade's age-relief is retired along with the Mk ladder —
@@ -560,11 +562,16 @@ function insolvent(debt){
   check("flush grid captures no spot spike (bestSpotKill = 0)", S.bestSpotKill === 0, "$" + S.bestSpotKill.toFixed(0));
 }
 
-// 59) bestSpotKill grows on a TIGHT-but-served grid (positive premium × residual)
+// 59) bestSpotKill grows when dispatch climbs the merit order into a costly unit. v5.3:
+//     `spot` is now the CLEARING price, not a baseline+premium. A grid whose demand pushes
+//     past its cheap base into the dear peaker clears ABOVE the exogenous baseline, and under
+//     uniform-price clearing every served MW captures that elevated price → a genuine kill.
 {
-  S = controlled(490); // demand ~240 vs 250 cap → margin < rmRef → premium > 0, still served
-  for (let i = 0; i < 5; i++) step(S, 0.3);
-  check("a tight-but-served grid captures a spot spike (bestSpotKill > 0)", S.bestSpotKill > 0, "$" + S.bestSpotKill.toFixed(0));
+  S = controlled(300);                       // nuclear base (250 MW @ mc 10), everything else parked …
+  const pk = S.fleet.find(u => u.id === "pk1");
+  pk.status = "online"; pk.fail = 0; pk.startTime = 0; if (pk.dials) pk.dials.commit = true; // … plus one committed peaker (110 MW @ mc 120)
+  for (let i = 0; i < 5; i++){ S.t = 18; step(S, 0.3); } // evening peak: demand ~300 > 250 → peaker is marginal → priceServed ≈ 120 > baseline
+  check("a merit-order climb into a costly unit captures a spot spike (bestSpotKill > 0)", S.bestSpotKill > 0, "$" + S.bestSpotKill.toFixed(0));
 }
 
 // ---- Phase F: finite-run win-state + capacity market wired into the sim ----

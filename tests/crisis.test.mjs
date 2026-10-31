@@ -57,7 +57,7 @@ function shortGrid(overCap = 1.15){
     return { unservedMWh: S.quarterLog.shortfallMWh - log0, satDrop: sat0 - S.satisfaction, fine: S.quarterLog.shedFines };
   };
   const A = runArm(false), B = runArm(true);
-  const avertedCost = (A.unservedMWh - B.unservedMWh) * CFG.unservedPenalty;
+  const avertedCost = (A.unservedMWh - B.unservedMWh) * CFG.v5_3.market.voll; // v5.3: forced unserved now costs VOLL, not the retired unservedPenalty
   check("shedding averts unserved load", A.unservedMWh > B.unservedMWh, `${A.unservedMWh.toFixed(0)} → ${B.unservedMWh.toFixed(0)} MWh`);
   check("the averted blackout cost exceeds the shed's fine (a genuine lesser evil)",
     avertedCost > B.fine, `$${Math.round(avertedCost)} averted vs $${B.fine} fine`);

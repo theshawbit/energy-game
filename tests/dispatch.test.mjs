@@ -49,27 +49,25 @@ function freshGame(){ const S = createGame(); S.calm = true; S.running = true; r
     withoutCoal < withCoal - 100, `${Math.round(withCoal)} → ${Math.round(withoutCoal)}`);
 }
 
-// 3) Output band clamps and never inverts.
+// 3) v5.3 (Option 1): the output band is retired — a committed unit offers its FULL
+//    available capacity, ignoring any legacy band fields (no throttle, no withholding).
 {
-  const u = { cap: 100, kind: "firm", dials: { commit: true, bandMin: -20, bandMax: 150, reserveHold: 0 } };
+  const u = { cap: 100, kind: "firm", dials: { commit: true } };
   const o = applyDials(u);
-  check("band clamps to [0, cap]", near(o.max, 100) && near(o.min, 0), `max ${o.max} min ${o.min}`);
-  const inv = { cap: 100, kind: "firm", dials: { commit: true, bandMin: 80, bandMax: 50, reserveHold: 0 } };
-  const oi = applyDials(inv);
-  check("inverted band normalises (min wins, max raised to min)", near(oi.max, 80) && oi.max >= oi.min, `max ${oi.max} min ${oi.min}`);
+  check("committed → offers effectiveMax (full capacity), floor 0", near(o.max, effectiveMax(u)) && near(o.min, 0), `max ${o.max}`);
+  const legacy = { cap: 100, kind: "firm", dials: { commit: true, bandMin: 80, bandMax: 50, reserveHold: 0.3 } };
+  check("legacy band/hold fields are ignored (price-taking, not a withholding lever)", near(applyDials(legacy).max, effectiveMax(legacy)), `max ${applyDials(legacy).max}`);
 }
 
-// 4) Reserve hold shaves the OFFERED max; the held headroom is surfaced on S.
+// 4) v5.3: reserve hold is retired — applyDials surfaces no `held`, and S.reserveOffered is gone.
 {
-  const u = { cap: 100, kind: "firm", dials: { commit: true, bandMin: 0, bandMax: 100, reserveHold: 0.3 } };
+  const u = { cap: 100, kind: "firm", dials: { commit: true, reserveHold: 0.3 } };
   const o = applyDials(u);
-  check("reserveHold 0.3 → offered max is 70% of band; held is 30%", near(o.max, 70) && near(o.held, 30));
-  u.dials.reserveHold = 0; check("reserveHold 0 → full band offered", near(applyDials(u).max, 100));
+  check("reserveHold is ignored — full capacity offered, no held headroom", near(o.max, effectiveMax(u)) && o.held === undefined, `max ${o.max}`);
 
   const S = freshGame();
-  S.fleet.find(x => x.id === "nuc").dials.reserveHold = 0.3; // hold 30% of 250 MW baseload
   step(S, 0.3);
-  check("S.reserveOffered surfaces the held headroom", S.reserveOffered > 70 && S.reserveOffered < 80, `${Math.round(S.reserveOffered)} MW`);
+  check("S.reserveOffered is retired (undefined)", S.reserveOffered === undefined);
 }
 
 // 5) The engine clears WITHIN the offered band — and dials-at-full == v4 on/off.
@@ -96,15 +94,14 @@ function freshGame(){ const S = createGame(); S.calm = true; S.running = true; r
   check("engine untouched: full-band dials clear at the same price as v4 caps", near(pV4, pDials), `v4 $${pV4} vs dials $${pDials}`);
 }
 
-// 6) Push is stored (no effect yet); cycleCost flags starts and ramps.
+// 6) v5.3: push is retired; cycleCost flags STARTS only (the band-ramp event is gone).
 {
-  const S = freshGame();
-  const u = S.fleet.find(x => x.id === "nuc");
-  u.dials.push = 0.8; check("push round-trips on u.dials", u.dials.push === 0.8);
-  const started = cycleCost(u, { commit: false, bandMin: 0, bandMax: 100 }, { commit: true, bandMin: 0, bandMax: 100 });
-  check("cycleCost flags a start on committed false→true", started.started === true && started.ramped === false);
-  const ramped = cycleCost(u, { commit: true, bandMin: 0, bandMax: 100 }, { commit: true, bandMin: 0, bandMax: 60 });
-  check("cycleCost flags a ramp when the band moves", ramped.started === false && ramped.ramped === true);
+  const u = { dials: { commit: true } };
+  const started = cycleCost(u, { commit: false }, { commit: true });
+  check("cycleCost flags a start on committed false→true", started.started === true);
+  const none = cycleCost(u, { commit: true }, { commit: true });
+  check("no start when commit is unchanged", none.started === false);
+  check("cycleCost no longer reports a band ramp (retired with the output band)", started.ramped === undefined && none.ramped === undefined);
 }
 
 // 7) The peaker KIND is retired — the former peaker is dial-able fast gas.
@@ -116,9 +113,10 @@ function freshGame(){ const S = createGame(); S.calm = true; S.running = true; r
   check("fast gas keeps a spin-up time (CFG.v5.gas)", gas[0].startTime > 0 && CFG.v5.gas && CFG.v5.gas.startTime > 0, `startTime ${gas[0].startTime}`);
   const built = makeUnit("peaker", 1, 99);
   check("a built 'peaker' is now a gas unit (no peaker kind re-enters the fleet)", built.kind === "gas");
-  // a gas unit dialled to a narrow high band is the old peaker: a fast, pricey top-up.
-  gas[0].dials = { commit: true, bandMin: 90, bandMax: 110, reserveHold: 0 };
-  check("gas dialled to a narrow high band offers that band through the same engine", near(applyDials(gas[0]).max, Math.min(110, gas[0].cap)));
+  // v5.3: a committed gas unit offers its full available capacity through the same engine
+  // (the old narrow-band "peaker" throttle is gone — commit is the only lever).
+  gas[0].dials = { commit: true };
+  check("a committed gas unit offers its full available capacity", near(applyDials(gas[0]).max, effectiveMax(gas[0])));
 }
 
 // 8) Determinism: a scripted dial sequence reproduces identical dispatch.

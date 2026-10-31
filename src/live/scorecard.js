@@ -27,7 +27,9 @@ export function scoreQuarter(S){
   const served = q.servedMWh || 0;
   const load = served + (q.shortfallMWh || 0);
   const revenue = (q.floorPay || 0) + (q.swingPay || 0);
-  const pnl = revenue - (q.wages || 0) - (q.overruns || 0) - (q.breachFines || 0) - (q.shedFines || 0);
+  // v5.3 (C3): the mint reads the TRUE PnL — every cost, incl. opCost/interest/VOLL — matching verdict.js.
+  const pnl = revenue - (q.opCost || 0) - (q.wages || 0) - (q.overruns || 0) - (q.breachFines || 0)
+    - (q.shedFines || 0) - (q.interest || 0) - (q.unservedCost || 0);
   const hours = q.hours || 0;
 
   // --- PnL channel (0..1 each) ---
@@ -60,7 +62,11 @@ export function scoreQuarter(S){
   const pool = sc.mintPerQuarter;
   const mintPnL = pnlScore * pool * sc.channelSplit;
   const mintSat = satScore * pool * (1 - sc.channelSplit);
-  const mintTotal = mintPnL + mintSat;
+  // v5.3: the mint is SCARCE — a losing (true PnL ≤ 0) or dark (serve rate below the floor) quarter
+  // mints nothing, no matter how the other metrics score. Progression is earned by a good business
+  // that keeps the lights on, not merely by surviving.
+  const scarce = pnl > 0 && reliability >= (sc.mintServeFloor ?? 0.98);
+  const mintTotal = scarce ? mintPnL + mintSat : 0;
 
   return {
     pnl: { margin, cost, capEff }, sat: { reliability, headroom, clean, affordability },

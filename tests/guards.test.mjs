@@ -77,8 +77,8 @@ withPinnedRandom(0.5, () => {
   check("same served capacity in both (firm-limited)", a.cap === b.cap, `${a.cap} MW`);
   check("deeper shortfall does NOT raise spot (plateau)", near(a.spot, b.spot, 1e-9), `$${a.spot.toFixed(1)} vs $${b.spot.toFixed(1)}`);
   check("deeper shortfall earns no more cash — it costs more", b.dCash < a.dCash, `ΔA ${a.dCash.toFixed(0)} > ΔB ${b.dCash.toFixed(0)}`);
-  // the entire cash gap is exactly the extra unserved-load penalty — revenue (served×spot) cancels
-  const extraPenalty = (b.shortfall - a.shortfall) * CFG.unservedPenalty * dtH;
+  // the entire cash gap is exactly the extra VOLL on forced unserved — revenue (served×priceServed) cancels
+  const extraPenalty = (b.shortfall - a.shortfall) * CFG.v5_3.market.voll * dtH; // v5.3: VOLL replaced the retired unservedPenalty
   check("the cash gap is exactly the extra unserved penalty (revenue is served-only)", near(a.dCash - b.dCash, extraPenalty, 1e-6), `gap ${(a.dCash - b.dCash).toFixed(2)} vs penalty ${extraPenalty.toFixed(2)}`);
 });
 
