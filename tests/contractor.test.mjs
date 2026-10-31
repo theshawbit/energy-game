@@ -107,5 +107,33 @@ const tickDays = (S, days) => { for (let i = 0; i < days; i++) tickContractor(S,
   check("identical inputs → identical tiers + caps + queue", JSON.stringify(a) === JSON.stringify(b));
 }
 
+// 7) H2 payoff (v5.3 Phase 3) — completing a tier lifts the LIVE KPI by the cap delta, so an
+//    upgrade is never a 0-MW purchase. A fresh plant gains the full increment; a worn plant keeps
+//    its wear and gains the increment on top; neither can exceed the raised cap.
+{
+  // a) fresh plant sitting at its base cap — the live KPI rises by the full tier increment.
+  const S = createGame(); S.cash = 1e9;
+  const u = thermal(S);
+  u.kpis.output = up.base;                                  // healthy fresh plant at the base cap
+  const live0 = u.kpis.output;
+  queueUpgrade(S, u.id, "output");
+  tickDays(S, up.leadDays);
+  const newCap = axisTierValue(1), delta = newCap - up.base;
+  check("completing a tier lifts the live KPI (never a 0-MW purchase)",
+    u.kpis.output > live0, `kpi ${live0} → ${u.kpis.output.toFixed(1)}`);
+  check("the live KPI rises by exactly the cap delta, clamped to the new cap",
+    near(u.kpis.output, live0 + delta) && u.kpis.output <= u.caps.output, `+${delta.toFixed(1)}`);
+
+  // b) worn plant — keeps its wear, gains the same increment on top, still under the new cap.
+  const S2 = createGame(); S2.cash = 1e9;
+  const u2 = thermal(S2);
+  u2.kpis.output = up.base - 20;                            // worn below the base cap
+  const worn0 = u2.kpis.output;
+  queueUpgrade(S2, u2.id, "output");
+  tickDays(S2, up.leadDays);
+  check("a worn plant keeps its wear and gains the tier increment on top",
+    near(u2.kpis.output, worn0 + delta) && u2.kpis.output < u2.caps.output, `kpi ${worn0} → ${u2.kpis.output.toFixed(1)}, cap ${u2.caps.output}`);
+}
+
 console.log(failed === 0 ? "\nAll contractor tests passed." : `\n${failed} contractor test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

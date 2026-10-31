@@ -44,8 +44,16 @@ export function tickContractor(S, dtH){
   for (const job of done){
     const u = S.fleet.find(x => x.id === job.unitId);
     if (u && u.tiers){
+      // v5.3 Phase 3 (H2): completing a tier raised the attainable cap but NOT the live KPI, so a
+      // fresh plant got 0 MW from the upgrade until maintenance also ran — the main cash sink had an
+      // invisible payoff. Fix: lift the live KPI by the tier's cap delta on completion (clamped to the
+      // new cap), so buying a tier is never a 0-MW purchase. A worn plant keeps its wear; it just
+      // gains the tier's increment on top. (No new capability — a broken payoff repaired.)
+      const prevCap = axisTierValue(u.tiers[job.axis]);     // cap at the tier being left
       u.tiers[job.axis] = job.toTier;
-      (u.caps ||= {})[job.axis] = axisTierValue(job.toTier); // raise the attainable max (not the live KPI)
+      const newCap = axisTierValue(job.toTier);
+      (u.caps ||= {})[job.axis] = newCap;                   // raise the attainable max
+      if (u.kpis) u.kpis[job.axis] = Math.min(newCap, (u.kpis[job.axis] ?? 0) + (newCap - prevCap));
     }
   }
   if (done.length) S.contractor = q.filter(j => j.daysLeft > 0);
