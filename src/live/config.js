@@ -21,7 +21,7 @@ export const CFG = {
   fixedOMIdle: 0.3,           // v4.1: an off/reserve plant costs only this FRACTION of fixedOM to own
                               //   (idle peakers + the battery shouldn't bleed you dry — fixes the
                               //   cold-start insolvency; you only pay the full rate for what you run)
-  unservedPenalty: 120,       // $/MWh extra penalty on unserved load (emergency purchases / fines)
+  // v5.3: unservedPenalty ($120/MWh) RETIRED — replaced by CFG.v5_3.market.voll on forced unserved.
   // v5 Phase 6 re-tune: the day grew from 48s → 180s (Phase 1), but strain/recover were
   // still per-real-second constants sized for the short day, so a brownout pinned strain
   // almost instantly. Scaled by ≈48/180 so the per-GAME-DAY feel is preserved on the long
@@ -124,7 +124,7 @@ export const CFG = {
   // net-worth p90 tail is ~$1–2M and the realized-spot CoV drops from ~1.0 to ~0.7.)
   spotBase: 50,               // $/MWh flat baseline the spot price sits around
   spotDaily: 0.25,            // how much the daily demand shape lifts/drops the baseline hour to hour
-  spotDrift: 0.015,           // slow per-day upward drift of the baseline (a gentle cost-of-living climb)
+  // v5.3: spotDrift RETIRED (C4 — unbounded calendar drift pinned the market at the cap mid-session). Baseline no longer climbs with days.
   spotFloor: 8,               // $/MWh hard floor (a flush grid still clears above zero)
   spotCap: 165,               // $/MWh hard ceiling on spot (g3: 320→165 — scarcity can't run away)
   scarcityMax: 100,           // $/MWh premium at a tight/short grid (g3: 240→100; PLATEAUS — no deeper-shortfall windfall)
@@ -524,6 +524,7 @@ export const CFG = {
       capEffRef:     0.50,   // return ratio (pnl / capital sunk) that scores full capital efficiency
       headroomRef:   0.25,   // average reserve margin that scores full headroom (25% over demand)
       priceCeil:     100,    // average wholesale $/MWh at which affordability scores 0 (cheap → 1)
+      mintServeFloor: 0.98,  // v5.3: a quarter mints 0 ⚡ if serve rate < this OR true PnL ≤ 0 (scarce mint)
       // cleanliness reuses CFG.v5.econ.dirtyIntensity (the intensity at which clean standing hits 0).
     },
   },
@@ -550,6 +551,20 @@ export const CFG = {
     // it's brief-tight. PLACEHOLDER — the balance pass tunes the band.
     pace: {
       slowHeadroomPct: 0.15,  // drop to 1× when (capacity − peak)/peak falls below this (buffer over brief.headroomPct 0.10)
+    },
+  },
+
+  // v5.3 Phase 1 — THE REAL MARKET. Served load earns the engine's CONTINUOUS clearing price
+  // (priceServed, price-taking — dispatch uses full available capacity, so the player can't withhold
+  // to move it); FORCED unserved load costs VOLL. The continuous price makes covering strictly
+  // dominant for ANY voll > 0, so voll is a FAIRNESS knob, not the dominance guarantee: tuned
+  // ~10–20× the max clearing price and BOUNDED per quarter so a bad run fails via the stability bar,
+  // not a single VOLL spike. SEPARATE from constants.VOLL (the batch reference build still uses that).
+  // PLACEHOLDER — the balance pass (Phase 5) settles these against the real fleet.
+  v5_3: {
+    market: {
+      voll:           1500,       // $/MWh on FORCED unserved (fairness; the continuous price does the dominance work)
+      vollQuarterCap: 2_000_000,  // $ ceiling on per-quarter VOLL exposure (can't single-handedly bankrupt)
     },
   },
 };

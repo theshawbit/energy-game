@@ -34,7 +34,8 @@ export function freshQuarterLog(){
     kpiAccum: { reliability: 0, efficiency: 0, output: 0, flexibility: 0 }, kpiWeight: 0,
     wages: 0, overruns: 0,              // Phase 4/5 seams: crew wages + build overruns settle HERE
     // v5.1 Phase 6 — the scorecard's extra raw inputs (the five the grade didn't already track):
-    opCost: 0,                          // operating cost (fuel + O&M + spin) → cost discipline, $/MWh
+    opCost: 0,                          // operating cost (fuel + O&M + spin + battery recharge) → cost discipline, $/MWh
+    interest: 0, unservedCost: 0,       // v5.3: debt interest + VOLL on forced unserved → the HONEST board PnL
     capitalSunk: 0,                     // cash committed to builds + upgrades → capital efficiency
     reserveAccum: 0, priceAccum: 0, hours: 0, // time-weighted reserve margin + wholesale price → headroom / affordability
   };
@@ -78,7 +79,11 @@ export function settleQuarter(S){
 
   // composite grade 0..1 and the money for the quarter.
   const grade = clamp(e.wKpi * (kpiScore / 100) + e.wServe * serveRate + e.wClean * cleanScore, 0, 1);
-  const pnl = Math.round(q.floorPay + q.swingPay - q.wages - q.overruns - q.breachFines - (q.shedFines || 0));
+  // v5.3 (C3): the board PnL is now a TRUE account — revenue (floor + swing) less EVERY cost the
+  // quarter actually incurred: operating cost, wages, overruns, fines, debt interest, and VOLL on
+  // forced unserved. The old formula omitted opCost/interest/unserved, inflating the figure the mint reads.
+  const pnl = Math.round(q.floorPay + q.swingPay - (q.opCost || 0) - q.wages - q.overruns - q.breachFines
+    - (q.shedFines || 0) - (q.interest || 0) - (q.unservedCost || 0));
 
   // the gap from "par" drives the ratchet, bonus, and fine.
   const gap = grade - e.gradeNeutral;

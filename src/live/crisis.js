@@ -35,7 +35,8 @@ export function triggerLoadShed(S, tierId){
   const mw = Math.round(spec.frac * (S.demand || S.peak || 0));
   S.shed = { tier: spec.id, mw, tLeft: CFG.v5.crisis.shedWindow };
   S.satisfaction = Math.max(0, S.satisfaction - spec.satHit);   // the standing hit, now
-  S.quarterLog.shedFines = (S.quarterLog.shedFines || 0) + spec.fine; // the fine, settled at the review
+  S.quarterLog.shedFines = (S.quarterLog.shedFines || 0) + spec.fine; // the fine (read at the board review)
+  S.cash -= spec.fine;                                                // v5.3: charge it to cash NOW so the board PnL reconciles (was logged-only — a phantom cost, review M1)
   setTicker(S, `▼ Load-shed — ${spec.label} dark (${mw} MW cut). Standing takes the hit.`);
   return { ok: true, mw };
 }

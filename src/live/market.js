@@ -53,15 +53,17 @@ export const meanShape = DEMAND_SHAPE.reduce((a, v) => a + v, 0) / DEMAND_SHAPE.
 // The exogenous baseline for a given day + hour: a flat base lifted by the daily
 // demand shape (busier hours cost a touch more) and a slow upward drift with days.
 export function exogenousBaseline(day, t){
-  return CFG.spotBase
-    * (1 + CFG.spotDaily * (shapeAt(t) - meanShape))
-    * (1 + CFG.spotDrift * (day - 1));
+  // v5.3: the per-day drift (×(1 + spotDrift·(day−1))) is RETIRED (C4 — it climbed without bound and
+  // pinned the market at the cap mid-session). Flat across days; only the intraday demand shape lifts
+  // it hour to hour. Used for the forecast + spot-kill reference, NOT revenue (served load earns the
+  // engine's clearing price now).
+  return CFG.spotBase * (1 + CFG.spotDaily * (shapeAt(t) - meanShape));
 }
 
 // A hour-independent daily baseline — used to price multi-day contracts (which
 // span every hour, so the daily-shape wiggle averages out).
 export function dailyBaseline(day){
-  return CFG.spotBase * (1 + CFG.spotDrift * (day - 1));
+  return CFG.spotBase; // v5.3: per-day drift retired (C4) — flat baseline for multi-day contract pricing
 }
 
 // Reserve margin as a fraction of demand: (capacity − demand) / demand. Positive

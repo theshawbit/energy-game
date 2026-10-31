@@ -560,11 +560,16 @@ function insolvent(debt){
   check("flush grid captures no spot spike (bestSpotKill = 0)", S.bestSpotKill === 0, "$" + S.bestSpotKill.toFixed(0));
 }
 
-// 59) bestSpotKill grows on a TIGHT-but-served grid (positive premium × residual)
+// 59) bestSpotKill grows when dispatch climbs the merit order into a costly unit. v5.3:
+//     `spot` is now the CLEARING price, not a baseline+premium. A grid whose demand pushes
+//     past its cheap base into the dear peaker clears ABOVE the exogenous baseline, and under
+//     uniform-price clearing every served MW captures that elevated price → a genuine kill.
 {
-  S = controlled(490); // demand ~240 vs 250 cap → margin < rmRef → premium > 0, still served
-  for (let i = 0; i < 5; i++) step(S, 0.3);
-  check("a tight-but-served grid captures a spot spike (bestSpotKill > 0)", S.bestSpotKill > 0, "$" + S.bestSpotKill.toFixed(0));
+  S = controlled(300);                       // nuclear base (250 MW @ mc 10), everything else parked …
+  const pk = S.fleet.find(u => u.id === "pk1");
+  pk.status = "online"; pk.fail = 0; pk.startTime = 0; if (pk.dials) pk.dials.commit = true; // … plus one committed peaker (110 MW @ mc 120)
+  for (let i = 0; i < 5; i++){ S.t = 18; step(S, 0.3); } // evening peak: demand ~300 > 250 → peaker is marginal → priceServed ≈ 120 > baseline
+  check("a merit-order climb into a costly unit captures a spot spike (bestSpotKill > 0)", S.bestSpotKill > 0, "$" + S.bestSpotKill.toFixed(0));
 }
 
 // ---- Phase F: finite-run win-state + capacity market wired into the sim ----

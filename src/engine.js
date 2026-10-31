@@ -55,10 +55,15 @@ export function dispatchHour(avail, demandMW, carbonPrice = 0, fuelMult = 1) {
   }
 
   const unserved = rem > 1e-9 ? rem : 0;
+  // v5.3: capture the CONTINUOUS clearing price (marginal cost of the last SERVED unit) BEFORE the
+  // scarcity overwrite below. priceServed is what the live sim pays served load on — it never jumps
+  // to the cap, so covering strictly dominates going short. `price` stays the scarcity SIGNAL
+  // (= PRICE_CAP on any shortfall), unchanged for existing callers. Additive: clearing math untouched.
+  const priceServed = price;
   if (unserved > 0) { S.unserved = unserved; price = PRICE_CAP; } // scarcity, but lost load is never sold
   const served = demandMW - unserved;
   S._demand = demandMW;
-  return { stack: S, price, served, unserved, varCost, emissions, demand: demandMW };
+  return { stack: S, price, priceServed, served, unserved, varCost, emissions, demand: demandMW };
 }
 
 export function simulateDay(fleet, peakMW, weather, carbonPrice = 0, fuelMult = 1) {
