@@ -60,7 +60,13 @@ export function pacePlan(S){
 // Stop the clock because a crisis needs the player's attention. Records the reason
 // for the view to surface. The crisis hooks in later phases call this; Phase 1
 // uses it at the quarter-end planning beat.
+// v5.3 Phase 3 (M6-audit): paused-ness has ONE source of truth — S.paused. An auto-pause
+// sets it too, so the pause button reflects the stopped clock and a SINGLE resume click
+// (togglePause → applySpeed) runs the grid again, instead of the old two-click dance where
+// the first click only moved S.paused false→true. autoPaused/pauseReason stay as the CAUSE
+// signal the daily brief reads (brief.js) — metadata about WHY, not a second paused-state.
 export function autoPause(S, reason = ""){
+  S.paused = true;
   S.clock.speed = 0;
   S.clock.autoPaused = true;
   S.clock.pauseReason = reason;

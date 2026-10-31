@@ -200,9 +200,10 @@ function frame(now){
       const dayBefore = S.day;
       // v5.2 Phase 2: auto-pace drives the default speed — fast-forward calm hours, drop to
       // 1× the moment something needs watching. It stands down while the player holds manual
-      // control (paceHeld), has manually paused, or a crisis autoPause is active (the player
-      // resolves that). A manual speed set earlier this day is cleared at the boundary below.
-      if (S.autoPace && !paceHeld && !S.paused && !S.clock.autoPaused) setSpeed(S, pacePlan(S).speed);
+      // control (paceHeld) or is paused (v5.3 Phase 3: an autoPause now sets S.paused too, so
+      // this one flag covers a crisis pause as well). A manual speed set earlier this day is
+      // cleared at the boundary below.
+      if (S.autoPace && !paceHeld && !S.paused) setSpeed(S, pacePlan(S).speed);
       step(S, dt); // no-ops while paused (clock speed 0); never ends
       if (S.day !== dayBefore && S.calendar.mode === "operating"){ paceHeld = false; rollDailyOffer(); }
       render(S);

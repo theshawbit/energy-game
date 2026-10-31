@@ -49,12 +49,28 @@ const FAST = CFG.v5.fastSpeed;
   check("picking a running speed clears an auto-pause", S.clock.autoPaused === false);
 }
 
-// 12) autoPause stops the clock and flags the reason
+// 12) autoPause stops the clock, flags the reason, AND sets the one paused-state (M6-audit)
 {
   const S = { clock: freshClock() };
   autoPause(S, "trip imminent");
   check("autoPause zeroes speed and sets the flag + reason",
     S.clock.speed === 0 && S.clock.autoPaused === true && S.clock.pauseReason === "trip imminent");
+  check("autoPause sets S.paused — the single source of paused-ness", S.paused === true);
+}
+
+// 13) Pause is single-sourced: ONE resume click runs the grid again (v5.3 Phase 3, M6-audit).
+//     Replicates main.js's applySpeed()/togglePause(): the speed is derived from S.paused, and
+//     the pause button flips that one flag. Before the fix, an autoPause left S.paused false, so
+//     the first click only moved it false→true (clock still stopped) and resume took two clicks.
+{
+  const S = { clock: freshClock() };
+  const applySpeed = () => setSpeed(S, S.paused ? 0 : 1);
+  const togglePause = () => { S.paused = !S.paused; applySpeed(); };
+  autoPause(S, "trip imminent");
+  check("after an autoPause the clock is stopped and S.paused is set", S.clock.speed === 0 && S.paused === true);
+  togglePause(); // a SINGLE click of the pause button
+  check("one resume click runs the clock again (no two-click dance)", S.paused === false && S.clock.speed === 1);
+  check("resuming clears the auto-pause cause signal", S.clock.autoPaused === false && S.clock.pauseReason === "");
 }
 
 console.log(failed === 0 ? "\nAll clock tests passed." : `\n${failed} clock test(s) FAILED.`);
