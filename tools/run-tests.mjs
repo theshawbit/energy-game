@@ -5,7 +5,13 @@
 // runner just finds them all, runs each in its own Node process, and fails if
 // any suite fails — so adding a new `tests/<name>.test.mjs` needs no edit here
 // (the old hand-maintained chain in package.json silently skipped forgotten
-// files). No dependencies; mirrors the project's no-build, no-CI discipline.
+// files). No dependencies; still no BUILD step.
+//
+// v5.3 note: the project's "no-CI" discipline is reversed FOR TESTS ONLY — a GitHub
+// Action (.github/workflows/test.yml) now runs `npm test` on push/PR, so the revised
+// milestone principle ("measure the game, not just the modules") is enforced on every
+// change. This includes tests/harness.test.mjs, which runs the incentive asserts over a
+// seed batch. DEPLOY stays manual from main (GitHub Pages) — the reversal is tests, not ship.
 //
 // Run: `npm test` (or `node tools/run-tests.mjs`).
 
