@@ -2,7 +2,7 @@
 // Pins the four score tracks, their ⚡ conversion, record-keeping, and the hard
 // isolation between the two cross-run writers (currency vs credit standing).
 import { CFG } from "../src/live/config.js";
-import { CLEAN_TECHS, SCORE_TRACKS, scoreTracks, awardCurrency, updateRecords, ECONOMY_UNLOCKS, buyEconomyUnlock, runLengthFor } from "../src/live/meta.js";
+import { CLEAN_TECHS, SCORE_TRACKS, scoreTracks, awardCurrency, ECONOMY_UNLOCKS, buyEconomyUnlock } from "../src/live/meta.js";
 import { commitCreditStanding } from "../src/live/finance.js";
 
 let failed = 0;
@@ -36,15 +36,6 @@ check("CLEAN_TECHS includes CCS + nuclear, excludes raw coal/peaker",
   check("every track still has a reward curve", SCORE_TRACKS.every(tr => Number.isFinite(tr.reward(t[tr.id]))));
 }
 
-// 4) updateRecords only raises bests and returns the beaten ids
-{
-  const profile = { records: { longevity:{value:3,at:null}, netWorth:{value:0,at:null}, cleanShare:{value:0,at:null}, spotKill:{value:0,at:null} } };
-  const beaten = updateRecords(profile, { longevity: 5, netWorth: 100000, cleanShare: 0.4, spotKill: 0 }, 7);
-  check("updateRecords raises beaten tracks + records the 'at'", profile.records.longevity.value === 5 && profile.records.longevity.at === 7 && profile.records.netWorth.value === 100000);
-  check("updateRecords returns exactly the beaten ids", beaten.sort().join() === ["longevity","netWorth","cleanShare"].sort().join(), beaten.join());
-  const again = updateRecords(profile, { longevity: 2, netWorth: 50000, cleanShare: 0.1, spotKill: 0 }, 9);
-  check("updateRecords never lowers a best", again.length === 0 && profile.records.longevity.value === 5);
-}
 
 // 5) awardCurrency is additive, never negative, and rounds
 {
@@ -66,24 +57,14 @@ check("CLEAN_TECHS includes CCS + nuclear, excludes raw coal/peaker",
 
 // ---- Phase F: economy unlocks + run-length growth ----
 
-// 7) buyEconomyUnlock spends only currency, is idempotent, respects prereq
+// 7) buyEconomyUnlock spends only currency, is idempotent
 {
   const p = { currency: 10, economyUnlocked: {}, credit: { standing: 70, history: [] } };
   check("buyEconomyUnlock buys an affordable unlock + charges currency", buyEconomyUnlock(p, "special-offers") && p.economyUnlocked["special-offers"] === true && p.currency === 6);
   check("buyEconomyUnlock refuses an already-owned unlock", !buyEconomyUnlock(p, "special-offers"));
   check("buyEconomyUnlock leaves the credit thread untouched", p.credit.standing === 70 && p.credit.history.length === 0);
-  const pr = { currency: 100, economyUnlocked: {} };
-  check("buyEconomyUnlock refuses a tier whose prereq isn't owned", !buyEconomyUnlock(pr, "runlen-2") && !pr.economyUnlocked["runlen-2"]);
-  check("buyEconomyUnlock allows the tier once its prereq is owned", buyEconomyUnlock(pr, "runlen-1") && buyEconomyUnlock(pr, "runlen-2"));
   const broke = { currency: 0, economyUnlocked: {} };
   check("buyEconomyUnlock refused when broke", !buyEconomyUnlock(broke, "capacity-market"));
-}
-
-// 8) runLengthFor: base 5, growing with the Longer Shifts tiers up to 12
-{
-  check("runLengthFor base = 5", runLengthFor({ economyUnlocked: {} }) === 5);
-  check("runLengthFor with tier 1 = 7", runLengthFor({ economyUnlocked: { "runlen-1": true } }) === 7);
-  check("runLengthFor all tiers = 12", runLengthFor({ economyUnlocked: { "runlen-1": true, "runlen-2": true, "runlen-3": true } }) === 12);
 }
 
 console.log(failed === 0 ? "\nAll meta tests passed." : `\n${failed} meta test(s) FAILED.`);

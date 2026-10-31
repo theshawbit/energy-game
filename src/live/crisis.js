@@ -6,8 +6,8 @@
 //  • LOAD-SHED — cut a pre-prioritised non-critical load tier. A CONTROLLED brownout:
 //    the player chooses the cut instead of the grid cascading (it REUSES the shipped
 //    shortfall mechanic — the cut simply lowers demand for a short window so the grid
-//    clears). It carries a real satisfaction hit + a fine that settles into the quarter
-//    PnL (quarterLog.shedFines) — cheaper than the blackout it averts, never free.
+//    clears). It carries a fine that settles into the quarter PnL (quarterLog.shedFines) —
+//    cheaper than the blackout it averts, never free.
 //  • DEMAND RESPONSE — an active peak shave gated STRICTLY on the demand-response
 //    research branch (rmods.demandShave > 0): foresight, never a panic button. One shot
 //    per window, then a cooldown.
@@ -26,18 +26,17 @@ export function loadShedTiers(S){
 }
 
 // Cut a load tier for the shed window — a controlled brownout. Lowers demand (sim reads
-// S.shed), takes the satisfaction hit now, and books the fine into the quarter log (it
-// settles at the board review). Refused for an unknown tier. One shed active at a time
+// S.shed) and books the fine into the quarter log (it settles at the board review, and is
+// charged to cash now). Refused for an unknown tier. One shed active at a time
 // (re-triggering replaces it). Returns { ok, mw }.
 export function triggerLoadShed(S, tierId){
   const spec = CFG.v5.crisis.shedTiers.find(t => t.id === tierId);
   if (!spec) return { ok: false, msg: "No such load tier." };
   const mw = Math.round(spec.frac * (S.demand || S.peak || 0));
   S.shed = { tier: spec.id, mw, tLeft: CFG.v5.crisis.shedWindow };
-  S.satisfaction = Math.max(0, S.satisfaction - spec.satHit);   // the standing hit, now
   S.quarterLog.shedFines = (S.quarterLog.shedFines || 0) + spec.fine; // the fine (read at the board review)
   S.cash -= spec.fine;                                                // v5.3: charge it to cash NOW so the board PnL reconciles (was logged-only — a phantom cost, review M1)
-  setTicker(S, `▼ Load-shed — ${spec.label} dark (${mw} MW cut). Standing takes the hit.`);
+  setTicker(S, `▼ Load-shed — ${spec.label} dark (${mw} MW cut). The fine will land at the board review.`);
   return { ok: true, mw };
 }
 

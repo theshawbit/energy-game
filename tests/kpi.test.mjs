@@ -1,7 +1,7 @@
 // Unit tests for v5 Phase 3 — the four KPI axes + the degradation keystone
 // (src/live/kpi.js) and its wiring into the sim. Wear is EARNED by operating style,
 // never ambient; degradeKPIs is pure/RNG-free. Run: `npm test`.
-import { freshKPIs, degradeKPIs, effectiveMax, heatRateMult, rampFactor, minStableLoad, revenueCoeffs } from "../src/live/kpi.js";
+import { freshKPIs, degradeKPIs, effectiveMax, heatRateMult, minStableLoad, revenueCoeffs } from "../src/live/kpi.js";
 import { applyDials } from "../src/live/dispatch.js";
 import { createGame, step, tripHazard, dailyStrainProb } from "../src/live/sim.js";
 import { CFG } from "../src/live/config.js";
@@ -85,7 +85,6 @@ const kpiUnit = (over = {}) => ({ cap: 100, kind: "firm", mc: 35, kpis: { ...fre
 // 8) Flexibility sets agility — ramp speed + min stable load stay pure functions. v5.3: the
 //    output band is retired, so applyDials no longer applies a min-stable-load floor.
 {
-  check("rampFactor improves with flexibility", rampFactor(100) > rampFactor(0));
   check("min stable load falls to 0 at full flexibility", minStableLoad(100) === 0 && minStableLoad(0) > 0);
   const stiff = { cap: 100, kind: "firm", kpis: { ...freshKPIs(), flexibility: 0 }, dials: { commit: true } };
   const supple = { cap: 100, kind: "firm", kpis: freshKPIs(), dials: { commit: true } };

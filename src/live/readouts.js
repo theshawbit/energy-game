@@ -18,7 +18,7 @@ export const PEAK_HOUR = DEMAND_SHAPE.indexOf(Math.max(...DEMAND_SHAPE));
 //  - battery               → its rated MW only while it still holds charge
 //  - firm / peaker         → its rated capacity (bring the reserve online)
 export function armableOf(S, u){
-  if (u.status === "tripped" || u.status === "service") return 0;
+  if (u.status === "tripped" || u.status === "maint") return 0;
   if (u.kind === "renew") return unitOutput(S, u);
   if (u.kind === "battery") return u.energy > 0 ? u.cap * (S.rmods?.battCapMult ?? 1) : 0;
   return u.cap; // firm / peaker

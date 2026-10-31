@@ -6,7 +6,7 @@
 // phase) and resumes into the next quarter.
 // ============================================================
 import { createGame, step, setTicker, beginNextQuarter } from "./sim.js";
-import { toggleUnit, specializeUnit, buyPerk, pinUnit, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
+import { toggleUnit, specializeUnit, buyPerk, decommissionUnit, setRdFunding, researchNode, setHedge, hedgeContract, cancelContract, acceptOffer, declineOffer, borrow, repay, takeCapacityObligation, dropCapacityObligation } from "./actions.js";
 import { queueMaint, cancelTask } from "./maint.js";
 import { rollRegime, regimeMods } from "./events.js";
 import { triggerLoadShed, triggerDemandResponse } from "./crisis.js";
@@ -17,7 +17,7 @@ import { closeBrief } from "./brief.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
 import { rollSpecialOffer } from "./offers.js";
-import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderMutatorBanner, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief, renderPlantDetail, hidePlantDetail } from "./render.js";
+import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief, renderPlantDetail, hidePlantDetail } from "./render.js";
 import { buySkill, buyUnlock, buyEconomyUnlock, awardCurrency } from "./meta.js";
 import { loadProfile, saveProfile, restartRun } from "./persist.js";
 
@@ -65,8 +65,6 @@ function rollDailyOffer(){
 // manage mode (opens paused): hub-and-spoke navigation + per-page actions
 const menu = {
   decommission(id){ decommissionUnit(S, id); buildUnits(S, act, openPlant); refreshPage(); render(S); },
-  // v5 Phase 7: pin a plant against Dispatch Assist (fleet page toggle).
-  pin(id){ pinUnit(S, id); refreshPage(); render(S); },
   // v5.3 Phase 1: commit is the only dispatch dial left; toggling it re-renders the page.
   commit(id){ const u = S.fleet.find(x => x.id === id); if (u && u.dials){ u.dials.commit = !u.dials.commit; } refreshPage(); render(S); },
   research(id){ researchNode(S, id); refreshPage(); render(S); },
@@ -119,7 +117,6 @@ function startGame(){
   seedRun();
   S.paused = false; applySpeed();
   buildUnits(S, act, openPlant);
-  renderMutatorBanner(S);
   last = 0;
   S.running = true;
   render(S);
@@ -134,7 +131,6 @@ function restartGame(){
   hideCollapse(); hideBrief(); hidePlantDetail(); plantOpen = null; planningOpen = false; collapseOpen = false; briefOpen = false; fastMode = false; paceHeld = false;
   S.paused = false; applySpeed();
   buildUnits(S, act, openPlant);
-  renderMutatorBanner(S);
   last = 0;
   S.running = true;
   render(S);
@@ -204,9 +200,10 @@ function frame(now){
       const dayBefore = S.day;
       // v5.2 Phase 2: auto-pace drives the default speed — fast-forward calm hours, drop to
       // 1× the moment something needs watching. It stands down while the player holds manual
-      // control (paceHeld), has manually paused, or a crisis autoPause is active (the player
-      // resolves that). A manual speed set earlier this day is cleared at the boundary below.
-      if (S.autoPace && !paceHeld && !S.paused && !S.clock.autoPaused) setSpeed(S, pacePlan(S).speed);
+      // control (paceHeld) or is paused (v5.3 Phase 3: an autoPause now sets S.paused too, so
+      // this one flag covers a crisis pause as well). A manual speed set earlier this day is
+      // cleared at the boundary below.
+      if (S.autoPace && !paceHeld && !S.paused) setSpeed(S, pacePlan(S).speed);
       step(S, dt); // no-ops while paused (clock speed 0); never ends
       if (S.day !== dayBefore && S.calendar.mode === "operating"){ paceHeld = false; rollDailyOffer(); }
       render(S);
@@ -216,7 +213,7 @@ function frame(now){
 }
 
 // ---- wiring ----
-S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act, openPlant); render(S); renderMutatorBanner(S); // a game to paint behind the home screen
+S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act, openPlant); render(S); // a game to paint behind the home screen
 showHome();
 $("manageBtn").onclick = () => openManage();
 $("pauseBtn").onclick = togglePause;

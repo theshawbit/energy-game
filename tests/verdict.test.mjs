@@ -72,17 +72,18 @@ function st({ kpiAvg = { reliability: 100, efficiency: 100, output: 100, flexibi
   check("a quarter that kept the city lit does not stall growth", strongS.economy.growthStall === 0);
 }
 
-// 8) The re-tune holds the day — a modeled chronic brownout escalates strain over time,
-//    is never instant, never free, and never ends the game.
+// 8) The re-tune holds the day — a modeled chronic brownout escalates the ONE trouble-meter
+//    (the grid-stability reservoir) over time, is never instant, never free, never ends the game.
+//    (v5.3 Phase 3: the redundant S.strain scalar is deleted; the reservoir is the single read.)
 {
   const realRandom = Math.random; Math.random = () => 0.5;
   try {
     const S = createGame(); S.calm = true; S.fleet = []; // no capacity → a sustained shortfall
     const cash0 = S.cash;
-    step(S, 1); const s1 = S.strain;
-    step(S, 1); const s2 = S.strain;
-    check("strain escalates across seconds of shortfall (not pinned in a single tick)",
-      s1 > 0 && s1 < 100 && s2 > s1, `strain ${s1.toFixed(1)} → ${s2.toFixed(1)}`);
+    step(S, 1); const s1 = S.stability.hp;
+    step(S, 1); const s2 = S.stability.hp;
+    check("the stability reservoir escalates across seconds of shortfall (not pinned in a single tick)",
+      s1 > 0 && s1 < S.stability.max && s2 > s1, `hp ${s1.toFixed(1)} → ${s2.toFixed(1)}`);
     for (let i = 0; i < 8; i++) step(S, 1);
     check("a sustained shortfall costs cash (never a free ride)", S.cash < cash0);
     // v5.1 Phase 2: a shortfall now FILLS the stability bar; the run keeps running until it

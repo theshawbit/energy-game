@@ -9,9 +9,10 @@ function check(name, cond, detail = "") {
 }
 const ids = arr => arr.map(u => u.id).join(",");
 
-// A mixed fleet: tripped, in-service, worn + healthy thermal, a renewable, a battery.
+// A mixed fleet: tripped, worn + healthy thermal, a renewable, a battery. (v5.3 Phase 3:
+// the "service" status is deleted — a worn online coal plant stands in as a second worn unit.)
 const tripped = { id: "pk2", name: "Peaker B", status: "tripped",  condition: 55, kind: "peaker" };
-const service = { id: "co1", name: "Coal",     status: "service",  condition: 20, kind: "firm" };
+const service = { id: "co1", name: "Coal",     status: "online",   condition: 20, kind: "firm" };
 const worn    = { id: "pk1", name: "Peaker A", status: "online",   condition: 18, kind: "peaker" };
 const mid     = { id: "nu1", name: "Nuclear",  status: "online",   condition: 70, kind: "firm" };
 const healthy = { id: " cc", name: "CCGT",     status: "off",      condition: 99, kind: "peaker" };
@@ -22,18 +23,15 @@ const fleet = [mid, solar, tripped, healthy, worn, batt, service];
 const strained = { id: "pk3", name: "Peaker C", status: "strained", condition: 40, kind: "peaker" };
 
 // 1) attentionRank ordering primitives
-check("tripped outranks in-service", attentionRank(tripped) < attentionRank(service));
 check("tripped outranks strained", attentionRank(tripped) < attentionRank(strained));
-check("strained outranks in-service", attentionRank(strained) < attentionRank(service));
 check("strained outranks worn thermal", attentionRank(strained) < attentionRank(worn));
-check("in-service outranks worn thermal", attentionRank(service) < attentionRank(worn));
 check("worn thermal outranks healthy thermal", attentionRank(worn) < attentionRank(mid));
 check("thermal outranks condition-less units", attentionRank(mid) < attentionRank(solar));
 
-// 2) default needs-attention sort: tripped, service, then worn→healthy thermal, renew/battery last
+// 2) default needs-attention sort: tripped first, then worn→healthy thermal by condition, renew/battery last
 {
   const sorted = [...fleet].sort(compareNeedsAttention);
-  check("needs-attention order", ids(sorted) === "pk2,co1,pk1,nu1, cc,bat,sol", ids(sorted));
+  check("needs-attention order", ids(sorted) === "pk2,pk1,co1,nu1, cc,bat,sol", ids(sorted));
 }
 
 // 3) condition column: ascending puts lowest condition first; null sinks to the end

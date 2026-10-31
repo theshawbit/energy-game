@@ -23,15 +23,6 @@ export function toggleUnit(S, id){
   }
 }
 
-// v5 Phase 7: pin/unpin a plant's dials against Dispatch Assist. A pinned plant is the
-// player's hand-tuned exception — the automation (progression.dispatchAssist) never touches
-// its band. Inert until the Dispatch Assist perk is owned, but always toggleable.
-export function pinUnit(S, id){
-  const u = S.fleet.find(x => x.id === id); if (!u || !u.dials) return { ok:false };
-  u.pin = !u.pin;
-  setTicker(S, u.pin ? `📌 ${u.name} pinned — Dispatch Assist will leave it alone.` : `${u.name} unpinned.`);
-  return { ok:true };
-}
 
 // v5 Phase 5: the v4 instant `buildCapacity` is retired. New plants are multi-quarter
 // lead-time capital projects committed at the quarter-end review (see construct.js:
