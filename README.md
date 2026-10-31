@@ -40,36 +40,27 @@ Action exists, why deploy is still manual, and why `engine.js` grew a field:
 
 ## How to play (Live)
 
-1. **From the home screen, press Start run** (Skills and a How-to/FAQ live here too; you return here after each run). A live 24-hour clock runs (~48 real seconds per day); demand follows the daily curve toward the evening peak.
-2. **Read the run's conditions.** A **⚠ This run** banner shows the **mutators** rolled for this run — a fuel-price spike, heat wave, cold snap, drought, or renewable lull — each bending demand, fuel cost, or renewable output and pointing you toward a different strategy.
-3. **Keep capacity ≥ demand.** Baseload (nuclear, coal) and renewables (solar, wind — variable with time of day and weather) run automatically. Gas **peakers** and your **batteries** are yours to dispatch:
-   - Click a reserve plant, or press <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> for peakers and <kbd>B</kbd> for the battery. <kbd>Space</kbd> pauses.
-   - Peakers take ~1.6 h to spin up, so pre-arm them before the peak.
-4. **Survive.** Plants **wear down** as they run and **trip offline** — worn plants and later days both raise the odds — yanking capacity mid-peak. A small shortfall **browns out** (penalties + a short recovery window); a large or sustained one is a **blackout** — run over, with a scorecard.
-5. **Invest & maintain.** Press **Manage** to open the planning panel — this **pauses the clock**. Spend earned cash to **build** new capacity (including extra **batteries**), **upgrade** plants through Mk tiers (more capacity, fewer trips, lower standby cost), **service** a worn plant (pay cash and lose it to downtime, returning it to 100%), or **sell/decommission** a plant for salvage to reshape your fleet mix.
-6. **Research (the v3 core).** Also in the Manage panel: divert in-run cash into an **R&D lab** to earn **Research Points (RP)** — a live trade-off between money now and tech later (funding it into the teeth of the peak is how you brown out). Spend RP on a **tech tree** across four branches:
-   - **Transmission / efficiency** — amplify your Mk upgrades, cut plant wear, lower standby cost, faster peaker spin-up.
-   - **Storage** — more battery discharge power, deeper storage, faster recharge.
-   - **Demand response** — shave the peak itself (the first *demand-side* lever).
-   - **Generation** — unlock building **SMR**, **geothermal**, and **carbon capture (Coal+CCS / Gas+CCS)** to beat the carbon price.
+You hold a **posting** as a city's grid operator and run it quarter after quarter. Each day is a live 24-hour clock (~100 real seconds); demand follows the daily curve toward the evening peak and **steps up each quarter** as the city grows.
 
-   RP is scarce — a run typically researches ~5 of 12 nodes, so you pick a *path* that suits the mutators you drew. Research resets each run.
-7. Each day survived raises the demand peak, and from day 3 a **carbon price** escalates, lifting fossil plants' running cost and re-sorting the merit order.
-8. **Chase milestones, then come back stronger.** Hitting peak/cash **milestones** and surviving longer raise your end-of-run **score**, which converts to **meta-currency (⚡)**. On the home screen's **Skills** screen, spend it across two tabs:
-   - **Skills** — permanent passives (more starting cash, cheaper maintenance, faster peaker starts, slower demand growth, bigger battery, and a **Service Manager** that auto-services worn plants).
-   - **Research Unlocks** — permanently open the storage, demand, and advanced-generation research branches, so the in-run tree grows the more you play.
-
-   Currency, skills, unlocks, and your best run are saved in your browser, so each run starts a little stronger.
+1. **From the home screen, press Start your shift** (a How-to/FAQ and your permanent Skills live here too; you return here when a posting ends). 
+2. **Keep capacity ≥ demand.** Baseload (nuclear, coal) and renewables (solar, wind — variable with time of day and weather) run automatically. Gas **peakers** and the **battery** are your reserves — commit them as the peak approaches:
+   - Click a fleet row, or press <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> for peakers and <kbd>B</kbd> for the battery. <kbd>Space</kbd> pauses.
+   - Peakers take time to spin up, so pre-commit them before the peak.
+3. **Watch the one meter that can kill you.** A sustained shortfall fills the **grid-stability reserve** (top-right); the deeper the shortfall, the faster it fills, and served hours drain it back. Let it top out and the grid **collapses** — the posting ends and you take a new one, keeping what you banked. A shortfall you still have a lever for (an uncommitted plant, a charged battery, load-shed, demand response) fills it slower than one where every lever is spent, so you're never killed while a move remains.
+4. **Maintain & upgrade — rolling, not batched.** Press **Manage** to open the planning panel (this **pauses the clock**). Queue **rolling maintenance** (a crew works a plant over a few days, restoring its KPIs toward their caps), **upgrade** a plant along its four KPI axes — reliability · efficiency · output · flexibility — through its **contractor ladders**, commit **lead-time builds** of new capacity, or **decommission** a plant for salvage. A fleet row's **⚙** opens that plant's ladders.
+5. **Set your queues each day, answer to the board each quarter.** Every day opens a quick **brief** (skippable) to adjust maintenance and reserves. Every quarter closes with a **board review** that grades your **profit** and the city's **satisfaction** and mints **⚡**.
+6. **Trade conditions.** Each season deals a weighted deck of **events** — a fuel-price spike, heat wave, cold snap, drought, renewable lull — bending demand, fuel cost, or renewable output. From day 3 a **carbon price** escalates, lifting fossil plants' running cost and re-sorting the merit order.
+7. **Come back stronger.** Spend banked **⚡** on permanent **Skills** at the home screen. Your ⚡, skills, and best records are saved in your browser and carry to the next posting, so each one starts a little stronger.
 
 ## The economics
 
 Both games clear the market through the same verified **merit-order dispatch engine**:
 
 - **Dispatch order (cheapest first):** free wind & solar → stored battery energy → thermal plants ranked by marginal cost (nuclear, SMR, geothermal, coal, gas, CCS variants, peakers).
-- **Price** each hour is the marginal cost of the *last* plant dispatched (uniform-price auction).
-- **Revenue** in the live game (v4 "The Book") is **contracted blocks at a locked price + residual served load at a live spot price**. Spot rises when your grid is tight and crashes when you're flush, driven by your *own* reserve margin — so thin-but-covered is lucrative while a shortfall is never a windfall (both paths read *served* load only; unserved earns nothing). Hedge the swings with term contracts at the Desk. The wholesale clearing price shown up top is a signal of what your plants cost to run right now. (The batch reference game earns the wholesale clearing price directly.)
+- **Price** each hour is the marginal cost of the *last* plant dispatched (uniform-price auction). The live game also exposes an additive **`priceServed`** — the pre-cap marginal cost of the last *served* unit — so revenue is a continuous function of how much of the city you cover.
+- **Revenue** in the live game is **contracted blocks at a locked price + residual served load at a live spot price**. Spot rises when your grid is tight and crashes when you're flush, driven by your *own* reserve margin — so thin-but-covered is lucrative while a shortfall is never a windfall (both paths read *served* load only; unserved earns nothing). Hedge the swings with term contracts at the Desk. The wholesale clearing price shown up top is a signal of what your plants cost to run right now. (The batch reference game earns the wholesale clearing price directly.)
 - **Carbon price** adds `$/t × tCO₂/MWh` to every fossil plant's running cost. Enough of it re-sorts the merit order — flipping coal behind gas, then behind clean energy. **Carbon capture** plants have a high base cost but very low emissions, so they overtake unabated plants once carbon climbs.
-- **Blackouts** (unserved load) are penalized and never earn revenue — you can't profit by letting the lights go out.
+- **Blackouts** (unserved load) earn nothing, and load you leave dark with no lever to cover it is **penalised** on top (a value-of-lost-load charge) — you can't profit by letting the lights go out.
 
 ### Units
 

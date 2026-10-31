@@ -110,7 +110,7 @@
           <span><i style="border-color:#fff"></i>Demand</span>
           <span><i style="border-color:var(--accent)"></i>Capacity online</span>
           <span><i class="box" style="background:var(--good)"></i>Reserve margin</span>
-          <span><i class="box" style="background:var(--bad)"></i>Deficit (brownout)</span>
+          <span><i class="box" style="background:var(--bad)"></i>Deficit (shortfall)</span>
         </div>
 
         <div class="ticker" id="ticker"></div>
@@ -148,38 +148,38 @@
     <div class="howto-top">
       <span class="howto-tag">Operator Briefing</span>
       <h2>How to play</h2>
-      <p class="howto-lede">You run a city's power grid in real time. A 24-hour clock ticks; demand rises and falls with the daily curve and climbs every day you survive. <b>Keep capacity ≥ demand.</b></p>
+      <p class="howto-lede">You run a city's power grid in real time, quarter after quarter. A 24-hour clock ticks — demand rises and falls with the daily curve and steps up each quarter. <b>Keep capacity ≥ demand</b> and run the grid as a business.</p>
     </div>
 
     <section class="howto-sec">
       <h3>The loop</h3>
       <ol class="howto-steps">
         <li><div class="step-b"><b>Baseload &amp; renewables</b> (nuclear, coal, solar, wind) run automatically. Solar and wind vary with time of day and weather.</div></li>
-        <li><div class="step-b"><b>Peakers</b> (gas) and the <b>battery</b> are your reserves — arm them as the peak approaches. <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> arm peakers, <kbd>B</kbd> fires the battery, or tap a fleet row. They take time to spin up, so <b>pre-arm them</b>.</div></li>
-        <li><div class="step-b"><b>Manage grid</b> pauses the clock to build capacity, upgrade plants (Mk tiers), and service worn ones.</div></li>
-        <li><div class="step-b">Hit <kbd>Space</kbd> to pause anytime.</div></li>
+        <li><div class="step-b"><b>Peakers</b> (gas) and the <b>battery</b> are your reserves — commit them as the peak approaches. <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> commit peakers, <kbd>B</kbd> fires the battery, or tap a fleet row. They take time to spin up, so <b>pre-commit them</b>.</div></li>
+        <li><div class="step-b"><b>Manage</b> pauses the clock to queue <b>rolling maintenance</b>, <b>upgrade</b> a plant's four KPI axes (reliability · efficiency · output · flexibility) through its contractor ladders, and commit <b>lead-time builds</b>. A fleet row's <b>⚙</b> opens that plant's upgrade ladders.</div></li>
+        <li><div class="step-b">Each day opens a quick <b>brief</b> (skippable) to set your queues; each quarter closes with a <b>board review</b> that grades you and mints ⚡. Hit <kbd>Space</kbd> to pause anytime.</div></li>
       </ol>
     </section>
 
     <section class="howto-sec">
       <h3>When it goes wrong</h3>
       <div class="fail-cards">
-        <div class="fail-card warn"><span class="fc-k">Brownout</span><span class="fc-d">A small shortfall — lost sales, fines, falling satisfaction, and a short window to recover.</span></div>
-        <div class="fail-card bad"><span class="fc-k">Blackout</span><span class="fc-d">A big or sustained shortfall — the run ends.</span></div>
-        <div class="fail-card bad"><span class="fc-k">Lost confidence</span><span class="fc-d">Let satisfaction fall to 0 (chronic brownouts) and the city pulls your licence.</span></div>
+        <div class="fail-card warn"><span class="fc-k">Grid strain</span><span class="fc-d">A shortfall fills the <b>grid-stability reserve</b> (top-right). The deeper the shortfall, the faster it fills; served hours drain it back.</span></div>
+        <div class="fail-card bad"><span class="fc-k">Collapse</span><span class="fc-d">Let the reserve top out — a sustained shortfall you can't claw back — and the lights go out. The run ends; you take a new posting, keeping your banked ⚡, skills and records.</span></div>
       </div>
+      <p class="howto-note">A shortfall you still have a lever for — an uncommitted plant, a charged battery, a load-shed tier, demand response — fills the reserve slower than one where every lever is already spent. You're never killed while a move remains.</p>
     </section>
 
     <section class="howto-sec">
       <h3>Field questions</h3>
       <div class="faq">
-        <details open><summary>Why did a plant trip?</summary><div class="faq-a">Trips are <b>rare</b> and reserved for neglect. A plant at <b>85% or better NEVER trips</b> — keep your fleet healthy and you'll almost never see one. Risk only appears below 85% and climbs as it wears: ~1%/day at 70%, ~6% at 60%, <b>~18% at 50%</b>. <b>Service before 50%</b>: below that a plant needs a full <b>Overhaul</b> — offline longer, at a steep premium. One about to go first shows a <b>⚠ STRAINING</b> warning for a few seconds — arm reserves, shed load, or stand a straining peaker down on your terms.</div></details>
-        <details><summary>Why does my reserve margin keep swinging?</summary><div class="faq-a">The grid is <b>live and volatile</b> — solar clouds over and clears, wind gusts and lulls, and demand wobbles with the occasional short <b>spike</b> (a cold front, an industrial swing). Following that moving <b>net load</b> is the real job: keep a cushion of <b>armable</b> reserves and fire a peaker or the battery when the margin dips. A brief shortfall fills the strain meter (seconds to react), so attention beats panic.</div></details>
-        <details><summary>What wears a plant out?</summary><div class="faq-a"><b>How hard you run it, and how old it is.</b> A plant leaned on near full load on a tight grid deteriorates far faster than a lightly-loaded reserve, and every plant wears quicker as it <b>ages</b> — so your round-the-clock workhorses need servicing most. A <b>service</b> restores condition and takes some age off the clock; an <b>upgrade</b> (Mk tier) is a deeper refit that takes off more — but age never fully resets, so late in a run old iron is worth replacing.</div></details>
-        <details><summary>How do I earn?</summary><div class="faq-a">You sell served power two ways: <b>contracted</b> blocks settle at a price you locked in at the <b>Desk</b>, and the rest clears at the live <b>spot</b> price. Spot rises when your grid is tight and crashes when you're flush — so thin-but-covered is lucrative, but a shortfall is never a windfall (unserved load earns nothing). Hedge with contracts to tame the swings. The <b>wholesale</b> price up top is a merit-order signal of what it costs to run plants right now (carbon lifts it for dirty plants).</div></details>
+        <details open><summary>Why did a plant trip?</summary><div class="faq-a">Trips are <b>rare</b> and reserved for neglect. A plant at <b>85% reliability or better NEVER trips</b> — keep your fleet healthy and you'll almost never see one. Risk only appears below 85% and climbs as reliability decays: ~1%/day at 70%, ~6% at 60%, <b>~18% at 50%</b>. Queue maintenance before it gets there. One about to go first shows a <b>⚠ STRAINING</b> warning for a few seconds — commit reserves, shed load, or stand a straining peaker down on your terms.</div></details>
+        <details><summary>Why does my reserve margin keep swinging?</summary><div class="faq-a">The grid is <b>live and volatile</b> — solar clouds over and clears, wind gusts and lulls, and demand wobbles with the occasional short <b>spike</b> (a cold front, an industrial swing). Following that moving <b>net load</b> is the real job: keep a cushion of <b>armable</b> reserves and commit a peaker or the battery when the margin dips. A brief shortfall only fills the strain reserve slowly, so attention beats panic.</div></details>
+        <details><summary>What wears a plant out — and how do I fix it?</summary><div class="faq-a"><b>How hard you run it, and how old it is.</b> A plant leaned on near full load deteriorates far faster than a lightly-loaded reserve, and every plant wears quicker as it <b>ages</b>. Queue <b>rolling maintenance</b> from Manage or the daily brief: a crew works it over a few days (the plant's offline while in the shop), restoring its KPIs toward their caps — a deeper-decayed plant costs more and takes longer. An <b>upgrade</b> (the four KPI ladders) raises the caps maintenance restores toward.</div></details>
+        <details><summary>How do I earn?</summary><div class="faq-a">You sell served power two ways: <b>contracted</b> blocks settle at a price you locked in at the <b>Desk</b>, and the rest clears at the live <b>spot</b> price (the continuous merit-order price). <b>Unserved load earns nothing</b>, and a <b>forced blackout</b> — load you leave dark with no lever to cover it — is penalised on top, so covering the city is always the paying move. Hedge with contracts to tame the swings. The <b>wholesale</b> price up top is what it costs to run plants right now (carbon lifts it for dirty plants).</div></details>
         <details><summary>What's the carbon price?</summary><div class="faq-a">From day 3 it rises, adding cost to fossil plants and eventually making gas cheaper to run than coal.</div></details>
-        <details><summary>Why is my cash falling when nothing's wrong?</summary><div class="faq-a">Thermal plants (nuclear, coal, gas) have a fixed operating cost each hour, running or not — idle capacity bleeds money, so retire what you don't need in <b>Manage</b> for salvage. Solar and wind are cheap to own.</div></details>
-        <details><summary>What carries between runs?</summary><div class="faq-a">Meta-currency (⚡) earned at the end of a run buys permanent <b>Skills</b>. Everything else resets.</div></details>
+        <details><summary>Why is my cash falling when nothing's wrong?</summary><div class="faq-a">Thermal plants (nuclear, coal, gas) have a fixed operating cost each hour, running or not — idle capacity bleeds money, so retire what you don't need in <b>Manage</b> for salvage. Solar and wind are cheap to own. Early on, a passive grid can run a deep cash deficit before its earnings catch up — commit your reserves to serve the peaks and it climbs back.</div></details>
+        <details><summary>What carries between postings?</summary><div class="faq-a">Each quarter's <b>board review</b> mints ⚡ from your <b>profit</b> and the city's <b>satisfaction</b>; spend it on permanent <b>Skills</b>. Your banked ⚡, skills, and best records carry to the next posting. Everything else resets.</div></details>
       </div>
     </section>
 
