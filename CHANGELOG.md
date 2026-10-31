@@ -2,7 +2,10 @@
 
 All notable changes to Grid Operator are recorded here. Versions follow the game's own
 `vMAJOR.MINOR.PATCH` line (the same tags used in the git history and the `docs/` roadmaps).
-This project has **no CI**; every merge to `main` redeploys the live build via GitHub Pages.
+Tests are **CI-gated** — a GitHub Action runs the full `npm test` suite (including the
+`tools/balance.mjs` economy-incentive asserts) on every push and PR. **Deploy stays manual**:
+every merge to `main` redeploys the live build via GitHub Pages with no build step and no
+deploy pipeline. (See the root README's *Engineering principles* for why.)
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
