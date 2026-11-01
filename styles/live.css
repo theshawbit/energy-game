@@ -8,14 +8,52 @@
   --mono:"IBM Plex Mono",ui-monospace,monospace;
   --sans:"IBM Plex Sans",system-ui,sans-serif;
   --disp:"Chakra Petch","IBM Plex Sans",system-ui,sans-serif;
+
+  /* v5.4 Phase 3 — THE SKIN drivers. --grid-state (0..1, fast) is set by render() off the stability
+     reservoir; --era-wash (slow) is set by the body[data-era] rules below. --skin-grain/-glow are the
+     static finish, overwritten from CFG.v5_4.skin at boot. */
+  --grid-state:0; --era-wash:transparent; --skin-grain:.28; --skin-glow:.05;
+
+  /* v5.4 material scaffold — Pairing A (Metal + Amber), locked at the Phase 2 gate. Defined here in ONE
+     place; regions ADOPT these in Phase 4/5 (deck) and Phase 5 (Book). NOT consumed yet. */
+  --mat-frame-bg:linear-gradient(180deg,#1a202b,#10141c);
+  --mat-frame-bd:#33404f; --mat-frame-tx:#c6d2e2; --mat-frame-sub:#78879b;
+  --mat-deck-surface:linear-gradient(176deg,#222a35 0%,#161c25 60%,#12171f 100%);
+  --mat-deck-face:linear-gradient(176deg,#1c232e,#10151d);
+  --mat-deck-bd:#3a4858; --mat-deck-hi:rgba(255,255,255,.09); --mat-deck-lo:rgba(0,0,0,.55);
+  --mat-deck-read:#ffbf45; --mat-deck-read-glow:0 0 10px rgba(255,176,46,.35);
+  --mat-deck-accent:#ffb02e; --mat-deck-radius:13px;
+  --mat-deck-shadow:0 2px 0 rgba(255,255,255,.05) inset,0 -16px 26px rgba(0,0,0,.4) inset,0 10px 24px -14px #000;
+  --mat-book-bg:radial-gradient(130% 120% at 50% -10%,#14100a 0%,#0a0805 70%);
+  --mat-book-tx:#ffca61; --mat-book-dim:#9a7636; --mat-book-accent:#ffb02e;
+  --mat-book-line:rgba(255,176,46,.16); --mat-book-glow:0 0 12px rgba(255,176,46,.28);
+  --mat-book-scan:1;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.4;font-size:14px;overflow-x:hidden}
 .shake{animation:shake .32s linear infinite}
 @keyframes shake{0%{transform:translate(0,0)}25%{transform:translate(-3px,2px)}50%{transform:translate(3px,-2px)}75%{transform:translate(-2px,-2px)}100%{transform:translate(2px,2px)}}
-#vignette{position:fixed;inset:0;pointer-events:none;z-index:5;opacity:0;transition:opacity .15s;
-  box-shadow:inset 0 0 160px 40px rgba(255,40,40,.75);background:radial-gradient(circle at 50% 50%,transparent 55%,rgba(255,20,20,.18))}
+/* v5.4 Phase 3 — THE SKIN: one global lens over every region (Phase 5 raises it over the Book). Two
+   DYNAMIC drivers only — era (slow, --era-wash from body[data-era]) and grid-state (fast, --grid-state
+   from render off the stability reservoir). Everything else is static finish. This PROMOTES + RETIRES the
+   old #vignette: the red strain bleed is now the skin's grid-state layer, its trigger unchanged. */
+#skin{position:fixed;inset:0;pointer-events:none;z-index:6}
+/* static finish — matte grain (does not animate, so no reduced-motion concern) */
+#skin::before{content:"";position:absolute;inset:0;opacity:var(--skin-grain,.28);mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")}
+/* restrained amber top-glow + the slow era wash + the fast grid-state bleed (red), which ramps with
+   --grid-state and vanishes at 0 — matching the retired vignette's resting state exactly. */
+#skin::after{content:"";position:absolute;inset:0;transition:box-shadow .15s,background .15s;
+  box-shadow:inset 0 0 160px 40px rgba(255,40,40,calc(var(--grid-state,0) * .78));
+  background:
+    radial-gradient(120% 60% at 50% -8%,rgba(255,176,46,var(--skin-glow,.05)),transparent 60%),
+    linear-gradient(0deg,var(--era-wash,transparent),var(--era-wash,transparent)),
+    radial-gradient(circle at 50% 50%,transparent 55%,rgba(255,20,20,calc(var(--grid-state,0) * .22)))}
+/* era wash — the slow narrative grade, very subtle, keyed off the EXISTING body[data-era] hook */
+body[data-era="rust"]{--era-wash:rgba(138,106,74,.030)}
+body[data-era="transition"]{--era-wash:rgba(74,126,138,.032)}
+body[data-era="veridia"]{--era-wash:rgba(88,198,166,.038)}
 .wrap{max-width:1520px;margin:0 auto;padding:16px;position:relative;z-index:1}
 
 /* v4.2 CR-1 — command bar: clock + the two deliberate console controls, with the

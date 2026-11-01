@@ -29,7 +29,7 @@ let S, last = 0, page = null, planningOpen = false, collapseOpen = false, briefO
 // ---- screen navigation ----
 const OVERLAYS = ["homeOverlay", "metaOverlay", "howtoOverlay", "menuOverlay", "overlay"];
 function hideAll(){ OVERLAYS.forEach(id => $(id).classList.remove("on")); }
-function showHome(){ hideAll(); $("vignette").style.opacity = "0"; renderHome(profile, homeActions); }
+function showHome(){ hideAll(); document.documentElement.style.setProperty("--grid-state", "0"); renderHome(profile, homeActions); }
 function showSkills(){ hideAll(); renderMeta(profile, meta); }
 function showHowto(){ hideAll(); $("howtoOverlay").classList.add("on"); }
 
@@ -216,6 +216,9 @@ function frame(now){
 // ---- wiring ----
 S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act, openPlant); render(S); // a game to paint behind the home screen
 { const v = $("s-version"); if (v) v.textContent = VERSION; } // v5.3 Phase 4: stamp the build from the single source
+// v5.4 Phase 3: apply the skin's static finish (grain/glow) from CFG, so the look is tuned in one place.
+{ const sk = CFG.v5_4.skin, r = document.documentElement.style;
+  r.setProperty("--skin-grain", String(sk.grain)); r.setProperty("--skin-glow", String(sk.glow)); }
 showHome();
 $("manageBtn").onclick = () => openManage();
 $("pauseBtn").onclick = togglePause;

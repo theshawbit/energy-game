@@ -551,6 +551,21 @@ export const CFG = {
       vollQuarterCap: 2_000_000,  // $ ceiling on per-quarter VOLL exposure (bounds the trough; never ends the run)
     },
   },
+
+  // v5.4 Phase 3 — THE SKIN (cosmetic ONLY; no economy, no gameplay). One global lens over every region:
+  // a static matte grain + a restrained amber glow (applied as CSS vars at boot), plus the one DYNAMIC
+  // driver render touches — the grid-state red bleed, folded off the EXISTING stability-reservoir fraction
+  // (the same trigger the retired #vignette used; numbers preserved exactly). Era wash is pure CSS off
+  // body[data-era]. Tune the look here, not in the stylesheet.
+  v5_4: {
+    skin: {
+      grain:      0.28,   // matte-grain opacity (0 = off)
+      glow:       0.05,   // restrained amber top-glow alpha
+      bleedFloor: 0.25,   // grid-state red bleed at the onset of a brownout
+      bleedRange: 0.70,   // additional bleed scaled by the stability-reservoir fraction
+      bleedMax:   0.95,   // ceiling (full collapse)
+    },
+  },
 };
 
 // Salvage cash recovered by decommissioning a unit — a fraction of its notional
