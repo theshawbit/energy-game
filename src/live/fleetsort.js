@@ -16,6 +16,20 @@ export function attentionRank(u){
   return 1000;                                       // renew / battery (no condition): last
 }
 
+// v5.4 Phase 6: does this plant want the operator's eyes right now? Reuses the SAME
+// signals the stability/maint systems already expose — status + condition — so it is NOT
+// a new "is this plant in trouble?" source of truth, just a predicate over the existing
+// one (mirrors attentionRank above). A plant needs attention when it has tripped, is
+// straining toward a trip, is in the shop, or has worn below the trip-risk onset band
+// (reliability 85% — captured via condition = min KPI). Healthy idle/reserve plants do not,
+// so the live deck can fold them into a capacity instrument and promote only these.
+export const ATTENTION_BAND = 85; // the documented trip-risk onset — the min-KPI floor
+export function needsAttention(u){
+  if (u.status === "tripped" || u.status === "strained" || u.status === "maint") return true;
+  if (u.maintDown) return true;
+  return u.condition != null && u.condition < ATTENTION_BAND;
+}
+
 // Stable tiebreak by id, so equal-rank rows keep a deterministic order.
 const tie = (a, b) => String(a.id).localeCompare(String(b.id));
 

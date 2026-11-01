@@ -18,7 +18,7 @@ import { eraOf, cassLine } from "./world.js"; // v5 Phase 9: identity arc + C.A.
 import { SKILLS, skillCost, RESEARCH_UNLOCKS, ECONOMY_UNLOCKS, SCORE_TRACKS, scoreTracks } from "./meta.js";
 import { RESEARCH, canResearch } from "./research.js";
 import { mutatorById } from "./mutators.js";
-import { makeFleetComparator, compareNeedsAttention } from "./fleetsort.js";
+import { makeFleetComparator, compareNeedsAttention, needsAttention } from "./fleetsort.js";
 import { marginalCost } from "../engine.js";
 import { dailyBaseline } from "./market.js";
 import { contractPrice, expectedOutput, creditRating, gradeFor, debtCapacity } from "./finance.js";
@@ -326,13 +326,21 @@ const unitEls = {};
 // WITHIN their lane. Status pills + row accent update INSTANTLY; numeric columns + the
 // sub-note throttle with the readout cadence. Firm/gas rows carry a ⚙ that opens the
 // per-plant upgrade drill-down (Phase 3 ladders) without arming the plant.
+// v5.4 Phase 6 (fleet-at-scale): lanes marked `auto` run themselves — firm baseload and
+// renewables aren't dispatched moment-to-moment, so live they collapse into a capacity
+// INSTRUMENT (count online · MW online/cap) and only the plants that `needsAttention` are
+// PROMOTED to a full tile. The dispatchable lanes (gas · storage) always show every tile —
+// those are the ones you actually operate. Full per-plant detail for the folded plants is a
+// planning-rhythm concern (Manage / brief / board), not a live-operating one.
 const LANES = [
-  { kind: "firm",    label: "Baseload · firm" },
-  { kind: "gas",     label: "Dispatchable gas" },
-  { kind: "renew",   label: "Renewable" },
-  { kind: "battery", label: "Storage" },
+  { kind: "firm",    label: "Baseload · firm",  auto: true  },
+  { kind: "gas",     label: "Dispatchable gas", auto: false },
+  { kind: "renew",   label: "Renewable",        auto: true  },
+  { kind: "battery", label: "Storage",          auto: false },
 ];
-const laneTbody = {};              // kind → <tbody> (the per-lane urgency sort target)
+const laneBy = kind => LANES.find(l => l.kind === kind);
+const laneTbody = {};              // kind → tiles container (the per-lane urgency sort target)
+const laneInstr = {};              // kind → capacity-instrument element (auto lanes only)
 const _laneOrder = {};             // kind → last applied row order, to skip no-op reorders
 let _onDetail = null;              // captured plant-detail opener (the ⚙ on firm/gas rows)
 
@@ -376,6 +384,7 @@ export function buildUnits(S, onToggle, onDetail){
   _log.length = 0; _lastTicker = null; $("ticker").innerHTML = ""; // fresh annunciator log
   for (const k in unitEls) delete unitEls[k];
   for (const k in laneTbody) delete laneTbody[k];
+  for (const k in laneInstr) delete laneInstr[k];
   for (const k in _laneOrder) delete _laneOrder[k];
   _onDetail = onDetail || null;
 
@@ -383,8 +392,23 @@ export function buildUnits(S, onToggle, onDetail){
   for (const lane of LANES){
     const inLane = S.fleet.filter(u => u.kind === lane.kind);
     const sec = document.createElement("section");
-    sec.className = "lane"; sec.dataset.lane = lane.kind;
+    sec.className = "lane" + (lane.auto ? " lane-auto" : ""); sec.dataset.lane = lane.kind;
     sec.innerHTML = `<div class="lane-h"><span class="lane-nm">${lane.label}</span><span class="lane-ct">${inLane.length}</span></div>`;
+    // auto lanes carry a capacity instrument: a one-line rollup of the plants that are
+    // folded (healthy), updated each frame by updateUnits. Troubled plants promote out of it.
+    if (lane.auto){
+      const instr = document.createElement("div");
+      instr.className = "lane-instr";
+      instr.innerHTML = `
+        <span class="li-online"><b data-li-on>0</b><span class="li-of">/${inLane.length} online</span></span>
+        <span class="li-mw"><b data-li-mw>0</b><span class="li-of"> MW · <span data-li-cap>0</span> cap</span></span>
+        <span class="li-note" data-li-note>all nominal</span>`;
+      sec.appendChild(instr);
+      laneInstr[lane.kind] = {
+        el: instr, on: instr.querySelector("[data-li-on]"), mw: instr.querySelector("[data-li-mw]"),
+        cap: instr.querySelector("[data-li-cap]"), note: instr.querySelector("[data-li-note]"),
+      };
+    }
     const tiles = document.createElement("div");
     tiles.className = "lane-tiles";
     if (!inLane.length){
@@ -414,7 +438,12 @@ function updateUnits(S, tick = true){
     // status pill + row accent are INSTANT (a trip/strain must show the moment it happens)
     if (refs.st.textContent != stText) refs.st.textContent = stText;
     const cls = "st " + stClass; if (refs.st.className != cls) refs.st.className = cls;
-    const rcls = "utile" + (u.ctrl ? " ctrl" : "") + " u-" + rowState;
+    // v5.4 Phase 6: in auto lanes (firm · renew), fold healthy plants into the lane's
+    // capacity instrument and promote only the ones that `needsAttention` to a tile. Folded
+    // into rcls (not a separate toggle) so this INSTANT className rebuild can't wipe it — a
+    // plant that trips mid-operating must surface the moment it happens, not on the cadence.
+    const fold = laneBy(u.kind)?.auto ? !needsAttention(u) : false;
+    const rcls = "utile" + (u.ctrl ? " ctrl" : "") + " u-" + rowState + (fold ? " is-folded" : "");
     if (refs.el.className != rcls) refs.el.className = rcls;
 
     if (!tick) continue; // numeric columns + sub-note throttle with the readout cadence
@@ -447,7 +476,7 @@ function updateUnits(S, tick = true){
     else { const mc = Math.round(marginalCost(u.tech, S.carbon, fuelMult)); sub = u.ctrl ? `$${mc}/MWh · tap ${u.key} to ${u.status === "off" ? "start" : "stop"}` : `$${mc}/MWh base`; }
     if (refs.sub.textContent != sub) refs.sub.textContent = sub;
   }
-  // auto-sort rows by urgency (worst first) WITHIN each lane — move <tr> nodes only when
+  // auto-sort rows by urgency (worst first) WITHIN each lane — move tile nodes only when
   // the order actually changes (onclick travels with the node, so taps never retarget).
   for (const lane of LANES){
     const tb = laneTbody[lane.kind]; if (!tb) continue;
@@ -456,6 +485,29 @@ function updateUnits(S, tick = true){
     if (sig !== _laneOrder[lane.kind]){
       order.forEach(u => { const r = unitEls[u.id]; if (r) tb.appendChild(r.el); });
       _laneOrder[lane.kind] = sig;
+    }
+  }
+  // v5.4 Phase 6: the capacity instrument on each auto lane — a whole-lane rollup (how many
+  // online of the total, MW online vs installed cap) plus how many plants have been promoted
+  // to a tile below. Throttles with the readout cadence; the fold/promote itself is instant.
+  if (tick){
+    for (const lane of LANES){
+      const instr = laneInstr[lane.kind]; if (!instr) continue;
+      const inLane = S.fleet.filter(u => u.kind === lane.kind);
+      let online = 0, mw = 0, cap = 0, promoted = 0;
+      for (const u of inLane){
+        cap += u.cap;
+        if (u.status === "online" || u.status === "discharge" || u.status === "strained"){ online++; mw += unitOutput(S, u); }
+        if (needsAttention(u)) promoted++;
+      }
+      if (instr.on.textContent != String(online)) instr.on.textContent = online;
+      const mwR = Math.round(mw); if (instr.mw.textContent != String(mwR)) instr.mw.textContent = mwR;
+      const capR = Math.round(cap); if (instr.cap.textContent != String(capR)) instr.cap.textContent = capR;
+      const note = !inLane.length ? "— none —"
+        : promoted ? `${promoted} need${promoted === 1 ? "s" : ""} attention ↓`
+        : "all nominal";
+      if (instr.note.textContent !== note) instr.note.textContent = note;
+      instr.el.classList.toggle("li-alert", promoted > 0);
     }
   }
 }
