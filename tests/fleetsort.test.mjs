@@ -1,6 +1,6 @@
 // Unit tests for the Manage → Fleet table comparators (v4, Phase A). No DOM.
 // Run: `npm test`. Pins the needs-attention default order and each column sort.
-import { attentionRank, compareNeedsAttention, makeFleetComparator } from "../src/live/fleetsort.js";
+import { attentionRank, compareNeedsAttention, makeFleetComparator, needsAttention, ATTENTION_BAND } from "../src/live/fleetsort.js";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -67,6 +67,21 @@ check("thermal outranks condition-less units", attentionRank(mid) < attentionRan
   const b = { id: "bb", name: "B", status: "off", condition: 50, kind: "firm" };
   const s1 = [a, b].sort(compareNeedsAttention), s2 = [b, a].sort(compareNeedsAttention);
   check("equal rank: stable id tiebreak", ids(s1) === "aa,bb" && ids(s2) === "aa,bb");
+}
+
+// 7) needsAttention (v5.4 Phase 6): the promotion-by-exception predicate. Reuses status +
+// condition; tripped/strained/maint always promote, worn-below-band promotes, healthy does not.
+{
+  check("tripped needs attention", needsAttention(tripped));
+  check("strained needs attention", needsAttention(strained));
+  check("in-shop (maint) needs attention", needsAttention({ id: "m", status: "maint", condition: 99, kind: "firm" }));
+  check("maintDown needs attention", needsAttention({ id: "d", status: "off", maintDown: true, condition: 99, kind: "firm" }));
+  check("worn below band needs attention", needsAttention(worn) && worn.condition < ATTENTION_BAND);
+  check("healthy thermal does NOT (condition >= band)", !needsAttention(healthy) && healthy.condition >= ATTENTION_BAND);
+  check("mid thermal below band promotes", needsAttention(mid) === (mid.condition < ATTENTION_BAND));
+  check("condition-less idle renewable does NOT", !needsAttention(solar));
+  check("condition-less idle battery does NOT", !needsAttention(batt));
+  check("band is the trip-risk onset", ATTENTION_BAND === 85);
 }
 
 console.log(failed === 0 ? "\nAll fleetsort tests passed." : `\n${failed} fleetsort test(s) FAILED.`);

@@ -11,6 +11,37 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### v5.4 "The Instrument" — UI-rewrite milestone (2026-11-01)
+
+A look-and-legibility milestone, not a model one: make the live screen read like a control room and
+let the player see *why* the money moves. **No economy or clearing logic was touched** — every phase
+is render-side, and the headless stripped run stays byte-identical throughout. Six phases; see
+[`docs/plan-v5.4/`](plan-v5.4/README.md) and [`docs/PLAYTEST-v5.4.md`](PLAYTEST-v5.4.md).
+
+- **Legibility first (Phase 1).** Read-side **VOLL attribution** — an active forced-unserved shortfall
+  now names itself live (`⚠ N MW forced unserved → paying VOLL`), with a price "why" line and the
+  overdraft readout fix. This closes the two live-screen findings v5.3's playtest routed to "the
+  deferred UI pass."
+- **Material decision (Phase 2).** A throwaway "Material Gate" artifact chose **Pairing A (Metal +
+  Amber)** for the frame / deck / Book, recorded as the `--mat-*` token scaffold.
+- **The skin (Phase 3).** One lens over the live screen — grain + glow, era recolour, and a grid-state
+  bleed that rises with strain — promoted from the old vignette to a single cosmetic layer.
+- **The deck + the Book (Phases 4+5).** The fleet became operable **tiles** (no more spreadsheet rows)
+  under the Metal/Amber materials, and cash-on-hand moved **off the deck entirely** onto a summoned
+  full-screen amber terminal — **the Book** — that patches a live itemised QTD P&L (floor + swing
+  income, minus opCost / interest / fines / VOLL) and a de-modaled contracts desk while the clock keeps
+  running. The deck↔Book morph uses the View Transitions API; a pure `flowRate` selector drives the
+  live Flow tile's driver line.
+- **Fleet-at-scale (Phase 6).** The two **auto** lanes (firm · renewable) fold their healthy plants
+  into a one-line **capacity instrument** and **promote only the plants that need attention** to tiles,
+  even mid-operating; the dispatchable lanes (gas · storage) always show every tile. Promotion reads
+  the *existing* trouble signal via a new pure `needsAttention(u)` (status + condition + maintDown, the
+  85% trip-risk band) — not a second source of truth. The build stamp is bumped **`v5.3 → v5.4`**.
+
+**Known / deferred:** the human playtest ([`PLAYTEST-v5.4.md`](PLAYTEST-v5.4.md) §C); and the
+fail-state "is roguelite game-over the right model?" decision — now answerable on a fair, legible
+quarter, but a *model* decision this UI milestone deliberately did not take on.
+
 ### v5.3 "Integrity" — economy-correctness milestone (2026-10-31)
 
 A feature-freeze milestone born from an external audit that found 34 green test suites coexisting

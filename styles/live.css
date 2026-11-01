@@ -706,7 +706,8 @@ header.cmdbar{background:var(--mat-frame-bg);border-color:var(--mat-frame-bd);
 .lane-tiles{display:flex;flex-direction:column;gap:6px;padding:4px 2px 2px}
 .lane-empty{font-style:italic;text-align:center;padding:10px 6px}
 /* one plant = one tile: a card that reads as iron. Container queries let a tile restyle by the
-   space its lane has, so the fleet scales without a second layout (heavy at-scale logic = Phase 6). */
+   space its lane has, so the fleet scales without a second layout. At-scale behaviour (Phase 6):
+   auto lanes fold healthy plants into a capacity instrument and promote only the troubled ones. */
 .lane{container-type:inline-size}
 .utile{position:relative;display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:9px;
   border:1px solid var(--mat-deck-bd);background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(0,0,0,.34));
@@ -735,6 +736,20 @@ header.cmdbar{background:var(--mat-frame-bg);border-color:var(--mat-frame-bd);
 /* roomy lane → two tiles across (container query keyed on the lane's OWN width, so the fleet scales
    without a second layout: narrow 4-across lanes stay single-column, a wide tablet/phone lane goes 2-up) */
 @container (min-width:440px){.lane-tiles{display:grid;grid-template-columns:1fr 1fr}}
+
+/* ---- Phase 6 · fleet-at-scale: the capacity instrument + fold/promote ---- */
+/* auto lanes (firm · renew) run themselves: a one-line rollup stands in for the healthy
+   plants, and only the ones that need attention are left as tiles below it. */
+.lane-instr{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:5px 8px;margin:0 2px 2px;
+  border:1px solid var(--mat-deck-bd);border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(0,0,0,.28));
+  font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lane-instr b{color:var(--mat-deck-read);font-size:.95rem;text-shadow:var(--mat-deck-read-glow)}
+.lane-instr .li-of{font-size:.6rem;color:var(--faint)}
+.lane-instr .li-note{margin-left:auto;font-size:.58rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.lane-instr.li-alert{border-color:color-mix(in srgb,var(--warn) 55%,var(--mat-deck-bd))}
+.lane-instr.li-alert .li-note{color:var(--warn)}
+/* a folded plant leaves the deck entirely — it lives in the instrument's count until it needs you */
+.utile.is-folded{display:none}
 
 /* ============================================================
    v5.4 Phase 5 — THE BOOK. A summoned full-screen amber terminal, under the skin (z-index 5 < the skin's 6)
