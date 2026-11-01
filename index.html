@@ -10,7 +10,9 @@
   <link rel="stylesheet" href="styles/live.css" />
 </head>
 <body>
-  <div id="vignette"></div>
+  <!-- v5.4 Phase 3: the skin layer (grain · amber glow · era wash · grid-state bleed). Promotes and
+       replaces the old #vignette; driven by CSS vars set in render()/boot. One lens over every region. -->
+  <div id="skin" aria-hidden="true"></div>
   <div class="wrap" id="shakeTarget">
     <!-- v4.2 CR-1: command bar. Clock + the two deliberate console controls up top;
          secondary readouts demote to the right strip. Stat ids are unchanged so the

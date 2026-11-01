@@ -234,7 +234,11 @@ export function render(S){
   // folds onto the ONE trouble-meter (the grid-stability reservoir fraction) — the deleted
   // S.strain scalar used to drive it; a fuller reservoir = a darker vignette.
   const stab = S.stability, stabFrac = stab && stab.max > 0 ? stab.hp / stab.max : 0;
-  $("vignette").style.opacity = S.over ? "1" : (S.brownout ? clamp(0.25 + stabFrac * 0.7, 0, 0.95).toFixed(2) : "0");
+  // v5.4 Phase 3: drive the skin's grid-state bleed (--grid-state, 0..1) instead of the retired
+  // #vignette's opacity. Same trigger, same numbers — now sourced from CFG.v5_4.skin.
+  const sk = CFG.v5_4.skin;
+  const gridState = S.over ? 1 : (S.brownout ? clamp(sk.bleedFloor + stabFrac * sk.bleedRange, 0, sk.bleedMax) : 0);
+  document.documentElement.style.setProperty("--grid-state", String(gridState));
   $("shakeTarget").classList.toggle("shake", S.brownout && !S.over && stabFrac > 0.35);
 
   // v4.2 CR-4: annunciator log. Capture each new ticker message once (with the
@@ -825,7 +829,7 @@ export function renderPlanning(S, actions){
     return `<button class="cr-hire" data-hire="${tr}" ${can ? "" : "disabled"}>+ ${tr.slice(0,4)} · ${money(cc.hireCost)}</button>`;
   }).join("");
 
-  $("vignette").style.opacity = "0";
+  document.documentElement.style.setProperty("--grid-state", "0");
   $("modal").innerHTML = `
     <div class="planning planning-wide">
       <div class="pl-kicker">Planning Office</div>
@@ -891,7 +895,7 @@ export function renderPlanning(S, actions){
 
 export function hidePlanning(){
   $("overlay").classList.remove("on");
-  $("vignette").style.opacity = "0";
+  document.documentElement.style.setProperty("--grid-state", "0");
 }
 
 // v5.1 Phase 5: the DAILY BRIEF — the blocking-but-skippable daily beat. A compact review +
@@ -977,7 +981,7 @@ export function renderBrief(S, actions){
       }).join("")
     : `<li class="faint">No construction in flight — commit new plants at the quarter review.</li>`;
 
-  $("vignette").style.opacity = "0";
+  document.documentElement.style.setProperty("--grid-state", "0");
   $("brief").innerHTML = `
     <div class="brief-panel">
       <div class="pl-kicker">Daily Brief</div>
@@ -1031,7 +1035,7 @@ export function renderBrief(S, actions){
   $("briefAdvance").onclick = actions.advance;
   $("briefStep").onclick = actions.step;
 }
-export function hideBrief(){ $("briefOverlay").classList.remove("on"); $("vignette").style.opacity = "0"; }
+export function hideBrief(){ $("briefOverlay").classList.remove("on"); document.documentElement.style.setProperty("--grid-state", "0"); }
 
 // v5.1 Phase 7: the per-plant upgrade DRILL-DOWN — opened from a firm/gas plant's ⚙. Shows the
 // plant's four 9-tier axis ladders (current tier · live KPI vs attainable cap · next-tier cost +
