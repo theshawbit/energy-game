@@ -8,8 +8,8 @@
 // game-over). A shortfall or insolvency inflicts pain (strain, fines, cratered
 // credit) but the loop keeps running; the view layer reacts to that state.
 // ============================================================
-import { DEMAND_SHAPE, THERMAL } from "../constants.js";
-import { dispatchHour } from "../engine.js";
+import { DEMAND_SHAPE, THERMAL, TECH } from "../constants.js";
+import { dispatchHour, marginalCost } from "../engine.js";
 import { CFG, makeFleet, dialSnapshot } from "./config.js";
 import { makeCrew, wageBill, TRADES } from "./crews.js";
 import { tickMaint } from "./maint.js";
@@ -408,6 +408,19 @@ export function step(S, dt){
   for (const u of S.fleet) avail[u.tech] = (avail[u.tech] || 0) + unitOutput(S, u);
   const hr = dispatchHour(avail, S.demand, S.carbon, S.mmods?.fuelMult ?? 1); // carbon + mutator fuel spike re-sort the merit order
   S.price = hr.priceServed;                                   // v5.3: the honest price served load earns (continuous; was hr.price, the cap-spiked signal)
+  // v5.4 Phase 1 (L1): name the price-SETTER — the costliest dispatched unit, whose marginal cost IS the
+  // clearing price. Read-only label off the engine's own stack so the HUD can say WHY the price is what it
+  // is (demand climbed the stack into this band), never implying a dial. No clearing change.
+  {
+    const fuelMult = S.mmods?.fuelMult ?? 1;
+    let setter = null, setterMC = -Infinity;
+    for (const t in (hr.stack || {})){
+      if (!TECH[t] || !(hr.stack[t] > 1e-9)) continue;         // skip non-tech keys (_demand, unserved) + idle units
+      const mc = marginalCost(t, S.carbon, fuelMult);
+      if (mc > setterMC){ setterMC = mc; setter = t; }
+    }
+    S.priceDriver = setter ? TECH[setter].name : null;
+  }
   S.co2 = hr.served > 0 ? hr.emissions * 1e3 / hr.served : 0; // live intensity, kg CO₂/MWh
   S.co2Total += hr.emissions * dtH;                           // run total, tCO₂ (emissions is tCO₂/h)
 
@@ -609,6 +622,9 @@ export function step(S, dt){
   // (chosen shed/DR are netted out of S.demand above, so hr.unserved is purely what you COULDN'T
   // cover). No deadband — the old `shortfall > 0.5` hid sub-MW gaps that still paid the cap.
   const shortfall = hr.unserved;
+  S.unserved = shortfall;   // v5.4 Phase 1 (L1): read-only live mirror for the HUD's VOLL line. Set every
+                            // tick (the engine only writes S.unserved WHEN >0, so it would read stale),
+                            // so "paying VOLL on N MW" appears only while actually short and clears on cover.
   const sev = S.demand > 0 ? shortfall / S.demand : 0;
   if (shortfall > 1e-9){
     // v5: a shortfall hurts. v5.1 Phase 2 gives it TEETH via the stability reservoir (tickStability

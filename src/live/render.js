@@ -119,7 +119,8 @@ export function render(S){
   const funding = (S.rdFunding || 0) > 0;
   $("s-rdsub").textContent = funding ? `+${((S.rdFunding || 0) * CFG.rpPerDollar).toFixed(1)}/h` : "";
   $("s-rp").style.color = funding ? css("--accent") : css("--fg");
-  $("s-price").textContent = "$" + Math.round(S.price);
+  // v5.4 Phase 1 (L2): the "Wholesale" header chip was removed — the clearing price now lives only on the
+  // Spot · P&L tile (patched below). S.price is unchanged; it is just no longer echoed in the header.
   $("s-co2").textContent = Math.round(S.co2);
   $("s-co2").style.color = S.co2 < 100 ? css("--good") : S.co2 < 450 ? css("--warn") : css("--bad");
   $("s-carbon").textContent = "$" + Math.round(S.carbon);
@@ -180,7 +181,11 @@ export function render(S){
     $("cl-flow").style.color = flow > 0 ? css("--good") : css("--bad");
   }
   const debt = Math.round(S.debt || 0), fin = $("cl-fin");
-  if (debt > 0){ fin.textContent = `debt ${money(debt)} · ${gradeFor(S.credit)} @ ${(creditRating(S.credit).rate * 100).toFixed(1)}%/d`; fin.style.color = css("--warn"); }
+  // v5.4 Phase 1 (L2): negative cash is NOT "debt-free". The old line read "debt-free" whenever debt was 0,
+  // even at a red negative balance — a reassuring label contradicting the number right above it. Overdraft
+  // now takes priority over the credit standing so the sub-line can never contradict the cash tile.
+  if (S.cash < 0){ fin.textContent = debt > 0 ? `overdrawn · debt ${money(debt)}` : "overdrawn"; fin.style.color = css("--bad"); }
+  else if (debt > 0){ fin.textContent = `debt ${money(debt)} · ${gradeFor(S.credit)} @ ${(creditRating(S.credit).rate * 100).toFixed(1)}%/d`; fin.style.color = css("--warn"); }
   else { fin.textContent = `credit ${gradeFor(S.credit)} · debt-free`; fin.style.color = css("--faint"); }
 
   // SPOT · P&L — spot now, how much of load is hedged, and the live exposure.
@@ -195,6 +200,27 @@ export function render(S){
   $("cl-hedge").style.color = (S.contractedMW || 0) > 0.5 ? css("--good") : css("--muted");
   const exp = Math.round(exposedMW(S)), blend = Math.round(blendedPrice(S));
   $("cl-exposure").textContent = (S.served || 0) > 0.5 ? `${exp} MW at spot · blend $${blend}` : " ";
+
+  // v5.4 Phase 1 (L1): live attribution — WHY the clearing price is what it is (the marginal unit sets it as
+  // demand climbs the stack; demand-driven, not a dial), and THAT VOLL is accruing while the grid is short.
+  const why = $("cl-why");
+  if (why){
+    const drv = S.priceDriver;
+    const priceWhy = drv
+      ? `Clearing $${spot}/MWh — ${drv} is marginal; demand sets it by climbing the stack`
+      : `Clearing $${spot}/MWh`;
+    const u = Math.round(S.unserved || 0);
+    if (u > 0){
+      const voll = Math.round(CFG.v5_3?.market?.voll || 0);
+      why.innerHTML = `<b class="why-voll">⚠ ${u} MW forced unserved — paying VOLL`
+        + `${voll ? ` $${voll.toLocaleString()}/MWh` : ""}</b>`
+        + `<span class="why-price">${priceWhy}</span>`;
+      why.dataset.alarm = "1";
+    } else {
+      why.innerHTML = `<span class="why-price">${priceWhy}</span>`;
+      why.dataset.alarm = "0";
+    }
+  }
 
   // Capacity pledge — only visible under an obligation.
   const ob = S.capacityObligation, pledge = $("cl-pledge");
@@ -632,7 +658,13 @@ function verdictCard(S){
         <li><span>Clean standing</span><span>${Math.round(v.cleanScore * 100)}%</span></li>
         <li><span>Floor income</span><span>${money(v.floorPay)}</span></li>
         <li><span>Swing income</span><span>${money(v.swingPay)}</span></li>
-        <li><span>Quarter PnL</span><span class="${v.pnl < 0 ? "short" : ""}">${money(v.pnl)}</span></li>
+        ${(v.opCost || v.opCost === 0) ? `<li class="v-cost"><span>− Operating cost</span><span>−${money(v.opCost)}</span></li>` : ""}
+        ${v.wages ? `<li class="v-cost"><span>− Crew wages</span><span>−${money(v.wages)}</span></li>` : ""}
+        ${v.overruns ? `<li class="v-cost"><span>− Build overruns</span><span>−${money(v.overruns)}</span></li>` : ""}
+        ${(v.breachFines + v.shedFines) ? `<li class="v-cost"><span>− Fines (breach + shed)</span><span>−${money(v.breachFines + v.shedFines)}</span></li>` : ""}
+        ${v.interest ? `<li class="v-cost"><span>− Debt interest</span><span>−${money(v.interest)}</span></li>` : ""}
+        ${v.unservedCost ? `<li class="v-cost voll"><span>− Forced-unserved VOLL${v.shortfallMWh ? ` · ${Math.round(v.shortfallMWh)} MWh` : ""}</span><span>−${money(v.unservedCost)}</span></li>` : ""}
+        <li class="v-total"><span>Quarter PnL</span><span class="${v.pnl < 0 ? "short" : ""}">${money(v.pnl)}</span></li>
         <li><span>Floor rate next</span><span class="rate-${rateDir}">${v.floorRate.toFixed(1)} ${arrow} ${v.floorRateNext.toFixed(1)}</span></li>
         <li><span>Settlement</span><span>${settle}</span></li>
       </ul>
