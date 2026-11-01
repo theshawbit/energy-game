@@ -31,8 +31,12 @@
       <div class="cb-controls">
         <button id="pauseBtn" class="console-btn pause" aria-keyshortcuts="Space">Pause</button>
         <button id="ffBtn" class="console-btn ff" title="Fast-forward calm hours">▶ 1×</button>
+        <!-- v5.4 Phase 5: summon the Book — the full-screen finance terminal (cash · P&L · contracts ·
+             tape). The clock keeps running while it's open. -->
+        <button id="bookBtn" class="console-btn book" title="Open the Book — cash, P&amp;L, contracts">⛁ Book</button>
         <button id="manageBtn" class="console-btn manage">▣ Manage</button>
       </div>
+      <!-- v5.4 Phase 4: KPI chips read as instruments set into the FRAME material (see .cb-stats below). -->
       <div class="cb-stats">
         <div class="hstat"><span class="k">Research</span><span class="v" id="s-rp">0 <small class="rd-sub" id="s-rdsub"></small></span></div>
         <!-- v5.4 Phase 1 (L2): the old "Wholesale" chip was removed — it echoed the SAME priceServed as the
@@ -40,6 +44,8 @@
              one place: the Spot · P&L tile, which now carries the "why" line. -->
         <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
         <div class="hstat"><span class="k">Carbon $/t</span><span class="v" id="s-carbon">$0</span></div>
+        <!-- v5.4 keystone: cash-on-hand is NOT in the frame or on the deck — it lives only in the Book
+             (⛁, summoned), which makes the second surface structurally necessary. The deck carries flow. -->
       </div>
       <!-- v5.1 Phase 7 / v5.2 Phase 2: grid-STRAIN reservoir, seated in the top strip — always
            visible, colour-ramping as it fills toward collapse (0% = no strain / stable →
@@ -92,11 +98,13 @@
             </svg>
             <span class="dial-val" id="s-margin">—</span>
           </div>
-          <div class="tile" id="t-cash">
-            <span class="t-k">Cash</span>
-            <span class="t-v" id="s-cash">$0</span>
-            <span class="t-sub" id="cl-flow">—</span>
-            <span class="t-sub2" id="cl-fin">debt-free</span>
+          <!-- v5.4 Phase 4 keystone: the deck carries FLOW (earn/burn), not cash-on-hand. The pulse reads
+               flowRate() — net incl. the forced-unserved VOLL drain — so it craters and names "VOLL" when
+               load goes dark. Cash-on-hand lives in the Book (summoned); a temp frame chip carries it for now. -->
+          <div class="tile deck-flow" id="t-flow">
+            <span class="t-k">Flow — earn / burn</span>
+            <span class="t-v" id="cl-flow">—</span>
+            <span class="t-sub" id="cl-flow-driver">&nbsp;</span>
           </div>
           <div class="tile" id="t-spot">
             <span class="t-k">Spot · P&amp;L</span>
@@ -149,6 +157,10 @@
   <!-- v5.1 Phase 7: per-plant upgrade drill-down — click a firm/gas plant's ⚙ to open its four
        9-tier axis ladders (current tier · next-tier cost + ETA · queue → contractor line). -->
   <div class="overlay" id="plantOverlay"><div class="modal plant-detail" id="plantDetail"></div></div>
+  <!-- v5.4 Phase 5: the Book — a summoned full-screen finance terminal under the amber Book material.
+       Not a modal (its own surface + its own grid-state bleed); the clock keeps running while it's open.
+       Built/patched by render.js; summoned via S.bookOpen. -->
+  <div class="book-overlay" id="bookOverlay" aria-hidden="true"><div class="book" id="book"></div></div>
   <div class="overlay" id="menuOverlay"><div class="modal menu" id="menu"></div></div>
   <div class="overlay" id="metaOverlay"><div class="modal menu" id="meta"></div></div>
   <div class="overlay" id="homeOverlay"><div class="modal home" id="home"></div></div>

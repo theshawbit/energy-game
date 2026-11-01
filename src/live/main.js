@@ -17,7 +17,7 @@ import { closeBrief } from "./brief.js";
 import { CFG } from "./config.js";
 import { makeRng } from "./rng.js";
 import { rollSpecialOffer } from "./offers.js";
-import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief, renderPlantDetail, hidePlantDetail } from "./render.js";
+import { render, buildUnits, renderManage, hideManage, renderMeta, renderHome, renderPlanning, hidePlanning, renderCollapse, hideCollapse, renderBrief, hideBrief, renderPlantDetail, hidePlantDetail, renderBook, hideBook } from "./render.js";
 import { buySkill, buyUnlock, buyEconomyUnlock, awardCurrency } from "./meta.js";
 import { loadProfile, saveProfile, restartRun } from "./persist.js";
 import { VERSION } from "./version.js";
@@ -56,6 +56,34 @@ const plantActions = {
 // re-paint the currently open manage page (after an action or a nav)
 function refreshPage(){ if (page) renderManage(S, page, menu); }
 
+// v5.4 Phase 5: THE BOOK — an overlay FLAG (S.bookOpen), deliberately NOT a calendar.mode value: step()
+// hard-returns off "operating" (sim.js:307) and frame() has no book branch, so a mode would freeze the
+// clock and render the deck. As a flag, the clock + step + render run completely unchanged and render()
+// just paints the Book when bookOpen. Summon/close morph via the View Transitions API where supported
+// (graceful instant swap otherwise) so the material change is felt as the same machine changing screens.
+function morph(fn){ if (document.startViewTransition) document.startViewTransition(fn); else fn(); }
+function openBook(){
+  if (!S.running || S.menuOpen || S.calendar.mode !== "operating" || S.bookOpen) return;
+  S.bookOpen = true;
+  morph(() => renderBook(S, bookActions));
+}
+// instant = skip the morph (used by the drift-tolerant pierce + the boundary close, where an animation
+// would race the mode machine or soften an urgent drop back to the deck).
+function closeBook(instant){
+  if (!S.bookOpen) return;
+  S.bookOpen = false;
+  const fn = () => { hideBook(); render(S); };
+  if (instant || !document.startViewTransition) fn(); else document.startViewTransition(fn);
+}
+const bookActions = {
+  close: () => closeBook(false),
+  setHedge(v){ setHedge(S, v); },                           // dial drag; readout patched in-place
+  hedge(term){ hedgeContract(S, term); render(S); },        // sign a leg; render.js re-renders the desk panel
+  cancelContract(id){ cancelContract(S, id); render(S); },
+  accept(){ acceptOffer(S); render(S); },
+  decline(){ declineOffer(S); render(S); },
+};
+
 // a buyer may call at each new day (null unless the Rolodex economy unlock is owned)
 function rollDailyOffer(){
   if (S.pendingOffer && S.day >= S.pendingOffer.expiresDay) S.pendingOffer = null;
@@ -82,7 +110,7 @@ const menu = {
   go(p){ page = p; refreshPage(); },
   close(){ S.menuOpen = false; page = null; hideManage(); last = 0; render(S); },
 };
-function openManage(){ if (S.calendar.mode !== "operating") return; S.menuOpen = true; page = "hub"; refreshPage(); }
+function openManage(){ if (S.calendar.mode !== "operating") return; closeBook(true); S.menuOpen = true; page = "hub"; refreshPage(); }
 
 // ---- speed control (v5): pause is a read-only hold (clock speed 0); fast-forward
 // skips calm hours. Both only act during the live day (not the planning beat). ----
@@ -188,6 +216,10 @@ function frame(now){
   let dt = (now - last) / 1000; last = now;
   dt = Math.min(dt, 0.1);
   if (S.running && !S.menuOpen){
+    // v5.4 Phase 5 boundary rule: a day/quarter boundary (or a collapse) can arrive while the Book is
+    // open, since the clock runs. Close the Book FIRST — clear the flag and drop to the deck — THEN let
+    // the brief/planning/collapse beat run, so the overlay never coexists with (or races) the mode machine.
+    if (S.bookOpen && (S.over || S.calendar.mode !== "operating")) closeBook(true);
     if (S.over){
       // v5.1 Phase 2: the run collapsed — freeze the loop and show the end screen once.
       if (!collapseOpen){ collapseOpen = true; render(S); renderCollapse(S, { restart: restartGame }); }
@@ -207,6 +239,14 @@ function frame(now){
       if (S.autoPace && !paceHeld && !S.paused) setSpeed(S, pacePlan(S).speed);
       step(S, dt); // no-ops while paused (clock speed 0); never ends
       if (S.day !== dayBefore && S.calendar.mode === "operating"){ paceHeld = false; rollDailyOffer(); }
+      // v5.4 Phase 5: the drift-tolerant pierce. The Book tolerates ordinary drift; only true
+      // blackout-imminent danger interrupts it. Keyed off the EXISTING stability threshold (not autoPause,
+      // which misses a pure capacity shortfall where every plant's online but none is individually
+      // straining) so BOTH a straining plant and a bare demand>supply gap drop you back to the deck.
+      if (S.bookOpen){
+        const stab = S.stability, stabFrac = stab && stab.max > 0 ? stab.hp / stab.max : 0;
+        if (stabFrac >= CFG.v5_1.brief.stabilityDanger){ closeBook(true); setTicker(S, "⚠ Grid in danger — back to the deck."); }
+      }
       render(S);
     }
   }
@@ -221,6 +261,7 @@ S = createGame(profile.skills, profile.researchUnlocked); buildUnits(S, act, ope
   r.setProperty("--skin-grain", String(sk.grain)); r.setProperty("--skin-glow", String(sk.glow)); }
 showHome();
 $("manageBtn").onclick = () => openManage();
+$("bookBtn").onclick = () => openBook();
 $("pauseBtn").onclick = togglePause;
 $("ffBtn").onclick = toggleFast;
 $("howtoBack").onclick = showHome;
@@ -228,7 +269,11 @@ const HUB_KEYS = { "1": "fleet", "2": "build", "3": "research", "4": "desk" };
 window.addEventListener("keydown", e => {
   // v5.1 Phase 7: the per-plant drill-down closes on Escape (it opens over the live grid).
   if (plantOpen && e.key === "Escape"){ e.preventDefault(); plantActions.close(); return; }
+  // v5.4 Phase 5: the Book closes on Escape; while it's open the clock still runs, so Space (pause) is
+  // still honoured, but the dispatch keys are swallowed (studying the Book is time away from the stack).
+  if (S.bookOpen && e.key === "Escape"){ e.preventDefault(); closeBook(false); return; }
   if (e.code === "Space"){ e.preventDefault(); if (S.running && !S.menuOpen && S.calendar.mode === "operating") togglePause(); return; }
+  if (S.bookOpen) return;
   if (S.menuOpen){ // manage-mode navigation: Esc = back, 1–4 jump from the hub
     if (e.key === "Escape"){ e.preventDefault(); if (page && page !== "hub") menu.go("hub"); else menu.close(); }
     else if (page === "hub" && HUB_KEYS[e.key]) menu.go(HUB_KEYS[e.key]);

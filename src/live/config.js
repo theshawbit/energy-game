@@ -565,6 +565,15 @@ export const CFG = {
       bleedRange: 0.70,   // additional bleed scaled by the stability-reservoir fraction
       bleedMax:   0.95,   // ceiling (full collapse)
     },
+    // v5.4 Phase 4 — the live DECK. DISPLAY thresholds only: flowThresholds recolour the earn/burn
+    // pulse and nothing else (the moment one feeds interruption/tint/brief logic it becomes a model
+    // change and is out of scope). $/game-hour bands for the flow readout's severity.
+    ui: {
+      flowThresholds: { burn: -2000, earn: 2000 }, // below burn = red, above earn = green, between = flat/neutral
+    },
+    // v5.4 Phase 5 — the summoned BOOK. The drift-tolerant pierce (crossing it closes the Book to the
+    // deck) deliberately reuses the EXISTING stability-danger threshold — CFG.v5_1.brief.stabilityDanger
+    // — rather than introducing a second number, so the Book and the brief agree on what "danger" means.
   },
 };
 
