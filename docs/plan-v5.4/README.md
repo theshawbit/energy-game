@@ -125,7 +125,7 @@ the visual work behind it.
 | # | Phase | Doc | Owns | Status |
 | :-- | :--- | :--- | :--- | :--- |
 | 1 | **Legibility in the current UI** | [phase-1-legibility.md](phase-1-legibility.md) | `render.js`/`verdict.js`/`scorecard.js` read-side only: VOLL/unserved attribution in the board review (L1), the spot "why" line (L1), the "debt-free"/negative-cash contradiction (L2), and the **duplicate price tiles** (`Wholesale`/`s-price` and `Spot · P&L`/`cl-spot` are the *same* number since v5.3 — sim.js:410/465 — merge or relabel). No new shell, no model change. | ⬜ not started |
-| 2 | **Prototype gate (decide the look)** | [phase-2-prototype-gate.md](phase-2-prototype-gate.md) | *No production code.* A throwaway static mockup of the deck + a summoned Book under one skin, in candidate material pairings; react; **pick the material look.** Gates 4–5. | ⬜ not started |
+| 2 | **Prototype gate (decide the look)** | [phase-2-prototype-gate.md](phase-2-prototype-gate.md) | *No production code.* A throwaway static mockup of the deck + a summoned Book under one skin, in candidate material pairings; react; **pick the material look.** Gates 4–5. | ✅ decided 2026-11-01 — **Pairing A (Metal + Amber)** for deck + Book; tokens recorded for the Phase 3 scaffold |
 | 3 | **The skin layer** | [phase-3-skin-layer.md](phase-3-skin-layer.md) | Promote `body[data-era]` + the stability vignette into one first-class global skin layer (grain/glow + era recolour + grid-state bleed); scaffold the three material tokens. Lands over the *current* regions. | ⬜ not started |
 | 4 | **The live deck** | [phase-4-deck.md](phase-4-deck.md) | Rebuild the operating screen as instruments + tiles under the `deck` material: chart as the master instrument, fleet as dispatchable **tiles** (kill the spreadsheet, L3), the flow pulse (flow-only), KPI chips as instruments set in the `frame`, stability strip. | ⬜ not started |
 | 5 | **The Book** | [phase-5-book.md](phase-5-book.md) | New `S.bookOpen` full-screen overlay (clock keeps running), View-Transition morph, drift-tolerant pierce (`stabFrac ≥ stabilityDanger` closes the Book), no financial pierce; cash-on-hand + contracts desk + QTD P&L + tape under the `Book` material. **Ships paired with 4** (keystone-coupled). Final material touch-up lands here. | ⬜ not started |
@@ -263,7 +263,8 @@ the Book is open now has an explicit rule (close the Book, then run the beat). E
 - **The fail-state / "no-game-over" principle.** Still shelved. v5.4 changes *how the game reads*, not
   *how a run ends*; the §4 blackout→CRT-reboot moment stays out (hostage to this decision). The principle
   decision is a milestone of its own, now informed by a legible game.
-- **The exact material *look*** is decided in Phase 2 by prototype, not pre-specified here — by design.
+- **The exact material *look*** was decided in Phase 2 by prototype (not pre-specified) — **settled 2026-11-01:
+  Pairing A, Metal + Amber**, tokens recorded in [phase-2](phase-2-prototype-gate.md#decided-2026-11-01).
 - **Any economy/balance change.** v5.4 touches no number that affects an outcome. Balance work remains the
   v5.3 harness's domain.
 - **Audio.** Web Audio was cut from this milestone's scope in review (it was listed but unused). A sound
