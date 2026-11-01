@@ -666,3 +666,139 @@ table.fleet tr.dials-row td{border-bottom:1px solid var(--line);padding:4px 8px 
 .brief-alerts li{font-family:var(--mono);font-size:.74rem;color:var(--warn);background:#2a2109;border:1px solid #5e4a1c;border-radius:6px;padding:5px 9px}
 /* sticky footer: the continue buttons stay reachable without scrolling to the very bottom */
 .brief-btns{position:sticky;bottom:-22px;margin-top:16px;padding:12px 0 2px;background:linear-gradient(180deg,transparent,var(--panel) 28%)}
+
+/* ============================================================
+   v5.4 Phases 4+5 — THE INSTRUMENT. Three materials by ROLE (not region), over the Phase-3 skin:
+   · FRAME  — the chrome: command bar, console buttons, KPI instrument chips.
+   · DECK   — the brushed-metal control surface: status cluster, chart, fleet tiles, the flow pulse.
+   · BOOK   — the summoned amber trading terminal (Phase 5).
+   All three adopt the --mat-* scaffold locked at the Phase-2 gate. Cosmetic + layout only.
+   ============================================================ */
+
+/* ---- FRAME: the command bar reads as a machined fascia with instruments mounted in it ---- */
+header.cmdbar{background:var(--mat-frame-bg);border-color:var(--mat-frame-bd);
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 10px 24px -18px #000}
+.cb-mark{color:var(--mat-frame-sub)}
+.cb-cal{color:var(--mat-frame-tx)}
+/* KPI chips (Research · CO₂ · Carbon · the temp cash) seated into the frame as little gauges */
+.cb-stats{gap:8px 10px}
+.cb-stats .hstat{padding:5px 10px;border:1px solid var(--mat-frame-bd);border-radius:9px;
+  background:linear-gradient(180deg,rgba(0,0,0,.28),rgba(0,0,0,.42));box-shadow:0 1px 0 rgba(255,255,255,.04) inset}
+.cb-stats .hstat .k{color:var(--mat-frame-sub)}
+.cb-stats .hstat .v{color:var(--mat-frame-tx)}
+/* the Book summon button — the one door to cash-on-hand + the ledger */
+.console-btn.book{background:#161b24;color:var(--mat-deck-read);border:1px solid var(--mat-frame-bd);min-width:96px}
+.console-btn.book:hover{border-color:var(--mat-deck-accent);color:#fff;box-shadow:0 0 14px -4px var(--mat-deck-accent)}
+
+/* ---- DECK: the status cluster + chart + fleet read as one brushed-metal control surface ---- */
+.card{background:var(--mat-deck-surface);border-color:var(--mat-deck-bd)}
+.tile{border-color:var(--mat-deck-bd);background:var(--mat-deck-face);
+  box-shadow:0 1px 0 var(--mat-deck-hi) inset,0 -10px 18px -12px var(--mat-deck-lo) inset,0 6px 14px -12px #000;
+  border-radius:var(--mat-deck-radius)}
+.tile .t-v{color:var(--mat-deck-read)}
+/* the FLOW pulse (keystone) reads as the deck's headline instrument */
+.tile.deck-flow .t-v{text-shadow:var(--mat-deck-read-glow)}
+.tile.deck-flow #cl-flow-driver{font-family:var(--mono);font-size:.6rem;letter-spacing:.02em}
+.chart-legend{color:var(--mat-frame-sub)}
+
+/* ---- DECK · the fleet as operable TILES (L3 — kill the spreadsheet) ---- */
+.lane{background:var(--mat-deck-face);border-color:var(--mat-deck-bd)}
+.lane-tiles{display:flex;flex-direction:column;gap:6px;padding:4px 2px 2px}
+.lane-empty{font-style:italic;text-align:center;padding:10px 6px}
+/* one plant = one tile: a card that reads as iron. Container queries let a tile restyle by the
+   space its lane has, so the fleet scales without a second layout (heavy at-scale logic = Phase 6). */
+.lane{container-type:inline-size}
+.utile{position:relative;display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:9px;
+  border:1px solid var(--mat-deck-bd);background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(0,0,0,.34));
+  box-shadow:0 1px 0 var(--mat-deck-hi) inset;transition:box-shadow .15s,opacity .2s,border-color .15s}
+.utile.ctrl{cursor:pointer}
+.utile.ctrl:hover{border-color:var(--mat-deck-accent);box-shadow:0 1px 0 var(--mat-deck-hi) inset,0 0 0 1px var(--mat-deck-accent) inset}
+.ut-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.ut-nm{display:flex;align-items:center;gap:3px;min-width:0}
+.ut-nm .nm{font-weight:600;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ut-read{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.ut-out b{font-size:1.15rem;color:var(--mat-deck-read)}
+.ut-cap{font-size:.62rem;color:var(--faint)}
+.ut-load{font-size:.72rem;color:var(--muted)}
+.ut-cond{margin:1px 0 0}
+.ut-cond .kpis{justify-content:flex-start;grid-template-columns:repeat(4,auto)}
+.ut-sub{font-family:var(--mono);font-size:.58rem;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.utile .st{display:inline-block;font-family:var(--mono);font-size:.53rem;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;border-radius:20px;border:1px solid;white-space:nowrap;flex:none}
+/* status-pill glow by role-colour reuses the shared .st-* classes (online/off/starting/tripped/service/strained) */
+/* tile urgency accent — a left bar + lift, so the plant that needs you reads at a glance */
+.utile.u-strained{box-shadow:inset 3px 0 0 var(--warn),0 1px 0 var(--mat-deck-hi) inset}
+.utile.u-tripped{box-shadow:inset 3px 0 0 var(--bad),0 1px 0 var(--mat-deck-hi) inset}
+.utile.u-service{box-shadow:inset 3px 0 0 #2f6fb0,0 1px 0 var(--mat-deck-hi) inset}
+.utile.u-live{box-shadow:inset 3px 0 0 var(--good),0 1px 0 var(--mat-deck-hi) inset}
+.utile.u-idle{opacity:.6}
+.utile.ctrl.u-idle:hover{opacity:1}
+/* roomy lane → two tiles across (container query keyed on the lane's OWN width, so the fleet scales
+   without a second layout: narrow 4-across lanes stay single-column, a wide tablet/phone lane goes 2-up) */
+@container (min-width:440px){.lane-tiles{display:grid;grid-template-columns:1fr 1fr}}
+
+/* ============================================================
+   v5.4 Phase 5 — THE BOOK. A summoned full-screen amber terminal, under the skin (z-index 5 < the skin's 6)
+   so the grid-state bleed + grain render OVER it: the same machine, one lens, a different screen. The clock
+   keeps running underneath. The deck↔Book morph uses the View Transitions API (default root cross-fade;
+   graceful instant swap where unsupported).
+   ============================================================ */
+.book-overlay{position:fixed;inset:0;display:none;z-index:5;overflow-y:auto}
+.book-overlay.on{display:block}
+.book{min-height:100%;padding:max(18px,env(safe-area-inset-top,0)) max(18px,env(safe-area-inset-right,0)) 22px max(18px,env(safe-area-inset-left,0));
+  background:var(--mat-book-bg);color:var(--mat-book-tx);font-family:var(--mono);position:relative}
+/* faint phosphor scanlines — the terminal texture, static (no motion) */
+.book::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:calc(var(--mat-book-scan,1) * .4);
+  background:repeating-linear-gradient(180deg,transparent 0 2px,rgba(0,0,0,.25) 2px 3px)}
+.bk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1180px;margin:0 auto 14px;
+  border-bottom:1px solid var(--mat-book-line);padding-bottom:10px}
+.bk-kicker{font-family:var(--disp);text-transform:uppercase;letter-spacing:.26em;font-size:.64rem;color:var(--mat-book-dim)}
+.bk-title{font-family:var(--disp);text-transform:uppercase;letter-spacing:.06em;font-size:1.3rem;margin:2px 0 0;color:var(--mat-book-tx);text-shadow:var(--mat-book-glow)}
+.bk-close{font-family:var(--mono);font-size:.78rem;color:var(--mat-book-tx);background:transparent;border:1px solid var(--mat-book-line);border-radius:8px;padding:7px 13px}
+.bk-close:hover{border-color:var(--mat-book-accent);color:#fff;box-shadow:var(--mat-book-glow)}
+.bk-grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+@media (max-width:760px){.bk-grid{grid-template-columns:1fr}}
+.bk-panel{border:1px solid var(--mat-book-line);border-radius:11px;padding:13px 15px;background:rgba(255,176,46,.025);min-width:0;max-width:100%}
+.book{overflow-x:hidden}
+/* the de-modaled contracts table can be wide (5 cols) — let it scroll inside its panel on a narrow Book */
+.bk-desk #bk-contracts{overflow-x:auto}
+.bk-ledger li span:first-child{min-width:0}
+.bk-panel h3{font-family:var(--disp);text-transform:uppercase;letter-spacing:.12em;font-size:.68rem;color:var(--mat-book-dim);margin:0 0 9px;font-weight:600}
+.bk-panel h3 small{font-family:var(--mono);text-transform:none;letter-spacing:0;color:var(--mat-book-dim);font-weight:400}
+/* cash-on-hand — the reckoning, biggest type in the Book */
+.bk-cash{display:flex;flex-direction:column;gap:2px}
+.bk-cash .bk-k{font-family:var(--disp);text-transform:uppercase;letter-spacing:.14em;font-size:.62rem;color:var(--mat-book-dim)}
+.bk-cash-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:2.4rem;font-weight:700;line-height:1.05;color:var(--mat-book-tx);text-shadow:var(--mat-book-glow)}
+.bk-fin,.bk-flow{font-size:.72rem;color:var(--mat-book-dim)}
+.bk-flow{margin-top:2px}
+/* QTD P&L — a traceable vertical ledger */
+.bk-ledger{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.bk-ledger li{display:flex;justify-content:space-between;gap:10px;font-size:.78rem;padding:4px 0;border-bottom:1px solid var(--mat-book-line);color:var(--mat-book-tx)}
+.bk-ledger li span:first-child{color:var(--mat-book-dim);display:flex;flex-direction:column}
+.bk-ledger li span:first-child small{font-size:.86em;opacity:.75}
+.bk-ledger li.cost span:last-child{color:#d89a4a}
+.bk-ledger li.voll span{color:var(--bad)!important;font-weight:600}
+.bk-ledger li.bk-net{border-top:1px solid var(--mat-book-line);border-bottom:none;margin-top:3px;padding-top:7px;font-weight:700}
+.bk-ledger li.bk-net span:last-child{color:var(--mat-book-tx)}
+.bk-ledger li.bk-net span.short{color:var(--bad)}
+.bk-note{font-size:.66rem;color:var(--mat-book-dim);opacity:.8;margin:8px 0 0;line-height:1.4}
+/* the Book recolours the shared contracts-desk markup into the amber world */
+.bk-desk .desk-lead,.bk-desk .faint,.bk-desk .tiny{color:var(--mat-book-dim)}
+.bk-desk .desk-lead b,.bk-desk .hedge-dial label b{color:var(--mat-book-tx)}
+.bk-desk .ct-h{color:var(--mat-book-dim)}
+.bk-desk .term-btn,.bk-desk .ct-cancel{background:rgba(255,176,46,.05);border-color:var(--mat-book-line);color:var(--mat-book-tx)}
+.bk-desk .term-btn:hover{border-color:var(--mat-book-accent);color:#fff}
+.bk-desk table.fleet{color:var(--mat-book-tx)}
+.bk-desk table.fleet td,.bk-desk table.fleet th{border-color:var(--mat-book-line)}
+.bk-desk input[type=range]{accent-color:var(--mat-book-accent)}
+/* the tape — the annunciator feed, newest on top */
+.bk-tape-feed{display:flex;flex-direction:column;gap:3px;max-height:230px;overflow-y:auto}
+.bk-trow{display:flex;gap:9px;align-items:baseline;font-size:.72rem;padding:3px 8px;border-radius:5px;border-left:2px solid var(--mat-book-line);background:rgba(255,176,46,.03)}
+.bk-tt{color:var(--mat-book-dim);font-variant-numeric:tabular-nums;flex:none}
+.bk-tm{color:var(--mat-book-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-ok{border-left-color:var(--good)} .bk-ok .bk-tm{color:var(--good)}
+.bk-alarm{border-left-color:var(--bad)} .bk-alarm .bk-tm{color:var(--bad)}
+.bk-advisory{border-left-color:var(--mat-book-accent)}
+/* graceful morph: a soft cross-fade if the browser supports View Transitions (else an instant swap) */
+@media (prefers-reduced-motion:no-preference){
+  ::view-transition-old(root),::view-transition-new(root){animation-duration:.22s}
+}

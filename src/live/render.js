@@ -3,7 +3,7 @@
 // mutates S. Player actions are delegated to callbacks passed in from main.js
 // (onToggle, onRestart), so this file imports no action logic.
 // ============================================================
-import { unitOutput, clamp } from "./sim.js";
+import { unitOutput, clamp, flowRate } from "./sim.js";
 import { quarterLabel } from "./calendar.js";
 import { applyDials } from "./dispatch.js";
 import { TASKS, axisRestore, maintCost } from "./maint.js";
@@ -112,8 +112,9 @@ export function render(S){
   _lastReadout = now;
   $("s-cal").textContent = quarterLabel(S); // v5: Year▸Quarter▸Day stamp
   $("s-clock").textContent = clock(S.t);
-  $("s-cash").textContent = money(S.cash);
-  $("s-cash").style.color = S.cash < 0 ? css("--bad") : css("--fg");
+  // v5.4 keystone (Phases 4+5): cash-on-hand + financing standing live ONLY in the Book now (summoned),
+  // nowhere on the deck or frame — the flow-only deck makes the second surface structurally necessary.
+  // The Phase-4 temporary frame cash readout is deleted here, as the Book has taken over solvency.
   // research points + live R&D funding rate (so the lever is legible without pausing)
   $("s-rp").childNodes[0].nodeValue = Math.floor(S.rp || 0) + " ";
   const funding = (S.rdFunding || 0) > 0;
@@ -170,23 +171,23 @@ export function render(S){
   needle.setAttribute("transform", `rotate(${rot.toFixed(1)} 60 62)`);
   needle.style.stroke = col;
 
-  // CASH — balance + live flow rate ($/h and /day) + financing standing.
-  $("s-cash").textContent = money(S.cash);
-  $("s-cash").style.color = S.cash < 0 ? css("--bad") : css("--fg");
-  const flow = S.flowRate || 0;
-  if (Math.abs(flow) < 1){ $("cl-flow").textContent = "flat"; $("cl-flow").style.color = css("--muted"); }
+  // FLOW (v5.4 Phase 4 keystone) — the deck carries the earn/burn PULSE + its driver, never cash-on-hand
+  // (that lives in the Book). flowRate() RECOMPUTES the true net incl. the forced-unserved VOLL drain that
+  // S.flowRate is set before, so the pulse craters and names "VOLL" the instant load goes dark. Cash-on-hand
+  // + financing standing are patched onto the TEMP frame chip above until Phase 5 lands the Book.
+  const fr = flowRate(S), per = fr.perHour, ft = CFG.v5_4.ui.flowThresholds;
+  const flowEl = $("cl-flow"), drvEl = $("cl-flow-driver");
+  if (Math.abs(per) < 1){ flowEl.textContent = "flat"; flowEl.style.color = css("--muted"); }
   else {
-    const sign = flow > 0 ? "+" : "−", a = Math.abs(flow);
-    $("cl-flow").textContent = `${sign}${money(a).slice(1)}/h · ${sign}${money(a * 24).slice(1)}/day`;
-    $("cl-flow").style.color = flow > 0 ? css("--good") : css("--bad");
+    const sign = per > 0 ? "+" : "−", a = Math.abs(per);
+    flowEl.textContent = `${sign}${money(a).slice(1)}/h · ${sign}${money(a * 24).slice(1)}/day`;
+    flowEl.style.color = per <= ft.burn ? css("--bad") : per >= ft.earn ? css("--good") : css("--muted");
   }
-  const debt = Math.round(S.debt || 0), fin = $("cl-fin");
-  // v5.4 Phase 1 (L2): negative cash is NOT "debt-free". The old line read "debt-free" whenever debt was 0,
-  // even at a red negative balance — a reassuring label contradicting the number right above it. Overdraft
-  // now takes priority over the credit standing so the sub-line can never contradict the cash tile.
-  if (S.cash < 0){ fin.textContent = debt > 0 ? `overdrawn · debt ${money(debt)}` : "overdrawn"; fin.style.color = css("--bad"); }
-  else if (debt > 0){ fin.textContent = `debt ${money(debt)} · ${gradeFor(S.credit)} @ ${(creditRating(S.credit).rate * 100).toFixed(1)}%/d`; fin.style.color = css("--warn"); }
-  else { fin.textContent = `credit ${gradeFor(S.credit)} · debt-free`; fin.style.color = css("--faint"); }
+  if (drvEl){
+    drvEl.textContent = fr.driver === "VOLL" ? "⚠ bleeding on dark load — VOLL"
+      : per >= 0 ? `earning · ${fr.driver}` : `burning · ${fr.driver}`;
+    drvEl.style.color = fr.driver === "VOLL" ? css("--bad") : per >= 0 ? css("--good") : css("--warn");
+  }
 
   // SPOT · P&L — spot now, how much of load is hedged, and the live exposure.
   const spot = Math.round(S.spot || 0);
@@ -268,6 +269,9 @@ export function render(S){
   const ff = $("ffBtn");
   if (ff){ const fast = speed === CFG.v5.fastSpeed; ff.textContent = fast ? "▶▶ Fast" : "▶ 1×"; ff.classList.toggle("on", fast); }
   crisisBar(S);
+  // v5.4 Phase 5: while the Book is summoned, keep its live readouts current (cash, QTD P&L, tape). The
+  // interactive contracts desk is left untouched — only the readouts patch. The clock runs underneath.
+  if (S.bookOpen) updateBook(S);
 }
 
 // v5 Phase 8: the mid-quarter crisis strip — the active regime's name, the prioritised
@@ -332,32 +336,39 @@ const laneTbody = {};              // kind → <tbody> (the per-lane urgency sor
 const _laneOrder = {};             // kind → last applied row order, to skip no-op reorders
 let _onDetail = null;              // captured plant-detail opener (the ⚙ on firm/gas rows)
 
-// Build one live <tr> for a unit (shared by every lane). Registers its patch refs in
-// unitEls and, for upgradeable plants, a ⚙ that opens the drill-down (stops the row's
-// arm handler from also firing).
-function buildUnitRow(S, u, onToggle){
-  const tr = document.createElement("tr");
-  tr.className = "fu" + (u.ctrl ? " ctrl" : "");
+// v5.4 Phase 4 (L3 — kill the spreadsheet): each plant is an operable TILE, not a table row. Same
+// data (status pill, output/cap, KPI micro-bars, load%, a contextual sub-note), reflowed into a card
+// that reads as iron at a glance: dispatchable plants (gas/battery) arm on click/key, firm + renewable
+// read as status. Plain render() functions — no custom elements. Built once (buildUnits), patched each
+// frame (updateUnits); tiles never torn down, so taps/hover stay stable and the loop stays cheap.
+function buildUnitTile(S, u, onToggle){
+  const el = document.createElement("div");
+  el.className = "utile" + (u.ctrl ? " ctrl" : "");
   const key = u.ctrl && u.key ? `<span class="fkey" title="shortcut">${u.key}</span>` : "";
   const gear = u.tiers ? `<button class="fu-gear" data-detail="${u.id}" title="Upgrade ladders" aria-label="Open ${u.name} upgrades">⚙</button>` : "";
-  const condCell = u.kpis ? kpiClusterLive() : `<span class="faint">—</span>`;
-  tr.innerHTML = `
-    <td class="fu-nm"><span class="nm">${u.name}</span>${key}${gear}<div class="fu-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div></td>
-    <td><span class="st" data-st>—</span></td>
-    <td class="num"><b data-out>0</b><span class="faint">/${Math.round(u.cap)}</span></td>
-    <td class="num fu-cond">${condCell}</td>
-    <td class="num"><span data-load>—</span></td>`;
-  if (u.ctrl) tr.onclick = () => onToggle(u.id);
-  const g = tr.querySelector(".fu-gear");
+  const cond = u.kpis ? `<div class="ut-cond">${kpiClusterLive()}</div>` : "";
+  el.innerHTML = `
+    <div class="ut-top">
+      <span class="ut-nm"><span class="nm">${u.name}</span>${key}${gear}</span>
+      <span class="st" data-st>—</span>
+    </div>
+    <div class="ut-read">
+      <span class="ut-out"><b data-out>0</b><span class="ut-cap">/${Math.round(u.cap)} MW</span></span>
+      <span class="ut-load" data-load>—</span>
+    </div>
+    ${cond}
+    <div class="ut-sub" data-sub>${Math.round(u.cap)} MW · ${u.kind}</div>`;
+  if (u.ctrl) el.onclick = () => onToggle(u.id);
+  const g = el.querySelector(".fu-gear");
   if (g) g.onclick = e => { e.stopPropagation(); if (_onDetail) _onDetail(u.id); };
   const kpi = {}, kpiq = {};
-  tr.querySelectorAll("[data-k]").forEach(i => kpi[i.dataset.k] = i);
-  tr.querySelectorAll("[data-kq]").forEach(q => kpiq[q.dataset.kq] = q);
+  el.querySelectorAll("[data-k]").forEach(i => kpi[i.dataset.k] = i);
+  el.querySelectorAll("[data-kq]").forEach(q => kpiq[q.dataset.kq] = q);
   unitEls[u.id] = {
-    el: tr, st: tr.querySelector("[data-st]"), out: tr.querySelector("[data-out]"),
-    sub: tr.querySelector("[data-sub]"), kpi, kpiq, load: tr.querySelector("[data-load]"),
+    el, st: el.querySelector("[data-st]"), out: el.querySelector("[data-out]"),
+    sub: el.querySelector("[data-sub]"), kpi, kpiq, load: el.querySelector("[data-load]"),
   };
-  return tr;
+  return el;
 }
 
 export function buildUnits(S, onToggle, onDetail){
@@ -374,19 +385,17 @@ export function buildUnits(S, onToggle, onDetail){
     const sec = document.createElement("section");
     sec.className = "lane"; sec.dataset.lane = lane.kind;
     sec.innerHTML = `<div class="lane-h"><span class="lane-nm">${lane.label}</span><span class="lane-ct">${inLane.length}</span></div>`;
-    const table = document.createElement("table");
-    table.className = "fleet-live";
-    const tb = document.createElement("tbody");
+    const tiles = document.createElement("div");
+    tiles.className = "lane-tiles";
     if (!inLane.length){
-      const tr = document.createElement("tr"); tr.className = "lane-empty";
-      tr.innerHTML = `<td colspan="5" class="faint">— none in service —</td>`;
-      tb.appendChild(tr);
+      const empty = document.createElement("div"); empty.className = "lane-empty faint";
+      empty.textContent = "— none in service —";
+      tiles.appendChild(empty);
     }
-    for (const u of inLane) tb.appendChild(buildUnitRow(S, u, onToggle));
-    table.appendChild(tb);
-    sec.appendChild(table);
+    for (const u of inLane) tiles.appendChild(buildUnitTile(S, u, onToggle));
+    sec.appendChild(tiles);
     host.appendChild(sec);
-    laneTbody[lane.kind] = tb;
+    laneTbody[lane.kind] = tiles;   // the per-lane urgency-sort container (tiles, not a <tbody>)
   }
 }
 function updateUnits(S, tick = true){
@@ -405,7 +414,7 @@ function updateUnits(S, tick = true){
     // status pill + row accent are INSTANT (a trip/strain must show the moment it happens)
     if (refs.st.textContent != stText) refs.st.textContent = stText;
     const cls = "st " + stClass; if (refs.st.className != cls) refs.st.className = cls;
-    const rcls = "fu" + (u.ctrl ? " ctrl" : "") + " u-" + rowState;
+    const rcls = "utile" + (u.ctrl ? " ctrl" : "") + " u-" + rowState;
     if (refs.el.className != rcls) refs.el.className = rcls;
 
     if (!tick) continue; // numeric columns + sub-note throttle with the readout cadence
@@ -1092,6 +1101,113 @@ export function renderPlantDetail(S, unitId, actions){
   $("plantOverlay").classList.add("on");
 }
 export function hidePlantDetail(){ $("plantOverlay").classList.remove("on"); }
+
+// ============================================================
+// v5.4 Phase 5 — THE BOOK. The summoned full-screen finance terminal, under the amber `Book` material
+// (the deck is brushed metal; one amber world, one skin → the same machine showing a different screen).
+// Cash-on-hand lives HERE and nowhere on the deck. The shell + contracts desk + tape are built ONCE on
+// open (buttons wired); the live readouts (cash, QTD P&L, tape) are patched each frame by updateBook, so
+// the clock keeps running underneath without tearing down the interactive desk. The grid-state bleed
+// renders over it (the skin sits above the Book), so a filling strain reservoir is visible as it fills.
+// ============================================================
+export function renderBook(S, actions){
+  const book = $("book");
+  book.innerHTML = `
+    <div class="bk-head">
+      <div class="bk-titlewrap"><span class="bk-kicker">The Book</span><h2 class="bk-title">${quarterLabel(S)}</h2></div>
+      <button class="bk-close" id="bkClose" title="Back to the deck (B / Esc)">Close ✕</button>
+    </div>
+    <div class="bk-grid">
+      <section class="bk-panel bk-cash">
+        <span class="bk-k">Cash on hand</span>
+        <span class="bk-cash-v" id="bk-cash">$0</span>
+        <span class="bk-fin" id="bk-fin"></span>
+        <span class="bk-flow" id="bk-flow"></span>
+      </section>
+      <section class="bk-panel bk-pnl">
+        <h3>Quarter to date</h3>
+        <ul class="bk-ledger" id="bk-ledger"></ul>
+        <p class="bk-note">The board settles wages, overruns and the rate ratchet at the quarter close — this is the running trace.</p>
+      </section>
+      <section class="bk-panel bk-desk">
+        <h3>Contracts desk <small>— hedge the swing</small></h3>
+        <div id="bk-contracts">${contractsBody(S)}</div>
+      </section>
+      <section class="bk-panel bk-tape">
+        <h3>Tape</h3>
+        <div class="bk-tape-feed" id="bk-tape"></div>
+      </section>
+    </div>`;
+  $("bkClose").onclick = actions.close;
+  wireBookDesk(S, actions);
+  updateBook(S);
+  $("bookOverlay").classList.add("on"); $("bookOverlay").setAttribute("aria-hidden", "false");
+}
+
+// The Book's contracts desk shares the live-day contract primitives (hedge dial, term legs, cancel). It
+// routes through the SAME actions the Manage Desk uses; signing/cancelling re-renders just the contracts
+// sub-panel (not the whole Book, so the live readouts never flicker) and re-wires it.
+function wireBookDesk(S, actions){
+  const root = $("bk-contracts"); if (!root) return;
+  const hr = root.querySelector("#hedgeRange");
+  if (hr) hr.oninput = () => {
+    const frac = Number(hr.value) / 100;
+    actions.setHedge(frac);
+    const ro = root.querySelector("#hedgeReadout"); if (ro) ro.textContent = `${Math.round(frac * expectedOutput(S.peak))} MW`;
+  };
+  root.querySelectorAll("[data-term]").forEach(b => b.onclick = () => { actions.hedge(Number(b.dataset.term)); refreshBookDesk(S, actions); });
+  root.querySelectorAll("[data-cancel]").forEach(b => b.onclick = () => { actions.cancelContract(b.dataset.cancel); refreshBookDesk(S, actions); });
+  root.querySelectorAll("[data-offer]").forEach(b => b.onclick = () => { b.dataset.offer === "accept" ? actions.accept() : actions.decline(); refreshBookDesk(S, actions); });
+}
+function refreshBookDesk(S, actions){
+  const root = $("bk-contracts"); if (!root) return;
+  root.innerHTML = contractsBody(S);
+  wireBookDesk(S, actions);
+}
+
+// Patch the Book's live readouts each frame (cheap; never touches the interactive desk). Cash-on-hand +
+// financing standing, the quarter-to-date itemised P&L traced live off S.quarterLog (the running version
+// of the board review's ledger), and the tape (the shared annunciator feed).
+export function updateBook(S){
+  const cashEl = $("bk-cash"); if (!cashEl) return;       // Book not built
+  cashEl.textContent = money(S.cash);
+  cashEl.style.color = S.cash < 0 ? css("--bad") : css("--mat-book-tx");
+  const debt = Math.round(S.debt || 0), fin = $("bk-fin");
+  if (fin){
+    if (S.cash < 0) fin.textContent = debt > 0 ? `overdrawn · debt ${money(debt)}` : "overdrawn";
+    else fin.textContent = debt > 0 ? `debt ${money(debt)} · credit ${gradeFor(S.credit)}` : `credit ${gradeFor(S.credit)} · debt-free`;
+  }
+  const fr = flowRate(S), flowEl = $("bk-flow");
+  if (flowEl){
+    const per = fr.perHour, sign = per > 0 ? "+" : per < 0 ? "−" : "";
+    flowEl.textContent = Math.abs(per) < 1 ? "flow flat" : `${sign}${money(Math.abs(per)).slice(1)}/h · ${fr.driver}`;
+    flowEl.style.color = fr.driver === "VOLL" ? css("--bad") : per >= 0 ? css("--mat-book-tx") : css("--warn");
+  }
+  const q = S.quarterLog || {};
+  const income = (q.floorPay || 0) + (q.swingPay || 0);
+  const fines = (q.breachFines || 0) + (q.shedFines || 0);
+  const net = income - (q.opCost || 0) - (q.interest || 0) - (q.unservedCost || 0) - fines;
+  const row = (label, v, cls = "") => `<li class="${cls}"><span>${label}</span><span>${v < 0 ? "−" : ""}${money(Math.abs(v))}</span></li>`;
+  const led = $("bk-ledger");
+  if (led){
+    led.innerHTML =
+      `<li><span>Served income<small>floor + swing</small></span><span>${money(income)}</span></li>`
+      + (q.opCost ? row("− Operating cost", -(q.opCost), "cost") : "")
+      + (q.interest ? row("− Debt interest", -(q.interest), "cost") : "")
+      + (fines ? row("− Fines (breach + shed)", -fines, "cost") : "")
+      + (q.unservedCost ? `<li class="cost voll"><span>− Forced-unserved VOLL${q.shortfallMWh ? `<small>${Math.round(q.shortfallMWh)} MWh dark</small>` : ""}</span><span>−${money(q.unservedCost)}</span></li>` : "")
+      + `<li class="bk-net"><span>Net quarter-to-date</span><span class="${net < 0 ? "short" : ""}">${money(net)}</span></li>`;
+  }
+  const tape = $("bk-tape");
+  if (tape){
+    tape.innerHTML = _log.length
+      ? _log.map(e => `<div class="bk-trow bk-${e.sev}"><span class="bk-tt">${e.t}</span><span class="bk-tm">${e.msg}</span></div>`).join("")
+      : `<div class="bk-trow faint"><span class="bk-tm">A quiet tape — nothing's landed.</span></div>`;
+  }
+}
+export function hideBook(){
+  const o = $("bookOverlay"); o.classList.remove("on"); o.setAttribute("aria-hidden", "true");
+}
 
 // ---- progression screen (between runs): two tabs — passive Skills, and the
 // Research Unlocks that open in-run research branches. Tab state is module-level

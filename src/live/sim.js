@@ -203,6 +203,24 @@ export function unitOutput(S, u){
 }
 export function totalCapacity(S){ return S.fleet.reduce((a, u) => a + unitOutput(S, u), 0); }
 
+// v5.4 Phase 4: the deck's earn/burn pulse — a PURE read-only projection of the true net cash
+// velocity ($/game-hour). It must RECOMPUTE, not return S.flowRate: the engine sets S.flowRate
+// (line ~587) BEFORE subtracting the forced-unserved VOLL (~640), so reusing it reads healthy
+// mid-blackout. Here we fold the VOLL rate back in so the pulse craters — and says why — the
+// moment load goes dark. No new state, no engine field: a projection over numbers already on S.
+// Returns { perHour, driver }; `driver` names the dominant term, surfacing "VOLL" while short.
+export function flowRate(S){
+  const base = S.flowRate || 0;                    // net of varCost/effSurcharge/spin/fixedOM/interest/capacityPay
+  const unserved = Math.max(0, S.unserved || 0);
+  const vollRate = unserved > 0 ? unserved * (CFG.v5_3?.market?.voll || 0) : 0; // $/h bleeding on dark load
+  const perHour = base - vollRate;                 // the honest net incl. the blackout drain
+  let driver;
+  if (vollRate > 0) driver = "VOLL";               // a forced blackout dominates and must be named
+  else if (perHour >= 0) driver = (S.floorPay || 0) > Math.max(0, base - (S.floorPay || 0)) ? "capacity floor" : "spot sales";
+  else driver = "fixed costs";
+  return { perHour, driver };
+}
+
 export function surviveDay(S){
   // v5: advance the Year▸Quarter▸Day calendar; S.day mirrors the monotonic absDay
   // (the demand clock the economy reads). The grid never resets.
