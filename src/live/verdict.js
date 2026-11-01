@@ -108,6 +108,10 @@ export function settleQuarter(S){
     floorPay: Math.round(q.floorPay), swingPay: Math.round(q.swingPay),
     wages: Math.round(q.wages), overruns: Math.round(q.overruns), breachFines: Math.round(q.breachFines),
     shedFines: Math.round(q.shedFines || 0),
+    // v5.4 Phase 1 (L1): the three costs the PnL total already nets but the card never itemised —
+    // carried out verbatim (no new number) so the board review can TRACE the figure, with VOLL named.
+    opCost: Math.round(q.opCost || 0), interest: Math.round(q.interest || 0),
+    unservedCost: Math.round(q.unservedCost || 0), shortfallMWh: q.shortfallMWh || 0,
     scorecard, mintTotal,       // v5.1 Phase 6: the KPI scorecard + the ⚡ this quarter minted
     note: overlordNote({ grade, serveRate, cleanScore, year, quarter }),
   };

@@ -33,7 +33,9 @@
       </div>
       <div class="cb-stats">
         <div class="hstat"><span class="k">Research</span><span class="v" id="s-rp">0 <small class="rd-sub" id="s-rdsub"></small></span></div>
-        <div class="hstat"><span class="k">Wholesale</span><span class="v" id="s-price">$0</span></div>
+        <!-- v5.4 Phase 1 (L2): the old "Wholesale" chip was removed — it echoed the SAME priceServed as the
+             Spot · P&L tile below (sim.js S.price === S.spot), reading as two independent prices. One price,
+             one place: the Spot · P&L tile, which now carries the "why" line. -->
         <div class="hstat"><span class="k">CO₂ kg/MWh</span><span class="v" id="s-co2">0</span></div>
         <div class="hstat"><span class="k">Carbon $/t</span><span class="v" id="s-carbon">$0</span></div>
       </div>
@@ -101,6 +103,10 @@
             <span class="t-sub2" id="cl-exposure">&nbsp;</span>
           </div>
         </div>
+        <!-- v5.4 Phase 1 (L1): live attribution line — WHY the clearing price is what it is (the marginal
+             unit sets it; demand climbs the stack), and THAT VOLL is accruing while the grid is short.
+             The live counterpart of the board review's itemised PnL. Patched by render(). -->
+        <div class="cl-why" id="cl-why" data-alarm="0"></div>
         <div class="cl-pledge" id="cl-pledge" style="display:none">
           <span class="t-k">Capacity pledge</span><b id="cl-pledge-v">—</b><span class="t-sub" id="cl-pledge-sub"></span>
         </div>
